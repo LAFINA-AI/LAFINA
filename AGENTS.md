@@ -211,3 +211,27 @@ These rules exist specifically to stop agents from going off-track on this proje
 
 8. **One task at a time.** Complete and test a task fully before moving to the next one.
    Do not batch unrelated changes into one commit.
+
+---
+
+## 11. Mandatory Checks Before Any Task Is Marked Done
+
+These three commands MUST all pass before a task is considered complete.
+Never mark a task done if any of these fail. Run them in this order:
+
+1. TypeScript check — zero errors required
+   npx tsc --noEmit
+
+2. Tests — all must pass
+   npm test
+
+3. ESLint — zero errors required (warnings are acceptable)
+   npx eslint src/
+
+If any of these fail:
+- Fix the errors immediately in the same task cycle
+- Do not start a new task or move to the next step
+- Re-run all three checks after fixing
+- Only proceed when all three are clean
+
+This applies to EVERY task in EVERY sprint, no exceptions.
