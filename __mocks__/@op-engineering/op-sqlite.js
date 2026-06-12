@@ -1,37 +1,32 @@
-const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database(':memory:');
+const Database = require('better-sqlite3');
+const db = new Database(':memory:');
 
-const executeAsync = (query, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.all(query, params, (err, rows) => {
-      if (err) {
-        reject(err);
-      } else {
-        // Mock the structure returned by op-sqlite
-        resolve({
-          rows: {
-            _array: rows,
-            length: rows.length,
-            item: (i) => rows[i]
-          }
-        });
-      }
-    });
-  });
+const executeSync = (query, params = []) => {
+  try {
+    if (query.trim().toUpperCase().startsWith('SELECT') || query.trim().toUpperCase().startsWith('PRAGMA')) {
+      const rows = db.prepare(query).all(params);
+      return { rows: rows };
+    } else {
+      const info = db.prepare(query).run(params);
+      return { rowsAffected: info.changes, insertId: info.lastInsertRowid, rows: [] };
+    }
+  } catch (error) {
+    throw error;
+  }
 };
 
 module.exports = {
   open: () => ({
     transaction: async (cb) => {
-      await executeAsync('BEGIN TRANSACTION;');
+      executeSync('BEGIN TRANSACTION;');
       try {
-        await cb({ executeAsync });
-        await executeAsync('COMMIT;');
+        await cb({ executeSync });
+        executeSync('COMMIT;');
       } catch (err) {
-        await executeAsync('ROLLBACK;');
+        executeSync('ROLLBACK;');
         throw err;
       }
     },
-    executeAsync,
+    executeSync,
   })
 };

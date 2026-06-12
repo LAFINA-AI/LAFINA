@@ -8,7 +8,7 @@ export const initDatabase = async (): Promise<void> => {
   try {
     await db.transaction(async (tx) => {
       // Create users table
-      await tx.executeAsync(`
+      (tx as any).executeSync(`
         CREATE TABLE IF NOT EXISTS users (
           id TEXT PRIMARY KEY,
           username TEXT NOT NULL,
@@ -22,7 +22,7 @@ export const initDatabase = async (): Promise<void> => {
       `);
 
       // Create reminders table
-      await tx.executeAsync(`
+      (tx as any).executeSync(`
         CREATE TABLE IF NOT EXISTS reminders (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL,
@@ -40,7 +40,7 @@ export const initDatabase = async (): Promise<void> => {
       `);
 
       // Create job_queue_items table
-      await tx.executeAsync(`
+      (tx as any).executeSync(`
         CREATE TABLE IF NOT EXISTS job_queue_items (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL,
