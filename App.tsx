@@ -7,6 +7,7 @@ import {
   Image,
   Text,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Colors } from './src/ui/theme';
@@ -16,8 +17,8 @@ import { CustomTabBar, TabType } from './src/ui/components/CustomTabBar';
 import { VoiceModal } from './src/ui/components/VoiceModal';
 
 // Screens
-import { CalendarScreen } from './src/ui/screens/CalendarScreen';
-import { ScheduleScreen } from './src/ui/screens/ScheduleScreen';
+import { ChatScreen } from './src/ui/screens/ChatScreen';
+import { CalendarScreen, ViewMode } from './src/ui/screens/CalendarScreen';
 import { NotesScreen } from './src/ui/screens/NotesScreen';
 import { ProfileScreen } from './src/ui/screens/ProfileScreen';
 
@@ -27,9 +28,20 @@ const spashIcon = require('./src/assets/spash_icon.png');
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabType>('schedule');
+  const [activeTab, setActiveTab] = useState<TabType>('calendar');
   const [voiceVisible, setVoiceVisible] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [calendarViewMode, setCalendarViewMode] = useState<ViewMode>('week');
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardVisible(false));
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     const setupApp = async () => {
@@ -69,20 +81,22 @@ function App() {
   // Render Active Screen Component
   const renderScreen = () => {
     switch (activeTab) {
+      case 'chat':
+        return (
+          <ChatScreen
+            userId="user1"
+            refreshTrigger={refreshTrigger}
+            onRefresh={triggerRefresh}
+          />
+        );
       case 'calendar':
         return (
           <CalendarScreen
             userId="user1"
             refreshTrigger={refreshTrigger}
             onRefresh={triggerRefresh}
-          />
-        );
-      case 'schedule':
-        return (
-          <ScheduleScreen
-            userId="user1"
-            refreshTrigger={refreshTrigger}
-            onRefresh={triggerRefresh}
+            viewMode={calendarViewMode}
+            onViewModeChange={setCalendarViewMode}
           />
         );
       case 'notes':
@@ -110,7 +124,7 @@ function App() {
   if (isLoading) {
     return (
       <View style={styles.splashContainer}>
-        <StatusBar barStyle="light-content" backgroundColor="#000000" />
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <Image source={spashIcon} style={styles.splashIconStyle} resizeMode="contain" />
         <View style={styles.splashFooter}>
           <Image source={lafinaDefaultLogo} style={styles.splashLogoStyle} resizeMode="contain" />
@@ -129,11 +143,13 @@ function App() {
         <View style={styles.content}>{renderScreen()}</View>
 
         {/* Floating Custom Bottom Tab Bar */}
-        <CustomTabBar
-          activeTab={activeTab}
-          onTabPress={setActiveTab}
-          onMicPress={() => setVoiceVisible(true)}
-        />
+        {!isKeyboardVisible && (
+          <CustomTabBar
+            activeTab={activeTab}
+            onTabPress={setActiveTab}
+            onMicPress={() => setVoiceVisible(true)}
+          />
+        )}
 
         {/* Voice Assistant Modal */}
         <VoiceModal visible={voiceVisible} onClose={handleVoiceClose} />
@@ -159,7 +175,7 @@ const styles = StyleSheet.create({
   // Splash Screen Sizing & Styling
   splashContainer: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },

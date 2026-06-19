@@ -12,10 +12,8 @@ import {
   Keyboard,
 } from 'react-native';
 import { Colors, Fonts, Shadows } from '../theme';
-import { tasksStore } from '../../storage/tasksStore';
 import { X, Check, ArrowRight } from 'lucide-react-native';
-import { timeBlocksStore } from '../../storage/timeBlocksStore';
-import { notesStore } from '../../storage/notesStore';
+import { processCommand } from '../../ai/nlu/parser';
 
 interface VoiceModalProps {
   visible: boolean;
@@ -28,17 +26,15 @@ const PRESET_COMMANDS = [
   'Add task submit report by 5pm',
   'Block 2-4pm today for deep work',
   'Note: review pilot evaluation parameters',
-  'Complete task submit report',
-  'What is on my schedule today?',
 ];
 
 export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
   const [voiceState, setVoiceState] = useState<VoiceState>('listening');
-  const [inputText, setInputText] = useState('');
   const [transcribedText, setTranscribedText] = useState('');
   const [aiReply, setAiReply] = useState('');
-  
-  // Animation refs
+  const [inputText, setInputText] = useState('');
+
+  // Animated values
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
   
@@ -46,46 +42,43 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
   const waveBars = useRef(Array.from({ length: 9 }, () => new Animated.Value(8))).current;
   const waveIntervalRef = useRef<any>(null);
 
-  // Initial listening pulse animation
   useEffect(() => {
+    let animation: Animated.CompositeAnimation | null = null;
     if (visible && voiceState === 'listening') {
-      startPulse();
-      startWaveform();
-      setTranscribedText('Listening...');
+      setTranscribedText('');
       setAiReply('');
+      setInputText('');
+      setVoiceState('listening');
+      startWaveform();
+
+      animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.2,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1.0,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      animation.start();
     } else {
-      stopPulse();
+      pulseAnim.setValue(1);
       stopWaveform();
     }
+
     return () => {
-      stopPulse();
+      if (animation) {
+        animation.stop();
+      }
       stopWaveform();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, voiceState]);
-
-  const startPulse = () => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.25,
-          duration: 1000,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          easing: Easing.in(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  };
-
-  const stopPulse = () => {
-    pulseAnim.setValue(1);
-  };
+  }, [visible, voiceState, pulseAnim]);
 
   const startWaveform = () => {
     stopWaveform();
@@ -119,6 +112,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
     ]).start(() => {
       setTimeout(() => {
         setVoiceState('listening');
+        setTranscribedText('');
       }, 1500);
     });
   };
@@ -131,122 +125,15 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
 
     setTimeout(() => {
       try {
-        const lowercaseCommand = command.toLowerCase();
-        let reply = '';
-        let didExecute = false;
-
-        // Parse: "Add task [title] by [time/date]"
-        if (lowercaseCommand.startsWith('add task') || lowercaseCommand.includes('remind me to')) {
-          let taskTitle = command.replace(/(add task|remind me to)/gi, '').trim();
-          let dueTime = '17:00';
-          
-          if (taskTitle.toLowerCase().includes('by')) {
-            const parts = taskTitle.split(/by/i);
-            taskTitle = parts[0].trim();
-            dueTime = parts[1].trim();
-          }
-
-          tasksStore.insertTask({
-            id: 'task_' + Math.random().toString(36).substr(2, 9),
-            userId: 'user1',
-            title: taskTitle || 'Voice Scheduled Task',
-            dueDate: new Date().toISOString().split('T')[0],
-            dueTime: dueTime,
-            isCompleted: false,
-            priority: 'Medium',
-            category: 'Work',
-            notes: 'Created via voice command',
-          });
-          reply = `Task "${taskTitle}" has been added to your schedule.`;
-          didExecute = true;
-        }
+        const reply = processCommand(command, 'user1');
+        setAiReply(reply);
+        setVoiceState('success');
         
-        // Parse: "Block [time range] for [activity]"
-        else if (lowercaseCommand.startsWith('block') || lowercaseCommand.includes('work') || lowercaseCommand.includes('study')) {
-          let blockTitle = 'Deep Work';
-          let startTime = '14:00';
-          let endTime = '16:00';
-          
-          if (lowercaseCommand.includes('for')) {
-            const parts = command.split(/for/i);
-            blockTitle = parts[1].trim();
-            const timeParts = parts[0].replace(/block/i, '').trim().split('-');
-            if (timeParts.length === 2) {
-              startTime = timeParts[0].trim();
-              endTime = timeParts[1].trim();
-            }
-          }
-
-          timeBlocksStore.insert({
-            id: 'block_' + Math.random().toString(36).substr(2, 9),
-            userId: 'user1',
-            title: blockTitle,
-            date: new Date().toISOString().split('T')[0],
-            startTime: startTime,
-            endTime: endTime,
-            color: Colors.blue,
-            category: 'Work',
-            notes: 'Time block scheduled via voice',
-          });
-          reply = `I have blocked ${startTime} to ${endTime} for ${blockTitle} on your calendar.`;
-          didExecute = true;
-        }
-
-        // Parse: "Note: [content]"
-        else if (lowercaseCommand.startsWith('note:') || lowercaseCommand.startsWith('note ')) {
-          const noteBody = command.replace(/(note:|note)/gi, '').trim();
-          notesStore.insert({
-            id: 'note_' + Math.random().toString(36).substr(2, 9),
-            userId: 'user1',
-            title: 'Voice Note',
-            body: noteBody || 'Empty voice note contents.',
-            isPinned: false,
-            tags: ['AI Transcribed'],
-            category: 'Personal',
-            isVoiceTranscribed: true,
-          });
-          reply = 'I\'ve captured that voice note for you.';
-          didExecute = true;
-        }
-
-        // Parse "Complete [task name]"
-        else if (lowercaseCommand.startsWith('complete')) {
-          const searchTitle = lowercaseCommand.replace('complete', '').trim();
-          const allTasks = tasksStore.getAllTasks('user1');
-          const matching = allTasks.find(t => t.title.toLowerCase().includes(searchTitle));
-          if (matching) {
-            tasksStore.updateTask({
-              id: matching.id,
-              isCompleted: true,
-            });
-            reply = `Marked "${matching.title}" as completed.`;
-            didExecute = true;
-          } else {
-            reply = `I couldn't find a task matching "${searchTitle}".`;
-          }
-        }
-
-        // Fallback or read schedule command
-        else {
-          reply = "I've checked your schedule. You have a few items planned. Ask me to add or modify items.";
-          didExecute = true;
-        }
-
-        if (didExecute) {
-          setAiReply(reply);
-          setVoiceState('success');
-          setTimeout(() => {
-            onClose(true); // Close modal and request parent refresh
-            setVoiceState('listening');
-            setInputText('');
-          }, 2000);
-        } else {
-          setAiReply(reply);
-          setVoiceState('success');
-          setTimeout(() => {
-            onClose(false);
-          }, 2000);
-        }
+        setTimeout(() => {
+          onClose(true); // Close modal and request parent refresh
+          setVoiceState('listening');
+          setInputText('');
+        }, 2000);
 
       } catch (err) {
         console.error(err);

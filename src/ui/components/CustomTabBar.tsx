@@ -2,9 +2,9 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 
-import { Calendar, CheckSquare, FileText, User, Mic } from 'lucide-react-native';
+import { Calendar, MessageSquare, FileText, User, Mic } from 'lucide-react-native';
 
-export type TabType = 'calendar' | 'schedule' | 'notes' | 'profile';
+export type TabType = 'chat' | 'calendar' | 'notes' | 'profile';
 
 interface CustomTabBarProps {
   activeTab: TabType;
@@ -20,6 +20,18 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
   return (
     <View style={styles.outerContainer}>
       <View style={styles.container}>
+        {/* Chat Tab */}
+        <TouchableOpacity
+          style={styles.tab}
+          onPress={() => onTabPress('chat')}
+          activeOpacity={0.8}
+        >
+          <MessageSquare size={22} color={activeTab === 'chat' ? Colors.red : '#9E9E9E'} />
+          {activeTab === 'chat' && (
+            <Text style={[styles.label, styles.activeLabel]}>Chat</Text>
+          )}
+        </TouchableOpacity>
+
         {/* Calendar Tab */}
         <TouchableOpacity
           style={styles.tab}
@@ -29,18 +41,6 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
           <Calendar size={22} color={activeTab === 'calendar' ? Colors.red : '#9E9E9E'} />
           {activeTab === 'calendar' && (
             <Text style={[styles.label, styles.activeLabel]}>Calendar</Text>
-          )}
-        </TouchableOpacity>
-
-        {/* Schedule Tab */}
-        <TouchableOpacity
-          style={styles.tab}
-          onPress={() => onTabPress('schedule')}
-          activeOpacity={0.8}
-        >
-          <CheckSquare size={22} color={activeTab === 'schedule' ? Colors.red : '#9E9E9E'} />
-          {activeTab === 'schedule' && (
-            <Text style={[styles.label, styles.activeLabel]}>Schedule</Text>
           )}
         </TouchableOpacity>
 

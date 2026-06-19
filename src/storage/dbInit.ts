@@ -158,6 +158,31 @@ export const initDatabase = async (): Promise<void> => {
           FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
       `);
+
+      // Create chat_sessions table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          title TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
+
+      // Create messages table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS messages (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          sender TEXT NOT NULL,
+          content TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
+        )
+      `);
     });
     console.log('Database schema initialized successfully.');
   } catch (error) {
