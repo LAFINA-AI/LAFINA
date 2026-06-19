@@ -8,10 +8,46 @@ import {
   Modal,
   TextInput,
   Alert,
+  Platform,
 } from 'react-native';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Colors, Fonts, Shadows } from '../theme';
 import { timeBlocksStore, TimeBlock } from '../../storage/timeBlocksStore';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react-native';
+import { userStore } from '../../storage/userStore';
+
+/** Convert an "HH:MM" string into a Date object (today, at that time). */
+const timeStringToDate = (timeStr: string): Date => {
+  const [h, m] = timeStr.split(':').map(Number);
+  const d = new Date();
+  d.setHours(isNaN(h) ? 0 : h, isNaN(m) ? 0 : m, 0, 0);
+  return d;
+};
+
+/** Format a Date object back to "HH:MM" (24-hour). */
+const dateToTimeString = (d: Date): string => {
+  const h = d.getHours().toString().padStart(2, '0');
+  const m = d.getMinutes().toString().padStart(2, '0');
+  return `${h}:${m}`;
+};
+
+/** Format a "HH:MM" 24-hour string for display based on format setting. */
+const formatTimeForDisplay = (timeStr: string, is24Hour: boolean): string => {
+  if (!timeStr) return '';
+  const [hStr, mStr] = timeStr.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  if (isNaN(h) || isNaN(m)) return timeStr;
+
+  if (is24Hour) {
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+  } else {
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const displayHour = h % 12 === 0 ? 12 : h % 12;
+    const displayMin = m.toString().padStart(2, '0');
+    return `${displayHour.toString().padStart(2, '0')}:${displayMin} ${ampm}`;
+  }
+};
 
 interface CalendarScreenProps {
   userId: string;
@@ -41,10 +77,21 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const [color, setColor] = useState(Colors.blue);
   const [notes, setNotes] = useState('');
 
+  // Native time picker visibility
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+  const [timeFormat24h, setTimeFormat24h] = useState(false);
+
   useEffect(() => {
     loadBlocks();
+    loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, refreshTrigger]);
+
+  const loadSettings = () => {
+    const is24h = userStore.get24HourFormat(userId);
+    setTimeFormat24h(is24h);
+  };
 
   const loadBlocks = () => {
     const data = timeBlocksStore.getAll(userId);
@@ -100,6 +147,11 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const handleSaveBlock = () => {
     if (!title.trim()) {
       Alert.alert('Error', 'Please enter a title.');
+      return;
+    }
+
+    if (startTime > endTime) {
+      Alert.alert('Invalid Time Range', 'Start time cannot be after end time, and end time cannot be before start time.');
       return;
     }
 
@@ -223,7 +275,11 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
 
           return (
             <View key={hour} style={styles.hourRow}>
-              <Text style={styles.hourLabel}>{`${hour === 12 ? 12 : hour % 12} ${hour >= 12 ? 'PM' : 'AM'}`}</Text>
+              <Text style={styles.hourLabel}>
+                {timeFormat24h 
+                  ? `${hour.toString().padStart(2, '0')}:00` 
+                  : `${hour === 12 ? 12 : hour % 12} ${hour >= 12 ? 'PM' : 'AM'}`}
+              </Text>
               <View style={styles.hourTimelineCell}>
                 {activeBlock ? (
                   <TouchableOpacity
@@ -232,7 +288,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
                   >
                     <Text style={styles.hourlyBlockTitle}>{activeBlock.title}</Text>
                     <Text style={styles.hourlyBlockTime}>
-                      {activeBlock.startTime} - {activeBlock.endTime} • {activeBlock.category}
+                      {formatTimeForDisplay(activeBlock.startTime, timeFormat24h)} - {formatTimeForDisplay(activeBlock.endTime, timeFormat24h)} • {activeBlock.category}
                     </Text>
                   </TouchableOpacity>
                 ) : (
@@ -323,22 +379,48 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
 
             <View style={styles.modalTimeRow}>
               <View style={styles.timeInputCol}>
-                <Text style={styles.timeInputLabel}>Start Time (HH:MM)</Text>
-                <TextInput
-                  style={styles.modalInputSmall}
-                  value={startTime}
-                  onChangeText={setStartTime}
-                  placeholder="09:00"
-                />
+                <Text style={styles.timeInputLabel}>Start Time</Text>
+                <TouchableOpacity
+                  style={styles.timePickerBtn}
+                  onPress={() => setShowStartPicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.timePickerBtnText}>{formatTimeForDisplay(startTime, timeFormat24h)}</Text>
+                </TouchableOpacity>
+                {showStartPicker && (
+                  <DateTimePicker
+                    value={timeStringToDate(startTime)}
+                    mode="time"
+                    is24Hour={timeFormat24h}
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_event: DateTimePickerEvent, date?: Date) => {
+                      setShowStartPicker(false);
+                      if (date) setStartTime(dateToTimeString(date));
+                    }}
+                  />
+                )}
               </View>
               <View style={styles.timeInputCol}>
-                <Text style={styles.timeInputLabel}>End Time (HH:MM)</Text>
-                <TextInput
-                  style={styles.modalInputSmall}
-                  value={endTime}
-                  onChangeText={setEndTime}
-                  placeholder="10:00"
-                />
+                <Text style={styles.timeInputLabel}>End Time</Text>
+                <TouchableOpacity
+                  style={styles.timePickerBtn}
+                  onPress={() => setShowEndPicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.timePickerBtnText}>{formatTimeForDisplay(endTime, timeFormat24h)}</Text>
+                </TouchableOpacity>
+                {showEndPicker && (
+                  <DateTimePicker
+                    value={timeStringToDate(endTime)}
+                    mode="time"
+                    is24Hour={timeFormat24h}
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_event: DateTimePickerEvent, date?: Date) => {
+                      setShowEndPicker(false);
+                      if (date) setEndTime(dateToTimeString(date));
+                    }}
+                  />
+                )}
               </View>
             </View>
 
@@ -664,6 +746,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textDark,
     textAlign: 'center',
+  },
+  timePickerBtn: {
+    borderWidth: 1,
+    borderColor: '#CCC',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    backgroundColor: '#F9F9F9',
+    alignItems: 'center',
+  },
+  timePickerBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textDark,
+    fontFamily: Fonts.body,
+    letterSpacing: 1,
   },
   categoryRow: {
     flexDirection: 'row',

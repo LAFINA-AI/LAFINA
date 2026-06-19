@@ -3,6 +3,7 @@ import { initDatabase } from '../../src/storage/dbInit';
 import { timeBlocksStore } from '../../src/storage/timeBlocksStore';
 import { tasksStore } from '../../src/storage/tasksStore';
 import { notesStore } from '../../src/storage/notesStore';
+import { userStore } from '../../src/storage/userStore';
 
 describe('Storage Layer', () => {
   beforeAll(async () => {
@@ -275,6 +276,27 @@ describe('Storage Layer', () => {
       // note2 should come first now because sort_order is 5 < 10
       expect(notes[0].id).toBe('note2');
       expect(notes[1].id).toBe('note1');
+    });
+  });
+
+  describe('userStore', () => {
+    it('defaults to 12-hour format and can update preference', () => {
+      // Create user
+      db.executeSync(
+        `INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+        ['pref_user', 'prefuser', new Date().toISOString(), new Date().toISOString()]
+      );
+
+      // Default should be false
+      expect(userStore.get24HourFormat('pref_user')).toBe(false);
+
+      // Set to true
+      userStore.set24HourFormat('pref_user', true);
+      expect(userStore.get24HourFormat('pref_user')).toBe(true);
+
+      // Set to false
+      userStore.set24HourFormat('pref_user', false);
+      expect(userStore.get24HourFormat('pref_user')).toBe(false);
     });
   });
 });

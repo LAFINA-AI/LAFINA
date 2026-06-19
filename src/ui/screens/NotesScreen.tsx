@@ -806,7 +806,7 @@ interface NoteCardWithReleaseProps {
 
 const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
   item,
-  _index,
+  index: _index,
   isGridView,
   isActive,
   canDrag,

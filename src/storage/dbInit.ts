@@ -36,10 +36,18 @@ export const initDatabase = async (): Promise<void> => {
           password_hash TEXT,
           role TEXT NOT NULL DEFAULT 'user',
           is_new_user INTEGER NOT NULL DEFAULT 1,
+          time_format_24h INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
         )
       `);
+
+      // Soft migration for existing user tables
+      try {
+        (tx as any).executeSync(`ALTER TABLE users ADD COLUMN time_format_24h INTEGER NOT NULL DEFAULT 0`);
+      } catch {
+        // Safe to ignore if the column/table already exists
+      }
 
       // Create reminders table
       (tx as any).executeSync(`

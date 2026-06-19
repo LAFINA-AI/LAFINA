@@ -12,6 +12,7 @@ import {
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { tasksStore } from '../../storage/tasksStore';
 import { notesStore } from '../../storage/notesStore';
+import { userStore } from '../../storage/userStore';
 
 interface ProfileScreenProps {
   userId: string;
@@ -39,8 +40,20 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
   useEffect(() => {
     loadStats();
+    loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, refreshTrigger]);
+
+  const loadSettings = () => {
+    const is24h = userStore.get24HourFormat(userId);
+    setTimeFormat24h(is24h);
+  };
+
+  const handleToggleTimeFormat = (value: boolean) => {
+    setTimeFormat24h(value);
+    userStore.set24HourFormat(userId, value);
+    onRefresh();
+  };
 
   const loadStats = () => {
     // 1. Tasks completed
@@ -143,7 +156,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <Text style={styles.settingText}>24-Hour Time Format</Text>
             <Switch
               value={timeFormat24h}
-              onValueChange={setTimeFormat24h}
+              onValueChange={handleToggleTimeFormat}
               trackColor={{ false: '#767577', true: Colors.red }}
               thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
             />
