@@ -1524,7 +1524,6 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 12,
     backgroundColor: '#FFFFFF',
-    ...Shadows.card,
   },
   blockBandContent: {
     paddingLeft: 4,
