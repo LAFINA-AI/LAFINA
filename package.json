@@ -10,10 +10,14 @@
   },
   "dependencies": {
     "@op-engineering/op-sqlite": "^16.2.0",
+    "@react-native-community/datetimepicker": "^9.1.0",
     "@react-native/new-app-screen": "0.86.0",
+    "lucide-react": "^1.21.0",
+    "lucide-react-native": "^1.21.0",
     "react": "19.2.3",
     "react-native": "0.86.0",
-    "react-native-safe-area-context": "^5.5.2"
+    "react-native-safe-area-context": "^5.5.2",
+    "react-native-svg": "^15.15.5"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

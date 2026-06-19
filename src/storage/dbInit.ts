@@ -7,6 +7,26 @@ import { db } from './database';
 export const initDatabase = async (): Promise<void> => {
   try {
     await db.transaction(async (tx) => {
+      // Schema validation and automatic migration fallback
+      const tablesToCheck = ['notes', 'tasks', 'events', 'time_blocks', 'reminders'];
+      tablesToCheck.forEach((tableName) => {
+        try {
+          const exists = (tx as any).executeSync(
+            `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
+            [tableName]
+          );
+          if (exists.rows && exists.rows.length > 0) {
+            (tx as any).executeSync(`SELECT user_id FROM ${tableName} LIMIT 1`);
+            if (tableName === 'notes') {
+              (tx as any).executeSync(`SELECT image_uri, sort_order FROM notes LIMIT 1`);
+            }
+          }
+        } catch {
+          console.warn(`Table "${tableName}" schema mismatch (missing user_id or columns). Recreating...`);
+          (tx as any).executeSync(`DROP TABLE IF EXISTS ${tableName}`);
+        }
+      });
+
       // Create users table
       (tx as any).executeSync(`
         CREATE TABLE IF NOT EXISTS users (
@@ -16,10 +36,18 @@ export const initDatabase = async (): Promise<void> => {
           password_hash TEXT,
           role TEXT NOT NULL DEFAULT 'user',
           is_new_user INTEGER NOT NULL DEFAULT 1,
+          time_format_24h INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
         )
       `);
+
+      // Soft migration for existing user tables
+      try {
+        (tx as any).executeSync(`ALTER TABLE users ADD COLUMN time_format_24h INTEGER NOT NULL DEFAULT 0`);
+      } catch {
+        // Safe to ignore if the column/table already exists
+      }
 
       // Create reminders table
       (tx as any).executeSync(`
@@ -52,6 +80,107 @@ export const initDatabase = async (): Promise<void> => {
           updated_at TEXT NOT NULL,
           FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
           FOREIGN KEY (reminder_id) REFERENCES reminders (id) ON DELETE SET NULL
+        )
+      `);
+
+      // Create time_blocks table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS time_blocks (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          date TEXT NOT NULL,
+          start_time TEXT NOT NULL,
+          end_time TEXT NOT NULL,
+          color TEXT NOT NULL,
+          category TEXT NOT NULL,
+          notes TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          deleted_at TEXT,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
+
+      // Create tasks table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS tasks (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          due_date TEXT,
+          due_time TEXT,
+          is_completed INTEGER NOT NULL DEFAULT 0,
+          priority TEXT NOT NULL,
+          category TEXT NOT NULL,
+          notes TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          deleted_at TEXT,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
+
+      // Create events table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS events (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          date TEXT NOT NULL,
+          start_time TEXT NOT NULL,
+          end_time TEXT NOT NULL,
+          location TEXT,
+          linked_calendar_block TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          deleted_at TEXT,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
+
+      // Create notes table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS notes (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          body TEXT NOT NULL,
+          is_pinned INTEGER NOT NULL DEFAULT 0,
+          tags TEXT NOT NULL,
+          category TEXT NOT NULL,
+          is_voice_transcribed INTEGER NOT NULL DEFAULT 0,
+          image_uri TEXT,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          deleted_at TEXT,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
+
+      // Create chat_sessions table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          title TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
+
+      // Create messages table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS messages (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          sender TEXT NOT NULL,
+          content TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
         )
       `);
     });
