@@ -3,6 +3,8 @@ const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 const defaultConfig = getDefaultConfig(__dirname);
 const defaultBlockList = defaultConfig.resolver?.blockList;
 
+const defaultSourceExts = defaultConfig.resolver?.sourceExts || [];
+
 const blockList = Array.isArray(defaultBlockList)
   ? defaultBlockList
   : defaultBlockList
@@ -22,6 +24,7 @@ const config = {
       /[/\\]android[/\\]build[/\\]/,
       ...blockList,
     ],
+    sourceExts: [...defaultSourceExts, 'mjs'],
   },
 };
 

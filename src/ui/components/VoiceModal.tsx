@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Colors, Fonts, Shadows } from '../theme';
 import { tasksStore } from '../../storage/tasksStore';
+import { X, Check, ArrowRight } from 'lucide-react-native';
 import { timeBlocksStore } from '../../storage/timeBlocksStore';
 import { notesStore } from '../../storage/notesStore';
 
@@ -273,7 +274,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
         >
           {/* Close button */}
           <TouchableOpacity style={styles.closeButton} onPress={() => onClose(false)}>
-            <Text style={styles.closeText}>✕</Text>
+            <X size={16} color="#FFFFFF" />
           </TouchableOpacity>
 
           {/* Heading */}
@@ -307,9 +308,9 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
               {voiceState === 'processing' ? (
                 <ActivityIndicator size="large" color="#FFFFFF" />
               ) : voiceState === 'success' ? (
-                <Text style={styles.statusCheckmark}>✓</Text>
+                <Check size={32} color="#FFFFFF" strokeWidth={3} />
               ) : voiceState === 'error' ? (
-                <Text style={styles.statusCheckmark}>✕</Text>
+                <X size={32} color="#FFFFFF" strokeWidth={3} />
               ) : (
                 <View style={styles.micCapsule} />
               )}
@@ -381,7 +382,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
                 style={styles.sendButton}
                 onPress={() => handleCommandProcess(inputText)}
               >
-                <Text style={styles.sendButtonText}>➔</Text>
+                <ArrowRight size={18} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
           )}

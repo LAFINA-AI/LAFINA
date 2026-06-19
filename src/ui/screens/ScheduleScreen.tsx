@@ -13,6 +13,7 @@ import {
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { tasksStore, Task, Event } from '../../storage/tasksStore';
 import { timeBlocksStore, TimeBlock } from '../../storage/timeBlocksStore';
+import { Calendar, Check, Users } from 'lucide-react-native';
 
 interface ScheduleScreenProps {
   userId: string;
@@ -343,7 +344,7 @@ export const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
       {/* Chronological Feed */}
       {feedItems.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyIllustration}>📅</Text>
+          <Calendar size={48} color={Colors.red} style={{ marginBottom: 16 }} />
           <Text style={styles.emptyTitle}>Nothing scheduled</Text>
           <Text style={styles.emptySubtitle}>Ask LAFINA to plan your day or tap standard add buttons above.</Text>
         </View>
@@ -363,7 +364,7 @@ export const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
                     onPress={() => toggleTaskCompletion(t)}
                   >
                     <View style={[styles.checkbox, t.isCompleted && styles.checkboxChecked]}>
-                      {t.isCompleted && <Text style={styles.checkmark}>✓</Text>}
+                      {t.isCompleted && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
                     </View>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -385,7 +386,7 @@ export const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
                 <View style={[styles.card, Shadows.card]}>
                   <View style={[styles.categoryBar, { backgroundColor: Colors.blue }]} />
                   <View style={styles.eventIconContainer}>
-                    <Text style={styles.eventIcon}>👥</Text>
+                    <Users size={16} color={Colors.blue} />
                   </View>
                   <TouchableOpacity
                     style={styles.cardContent}

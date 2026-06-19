@@ -17,9 +17,12 @@ export const initDatabase = async (): Promise<void> => {
           );
           if (exists.rows && exists.rows.length > 0) {
             (tx as any).executeSync(`SELECT user_id FROM ${tableName} LIMIT 1`);
+            if (tableName === 'notes') {
+              (tx as any).executeSync(`SELECT image_uri, sort_order FROM notes LIMIT 1`);
+            }
           }
         } catch {
-          console.warn(`Table "${tableName}" schema mismatch (missing user_id). Recreating...`);
+          console.warn(`Table "${tableName}" schema mismatch (missing user_id or columns). Recreating...`);
           (tx as any).executeSync(`DROP TABLE IF EXISTS ${tableName}`);
         }
       });
@@ -139,6 +142,8 @@ export const initDatabase = async (): Promise<void> => {
           tags TEXT NOT NULL,
           category TEXT NOT NULL,
           is_voice_transcribed INTEGER NOT NULL DEFAULT 0,
+          image_uri TEXT,
+          sort_order INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           deleted_at TEXT,

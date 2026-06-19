@@ -230,5 +230,51 @@ describe('Storage Layer', () => {
       notesStore.delete('note1');
       expect(notesStore.getAll('user1').length).toBe(0);
     });
+
+    it('can set imageUri and batch update sort order', () => {
+      db.executeSync(
+        `INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+        ['user1', 'testuser', new Date().toISOString(), new Date().toISOString()]
+      );
+
+      notesStore.insert({
+        id: 'note1',
+        userId: 'user1',
+        title: 'Note 1',
+        body: 'Body 1',
+        isPinned: false,
+        tags: [],
+        category: 'Work',
+        isVoiceTranscribed: false,
+        imageUri: 'lafina_default_logo',
+      });
+
+      notesStore.insert({
+        id: 'note2',
+        userId: 'user1',
+        title: 'Note 2',
+        body: 'Body 2',
+        isPinned: false,
+        tags: [],
+        category: 'Personal',
+        isVoiceTranscribed: false,
+      });
+
+      let notes = notesStore.getAll('user1');
+      expect(notes.length).toBe(2);
+      expect(notes.find(n => n.id === 'note1')?.imageUri).toBe('lafina_default_logo');
+      expect(notes.find(n => n.id === 'note2')?.imageUri).toBeNull();
+
+      // Batch update sort order
+      notesStore.updateOrder([
+        { id: 'note1', sortOrder: 10 },
+        { id: 'note2', sortOrder: 5 }
+      ]);
+
+      notes = notesStore.getAll('user1');
+      // note2 should come first now because sort_order is 5 < 10
+      expect(notes[0].id).toBe('note2');
+      expect(notes[1].id).toBe('note1');
+    });
   });
 });

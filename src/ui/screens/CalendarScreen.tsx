@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Colors, Fonts, Shadows } from '../theme';
 import { timeBlocksStore, TimeBlock } from '../../storage/timeBlocksStore';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react-native';
 
 interface CalendarScreenProps {
   userId: string;
@@ -259,10 +260,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
         </Text>
         <View style={styles.chevronContainer}>
           <TouchableOpacity onPress={() => navigateMonth('prev')} style={styles.chevronButton}>
-            <Text style={styles.chevronText}>◀</Text>
+            <ChevronLeft size={16} color={Colors.textDark} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => navigateMonth('next')} style={styles.chevronButton}>
-            <Text style={styles.chevronText}>▶</Text>
+            <ChevronRight size={16} color={Colors.textDark} />
           </TouchableOpacity>
         </View>
       </View>
@@ -301,7 +302,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
         style={[styles.fab, Shadows.card]}
         onPress={handleAddBlockPress}
       >
-        <Text style={styles.fabText}>+</Text>
+        <Plus size={24} color="#FFFFFF" />
       </TouchableOpacity>
 
       {/* Create / Edit TimeBlock Modal */}
