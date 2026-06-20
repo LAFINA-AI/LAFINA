@@ -15,6 +15,7 @@ import { initDatabase } from './src/storage/dbInit';
 import { db } from './src/storage/database';
 import { CustomTabBar, TabType } from './src/ui/components/CustomTabBar';
 import { VoiceModal } from './src/ui/components/VoiceModal';
+import { ThemeProvider, useTheme } from './src/ui/contexts/ThemeContext';
 
 // Screens
 import { ChatScreen } from './src/ui/screens/ChatScreen';
@@ -30,9 +31,14 @@ import { userStore } from './src/storage/userStore';
 const lafinaDefaultLogo = require('./src/assets/lafina_default_logo.png');
 const spashIcon = require('./src/assets/spash_icon.png');
 
-function App() {
+function AppContent({
+  userId,
+  setUserId,
+}: {
+  userId: string | null;
+  setUserId: React.Dispatch<React.SetStateAction<string | null>>;
+}) {
   const [isLoading, setIsLoading] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
   const [authScreen, setAuthScreen] = useState<'login' | 'register'>('login');
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('calendar');
@@ -40,6 +46,9 @@ function App() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [calendarViewMode, setCalendarViewMode] = useState<ViewMode>('week');
+
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
@@ -73,7 +82,7 @@ function App() {
       }
     };
     setupApp();
-  }, []);
+  }, [setUserId]);
 
   const triggerRefresh = () => {
     setRefreshTrigger((prev) => prev + 1);
@@ -109,7 +118,7 @@ function App() {
 
   // Render Active Screen Component
   const renderScreen = () => {
-    if (!userId) return <View style={styles.errorScreen}><Text>Access Denied</Text></View>;
+    if (!userId) return <View style={[styles.errorScreen, themed.errorScreen]}><Text style={themed.errorText}>Access Denied</Text></View>;
     switch (activeTab) {
       case 'chat':
         return (
@@ -147,15 +156,15 @@ function App() {
           />
         );
       default:
-        return <View style={styles.errorScreen}><Text>Page Not Found</Text></View>;
+        return <View style={[styles.errorScreen, themed.errorScreen]}><Text style={themed.errorText}>Page Not Found</Text></View>;
     }
   };
 
   // Render Splash Loading Screen
   if (isLoading) {
     return (
-      <View style={styles.splashContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <View style={[styles.splashContainer, themed.splashContainer]}>
+        <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
         <Image source={spashIcon} style={styles.splashIconStyle} resizeMode="contain" />
         <View style={styles.splashFooter}>
           <Image source={lafinaDefaultLogo} style={styles.splashLogoStyle} resizeMode="contain" />
@@ -196,8 +205,8 @@ function App() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.safeContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FAF9F6" />
+      <SafeAreaView style={[styles.safeContainer, themed.safeContainer]}>
+        <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
         
         {/* Render Active Page Content */}
         <View style={styles.content}>{renderScreen()}</View>
@@ -218,10 +227,37 @@ function App() {
   );
 }
 
+function useThemedStyles() {
+  const { colors } = useTheme();
+  return {
+    safeContainer: {
+      backgroundColor: colors.background,
+    },
+    splashContainer: {
+      backgroundColor: colors.background,
+    },
+    errorScreen: {
+      backgroundColor: colors.background,
+    },
+    errorText: {
+      color: colors.textPrimary,
+    },
+  };
+}
+
+function App() {
+  const [userId, setUserId] = useState<string | null>(null);
+
+  return (
+    <ThemeProvider userId={userId}>
+      <AppContent userId={userId} setUserId={setUserId} />
+    </ThemeProvider>
+  );
+}
+
 const styles = StyleSheet.create({
   safeContainer: {
     flex: 1,
-    backgroundColor: '#FAF9F6',
   },
   content: {
     flex: 1,
@@ -235,7 +271,6 @@ const styles = StyleSheet.create({
   // Splash Screen Sizing & Styling
   splashContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -260,3 +295,4 @@ const styles = StyleSheet.create({
 });
 
 export default App;
+

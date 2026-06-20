@@ -3,7 +3,11 @@ const db = new Database(':memory:');
 
 const executeSync = (query, params = []) => {
   try {
-    if (query.trim().toUpperCase().startsWith('SELECT') || query.trim().toUpperCase().startsWith('PRAGMA')) {
+    const trimmedUpper = query.trim().toUpperCase();
+    const isSelect = trimmedUpper.startsWith('SELECT');
+    const isPragmaQuery = trimmedUpper.startsWith('PRAGMA') && !query.includes('=');
+    
+    if (isSelect || isPragmaQuery) {
       const rows = db.prepare(query).all(params);
       return { rows: rows };
     } else {

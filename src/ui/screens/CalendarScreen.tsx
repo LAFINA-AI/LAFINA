@@ -17,6 +17,7 @@ import { timeBlocksStore, TimeBlock } from '../../storage/timeBlocksStore';
 import { ChevronLeft, ChevronRight, Plus, Check, Users } from 'lucide-react-native';
 import { userStore } from '../../storage/userStore';
 import { tasksStore, Task, Event } from '../../storage/tasksStore';
+import { useTheme } from '../contexts/ThemeContext';
 
 /** Convert an "HH:MM" string into a Date object (today, at that time). */
 const timeStringToDate = (timeStr: string): Date => {
@@ -102,6 +103,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [timeFormat24h, setTimeFormat24h] = useState(false);
+  const [weekStartsMonday, setWeekStartsMonday] = useState(false);
+
+  const { colors, isDarkMode } = useTheme();
+  const themed = useThemedStyles();
 
   useEffect(() => {
     loadBlocks();
@@ -126,6 +131,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const loadSettings = () => {
     const is24h = userStore.get24HourFormat(userId);
     setTimeFormat24h(is24h);
+    const mondayStart = userStore.getWeekStartsMonday(userId);
+    setWeekStartsMonday(mondayStart);
   };
 
   const loadBlocks = () => {
@@ -159,7 +166,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
-    const firstDayIndex = new Date(year, month, 1).getDay();
+    const rawDay = new Date(year, month, 1).getDay(); // 0=Sunday
+    const firstDayIndex = weekStartsMonday ? (rawDay + 6) % 7 : rawDay;
     const totalDays = new Date(year, month + 1, 0).getDate();
     return { firstDayIndex, totalDays };
   };
@@ -461,9 +469,9 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
     const feedItems = getChronologicalFeed();
 
     return (
-      <View style={styles.weekViewContainer}>
+      <View style={[styles.weekViewContainer, themed.weekViewContainer]}>
         {/* Date Pill Scroller */}
-        <View style={styles.scrollerContainer}>
+        <View style={[styles.scrollerContainer, themed.scrollerContainer]}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weekScroller}>
             {weekDays.map((day, i) => {
               const isSelected = day.toDateString() === selectedDate.toDateString();
@@ -473,15 +481,21 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
                   key={i}
                   style={[
                     styles.datePill,
+                    themed.datePill,
                     isSelected && styles.datePillActive,
                     isToday && !isSelected && styles.datePillToday,
                   ]}
                   onPress={() => setSelectedDate(day)}
                 >
-                  <Text style={[styles.pillDayName, isSelected && styles.pillTextActive]}>
+                  <Text style={[styles.pillDayName, themed.pillDayName, isSelected && styles.pillTextActive]}>
                     {day.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 3)}
                   </Text>
-                  <Text style={[styles.pillDayNum, isSelected && styles.pillTextActive, isToday && !isSelected && styles.pillTodayNum]}>
+                  <Text style={[
+                    styles.pillDayNum, 
+                    themed.pillDayNum, 
+                    isSelected && styles.pillTextActive, 
+                    isToday && !isSelected && styles.pillTodayNum
+                  ]}>
                     {day.getDate()}
                   </Text>
                 </TouchableOpacity>
@@ -492,7 +506,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
 
         {/* Overdue Section */}
         {overdueList.length > 0 && (
-          <View style={styles.overdueBanner}>
+          <View style={[styles.overdueBanner, themed.overdueBanner]}>
             <View style={styles.overdueBadge}>
               <Text style={styles.overdueBadgeText}>OVERDUE</Text>
             </View>
@@ -500,10 +514,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
               {overdueList.map((ot) => (
                 <TouchableOpacity
                   key={ot.id}
-                  style={styles.overdueChip}
+                  style={[styles.overdueChip, themed.overdueChip]}
                   onPress={() => handleEditScheduleItemPress(ot, 'task')}
                 >
-                  <Text style={styles.overdueChipText} numberOfLines={1}>
+                  <Text style={[styles.overdueChipText, themed.overdueChipText]} numberOfLines={1}>
                     {ot.title}
                   </Text>
                 </TouchableOpacity>
@@ -514,10 +528,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
 
         {/* Chronological List of Feed Items */}
         {feedItems.length === 0 ? (
-          <View style={styles.emptyState}>
+          <View style={[styles.emptyState, themed.emptyState]}>
             <Text style={styles.emptyIllustration}>📅</Text>
-            <Text style={styles.emptyTitle}>Your schedule is clear</Text>
-            <Text style={styles.emptySubtitle}>
+            <Text style={[styles.emptyTitle, themed.emptyTitle]}>Your schedule is clear</Text>
+            <Text style={[styles.emptySubtitle, themed.emptySubtitle]}>
               Tap the float button below to add tasks or time blocks.
             </Text>
           </View>
@@ -530,13 +544,13 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
               if (item.type === 'task') {
                 const t = item.item as Task;
                 return (
-                  <View style={[styles.card, Shadows.card]}>
+                  <View style={[styles.card, themed.card, Shadows.card]}>
                     <View style={[styles.categoryBar, { backgroundColor: getCategoryColor(t.category) }]} />
                     <TouchableOpacity
                       style={styles.checkboxContainer}
                       onPress={() => toggleTaskCompletion(t)}
                     >
-                      <View style={[styles.checkbox, t.isCompleted && styles.checkboxChecked]}>
+                      <View style={[styles.checkbox, themed.checkbox, t.isCompleted && styles.checkboxChecked, t.isCompleted && themed.checkboxChecked]}>
                         {t.isCompleted && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
                       </View>
                     </TouchableOpacity>
@@ -544,10 +558,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
                       style={styles.cardContent}
                       onPress={() => handleEditScheduleItemPress(t, 'task')}
                     >
-                      <Text style={[styles.cardTitle, t.isCompleted && styles.cardTitleCompleted]}>
+                      <Text style={[styles.cardTitle, themed.cardTitle, t.isCompleted && styles.cardTitleCompleted]}>
                         {t.title}
                       </Text>
-                      <Text style={styles.cardTime}>
+                      <Text style={[styles.cardTime, themed.cardTime]}>
                         {t.dueTime ? `Due at ${formatTimeForDisplay(t.dueTime, timeFormat24h)}` : 'All Day'} • {t.priority} Priority
                       </Text>
                     </TouchableOpacity>
@@ -556,17 +570,17 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
               } else if (item.type === 'event') {
                 const e = item.item as Event;
                 return (
-                  <View style={[styles.card, Shadows.card]}>
+                  <View style={[styles.card, themed.card, Shadows.card]}>
                     <View style={[styles.categoryBar, { backgroundColor: Colors.blue }]} />
-                    <View style={styles.eventIconContainer}>
+                    <View style={[styles.eventIconContainer, themed.eventIconContainer]}>
                       <Users size={16} color={Colors.blue} />
                     </View>
                     <TouchableOpacity
                       style={styles.cardContent}
                       onPress={() => handleEditScheduleItemPress(e, 'event')}
                     >
-                      <Text style={styles.cardTitle}>{e.title}</Text>
-                      <Text style={styles.cardTime}>
+                      <Text style={[styles.cardTitle, themed.cardTitle]}>{e.title}</Text>
+                      <Text style={[styles.cardTime, themed.cardTime]}>
                         {formatTimeForDisplay(e.startTime, timeFormat24h)} - {formatTimeForDisplay(e.endTime, timeFormat24h)} {e.location ? `• ${e.location}` : ''}
                       </Text>
                     </TouchableOpacity>
@@ -575,15 +589,15 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
               } else {
                 const b = item.item as TimeBlock;
                 return (
-                  <View style={[styles.blockBandCard, { backgroundColor: b.color + '15', borderColor: b.color }]}>
+                  <View style={[styles.blockBandCard, themed.blockBandCard, { backgroundColor: b.color + '15', borderColor: b.color }]}>
                     <TouchableOpacity 
                       style={styles.blockBandContent}
                       onPress={() => handleEditBlockPress(b)}
                     >
-                      <Text style={[styles.blockBandTitle, { color: b.color }]}>
+                      <Text style={[styles.blockBandTitle, themed.blockBandTitle, { color: b.color }]}>
                         Time Block: {b.title}
                       </Text>
-                      <Text style={styles.blockBandTime}>
+                      <Text style={[styles.blockBandTime, themed.blockBandTime]}>
                         {formatTimeForDisplay(b.startTime, timeFormat24h)} - {formatTimeForDisplay(b.endTime, timeFormat24h)} • {b.category}
                       </Text>
                     </TouchableOpacity>
@@ -624,8 +638,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
           style={styles.calendarCell}
           onPress={() => handleDayTap(day)}
         >
-          <View style={[styles.dayContainer, isToday && styles.todayContainer]}>
-            <Text style={[styles.dayText, isToday && styles.todayText]}>
+          <View style={[styles.dayContainer, themed.dayContainer, isToday && styles.todayContainer]}>
+            <Text style={[styles.dayText, themed.dayText, isToday && styles.todayText]}>
               {day}
             </Text>
           </View>
@@ -638,12 +652,16 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       );
     }
 
+    const weekdayLabels = weekStartsMonday
+      ? ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+      : ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
     return (
-      <View style={styles.monthGridContainer}>
+      <View style={[styles.monthGridContainer, themed.monthGridContainer]}>
         {/* Weekday headers */}
-        <View style={styles.weekdayHeaderRow}>
-          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((wd, i) => (
-            <Text key={i} style={styles.weekdayLabel}>
+        <View style={[styles.weekdayHeaderRow, themed.weekdayHeaderRow]}>
+          {weekdayLabels.map((wd, i) => (
+            <Text key={i} style={[styles.weekdayLabel, themed.weekdayLabel]}>
               {wd}
             </Text>
           ))}
@@ -660,32 +678,32 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
     const hours = Array.from({ length: 13 }).map((_, i) => i + 8); // 8:00 to 20:00
 
     return (
-      <ScrollView style={styles.hourlyContainer}>
+      <ScrollView style={[styles.hourlyContainer, themed.hourlyContainer]}>
         {hours.map((hour) => {
           // Find if any block starts at this hour or overlaps
           const activeBlock = dayBlocks.find((b) => b.startTime.startsWith(String(hour).padStart(2, '0')));
 
           return (
-            <View key={hour} style={styles.hourRow}>
-              <Text style={styles.hourLabel}>
+            <View key={hour} style={[styles.hourRow, themed.hourRow]}>
+              <Text style={[styles.hourLabel, themed.hourLabel]}>
                 {timeFormat24h 
                   ? `${hour.toString().padStart(2, '0')}:00` 
                   : `${hour === 12 ? 12 : hour % 12} ${hour >= 12 ? 'PM' : 'AM'}`}
               </Text>
-              <View style={styles.hourTimelineCell}>
+              <View style={[styles.hourTimelineCell, themed.hourTimelineCell]}>
                 {activeBlock ? (
                   <TouchableOpacity
-                    style={[styles.hourlyBlockCard, { borderLeftColor: activeBlock.color }]}
+                    style={[styles.hourlyBlockCard, themed.hourlyBlockCard, { borderLeftColor: activeBlock.color }]}
                     onPress={() => handleEditBlockPress(activeBlock)}
                   >
-                    <Text style={styles.hourlyBlockTitle}>{activeBlock.title}</Text>
-                    <Text style={styles.hourlyBlockTime}>
+                    <Text style={[styles.hourlyBlockTitle, themed.hourlyBlockTitle]}>{activeBlock.title}</Text>
+                    <Text style={[styles.hourlyBlockTime, themed.hourlyBlockTime]}>
                       {formatTimeForDisplay(activeBlock.startTime, timeFormat24h)} - {formatTimeForDisplay(activeBlock.endTime, timeFormat24h)} • {activeBlock.category}
                     </Text>
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
-                    style={styles.emptyHourSlot}
+                    style={[styles.emptyHourSlot, themed.emptyHourSlot]}
                     onLongPress={handleAddBlockPress}
                     onPress={handleAddBlockPress}
                   />
@@ -700,31 +718,31 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, themed.container]}>
       {/* Header Month Year & Chevrons */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>
+        <Text style={[styles.headerTitle, themed.headerTitle]}>
           {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </Text>
         <View style={styles.chevronContainer}>
-          <TouchableOpacity onPress={() => navigateMonth('prev')} style={styles.chevronButton}>
-            <ChevronLeft size={16} color={Colors.textDark} />
+          <TouchableOpacity onPress={() => navigateMonth('prev')} style={[styles.chevronButton, themed.chevronButton]}>
+            <ChevronLeft size={16} color={colors.textPrimary} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigateMonth('next')} style={styles.chevronButton}>
-            <ChevronRight size={16} color={Colors.textDark} />
+          <TouchableOpacity onPress={() => navigateMonth('next')} style={[styles.chevronButton, themed.chevronButton]}>
+            <ChevronRight size={16} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Segmented Control Month | Week | Day */}
-      <View style={styles.toggleRow}>
+      <View style={[styles.toggleRow, themed.toggleRow]}>
         {(['month', 'week', 'day'] as ViewMode[]).map((mode) => (
           <TouchableOpacity
             key={mode}
-            style={[styles.toggleBtn, viewMode === mode && styles.toggleBtnActive]}
+            style={[styles.toggleBtn, themed.toggleBtn, viewMode === mode && styles.toggleBtnActive, viewMode === mode && themed.toggleBtnActive]}
             onPress={() => setViewMode(mode)}
           >
-            <Text style={[styles.toggleText, viewMode === mode && styles.toggleTextActive]}>
+            <Text style={[styles.toggleText, themed.toggleText, viewMode === mode && styles.toggleTextActive, viewMode === mode && themed.toggleTextActive]}>
               {mode.charAt(0).toUpperCase() + mode.slice(1)}
             </Text>
           </TouchableOpacity>
@@ -749,28 +767,28 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       {/* Create / Edit TimeBlock Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalHeaderTitle}>
+          <View style={[styles.modalContent, themed.modalContent]}>
+            <Text style={[styles.modalHeaderTitle, themed.modalHeaderTitle]}>
               {editingBlock ? 'Edit Time Block' : 'Create Time Block'}
             </Text>
             
             <TextInput
-              style={styles.modalInput}
+              style={[styles.modalInput, themed.modalInput]}
               placeholder="Deep Work, Study, Lunch..."
-              placeholderTextColor="#888"
+              placeholderTextColor={isDarkMode ? '#666' : '#888'}
               value={title}
               onChangeText={setTitle}
             />
 
             <View style={styles.modalTimeRow}>
               <View style={styles.timeInputCol}>
-                <Text style={styles.timeInputLabel}>Start Time</Text>
+                <Text style={[styles.timeInputLabel, themed.timeInputLabel]}>Start Time</Text>
                 <TouchableOpacity
-                  style={styles.timePickerBtn}
+                  style={[styles.timePickerBtn, themed.timePickerBtn]}
                   onPress={() => setShowStartPicker(true)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.timePickerBtnText}>{formatTimeForDisplay(startTime, timeFormat24h)}</Text>
+                  <Text style={[styles.timePickerBtnText, themed.timePickerBtnText]}>{formatTimeForDisplay(startTime, timeFormat24h)}</Text>
                 </TouchableOpacity>
                 {showStartPicker && (
                   <DateTimePicker
@@ -786,13 +804,13 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
                 )}
               </View>
               <View style={styles.timeInputCol}>
-                <Text style={styles.timeInputLabel}>End Time</Text>
+                <Text style={[styles.timeInputLabel, themed.timeInputLabel]}>End Time</Text>
                 <TouchableOpacity
-                  style={styles.timePickerBtn}
+                  style={[styles.timePickerBtn, themed.timePickerBtn]}
                   onPress={() => setShowEndPicker(true)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.timePickerBtnText}>{formatTimeForDisplay(endTime, timeFormat24h)}</Text>
+                  <Text style={[styles.timePickerBtnText, themed.timePickerBtnText]}>{formatTimeForDisplay(endTime, timeFormat24h)}</Text>
                 </TouchableOpacity>
                 {showEndPicker && (
                   <DateTimePicker
@@ -815,11 +833,18 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
                   key={cat}
                   style={[
                     styles.categoryChip,
+                    themed.categoryChip,
                     category === cat && styles.categoryChipActive,
+                    category === cat && themed.categoryChipActive,
                   ]}
                   onPress={() => setCategory(cat)}
                 >
-                  <Text style={[styles.categoryChipText, category === cat && styles.categoryChipTextActive]}>
+                  <Text style={[
+                    styles.categoryChipText,
+                    themed.categoryChipText,
+                    category === cat && styles.categoryChipTextActive,
+                    category === cat && themed.categoryChipTextActive,
+                  ]}>
                     {cat}
                   </Text>
                 </TouchableOpacity>
@@ -830,16 +855,16 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
               {[Colors.blue, Colors.red, Colors.yellow, Colors.success, '#9B59B6'].map((c) => (
                 <TouchableOpacity
                   key={c}
-                  style={[styles.colorBubble, { backgroundColor: c }, color === c && styles.colorBubbleActive]}
+                  style={[styles.colorBubble, themed.colorBubble, { backgroundColor: c }, color === c && styles.colorBubbleActive, color === c && themed.colorBubbleActive]}
                   onPress={() => setColor(c)}
                 />
               ))}
             </View>
 
             <TextInput
-              style={[styles.modalInput, styles.textArea]}
+              style={[styles.modalInput, themed.modalInput, styles.textArea]}
               placeholder="Add optional notes..."
-              placeholderTextColor="#888"
+              placeholderTextColor={isDarkMode ? '#666' : '#888'}
               multiline
               numberOfLines={3}
               value={notes}
@@ -856,10 +881,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                style={[styles.modalBtn, styles.cancelBtn]}
+                style={[styles.modalBtn, themed.modalBtn, styles.cancelBtn, themed.cancelBtn]}
                 onPress={() => setModalVisible(false)}
               >
-                <Text style={styles.modalBtnTextDark}>Cancel</Text>
+                <Text style={[styles.modalBtnTextDark, themed.modalBtnTextDark]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, styles.saveBtn]}
@@ -875,28 +900,28 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       {/* Quick Add / Edit Task/Event Modal */}
       <Modal visible={scheduleModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalHeaderTitle}>
+          <View style={[styles.modalContent, themed.modalContent]}>
+            <Text style={[styles.modalHeaderTitle, themed.modalHeaderTitle]}>
               {editingItem ? `Edit ${modalType}` : `Create ${modalType}`}
             </Text>
             
             <TextInput
-              style={styles.modalInput}
+              style={[styles.modalInput, themed.modalInput]}
               placeholder={modalType === 'task' ? 'Buy groceries, Finish report...' : 'Consultation, Lecture...'}
-              placeholderTextColor="#888"
+              placeholderTextColor={isDarkMode ? '#666' : '#888'}
               value={title}
               onChangeText={setTitle}
             />
 
             <View style={styles.modalRow}>
               <View style={styles.modalCol}>
-                <Text style={styles.modalColLabel}>{modalType === 'task' ? 'Due Time' : 'Start Time'}</Text>
+                <Text style={[styles.modalColLabel, themed.modalColLabel]}>{modalType === 'task' ? 'Due Time' : 'Start Time'}</Text>
                 <TouchableOpacity
-                  style={styles.timePickerBtn}
+                  style={[styles.timePickerBtn, themed.timePickerBtn]}
                   onPress={() => setShowTimePicker(true)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.timePickerBtnText}>{formatTimeForDisplay(time, timeFormat24h)}</Text>
+                  <Text style={[styles.timePickerBtnText, themed.timePickerBtnText]}>{formatTimeForDisplay(time, timeFormat24h)}</Text>
                 </TouchableOpacity>
                 {showTimePicker && (
                   <DateTimePicker
@@ -913,13 +938,13 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
               </View>
               {modalType === 'event' && (
                 <View style={styles.modalCol}>
-                  <Text style={styles.modalColLabel}>End Time</Text>
+                  <Text style={[styles.modalColLabel, themed.modalColLabel]}>End Time</Text>
                   <TouchableOpacity
-                    style={styles.timePickerBtn}
+                    style={[styles.timePickerBtn, themed.timePickerBtn]}
                     onPress={() => setShowEndTimePicker(true)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.timePickerBtnText}>{formatTimeForDisplay(endTime, timeFormat24h)}</Text>
+                    <Text style={[styles.timePickerBtnText, themed.timePickerBtnText]}>{formatTimeForDisplay(endTime, timeFormat24h)}</Text>
                   </TouchableOpacity>
                   {showEndTimePicker && (
                     <DateTimePicker
@@ -938,17 +963,24 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             </View>
 
             {modalType === 'task' && (
-              <View style={styles.segmentedRow}>
+              <View style={[styles.segmentedRow, themed.segmentedRow]}>
                 {['High', 'Medium', 'Low'].map((pr) => (
                   <TouchableOpacity
                     key={pr}
                     style={[
                       styles.segmentBtn,
+                      themed.segmentBtn,
                       priority === pr && styles.segmentBtnActive,
+                      priority === pr && themed.segmentBtnActive,
                     ]}
                     onPress={() => setPriority(pr as any)}
                   >
-                    <Text style={[styles.segmentBtnText, priority === pr && styles.segmentBtnTextActive]}>
+                    <Text style={[
+                      styles.segmentBtnText,
+                      themed.segmentBtnText,
+                      priority === pr && styles.segmentBtnTextActive,
+                      priority === pr && themed.segmentBtnTextActive,
+                    ]}>
                       {pr}
                     </Text>
                   </TouchableOpacity>
@@ -962,11 +994,18 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
                   key={cat}
                   style={[
                     styles.categoryChip,
+                    themed.categoryChip,
                     category === cat && styles.categoryChipActive,
+                    category === cat && themed.categoryChipActive,
                   ]}
                   onPress={() => setCategory(cat)}
                 >
-                  <Text style={[styles.categoryChipText, category === cat && styles.categoryChipTextActive]}>
+                  <Text style={[
+                    styles.categoryChipText,
+                    themed.categoryChipText,
+                    category === cat && styles.categoryChipTextActive,
+                    category === cat && themed.categoryChipTextActive,
+                  ]}>
                     {cat}
                   </Text>
                 </TouchableOpacity>
@@ -975,18 +1014,18 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
 
             {modalType === 'event' && (
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, themed.modalInput]}
                 placeholder="Location (optional)"
-                placeholderTextColor="#888"
+                placeholderTextColor={isDarkMode ? '#666' : '#888'}
                 value={location}
                 onChangeText={setLocation}
               />
             )}
 
             <TextInput
-              style={[styles.modalInput, styles.textArea]}
+              style={[styles.modalInput, themed.modalInput, styles.textArea]}
               placeholder="Add notes..."
-              placeholderTextColor="#888"
+              placeholderTextColor={isDarkMode ? '#666' : '#888'}
               multiline
               numberOfLines={3}
               value={notes}
@@ -1003,10 +1042,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                style={[styles.modalBtn, styles.cancelBtn]}
+                style={[styles.modalBtn, themed.modalBtn, styles.cancelBtn, themed.cancelBtn]}
                 onPress={() => setScheduleModalVisible(false)}
               >
-                <Text style={styles.modalBtnTextDark}>Cancel</Text>
+                <Text style={[styles.modalBtnTextDark, themed.modalBtnTextDark]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, styles.saveBtn]}
@@ -1025,7 +1064,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF9F6',
     paddingHorizontal: 16,
     paddingTop: 16,
   },
@@ -1038,7 +1076,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: Fonts.heading,
     fontSize: 24,
-    color: Colors.darkBg,
     fontWeight: 'bold',
   },
   chevronContainer: {
@@ -1047,16 +1084,13 @@ const styles = StyleSheet.create({
   chevronButton: {
     padding: 8,
     marginLeft: 12,
-    backgroundColor: '#EAEAEA',
     borderRadius: 8,
   },
   chevronText: {
     fontSize: 12,
-    color: '#333',
   },
   toggleRow: {
     flexDirection: 'row',
-    backgroundColor: '#E5E5E5',
     borderRadius: 8,
     padding: 2,
     marginBottom: 16,
@@ -1068,17 +1102,14 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   toggleBtnActive: {
-    backgroundColor: '#FFFFFF',
     ...Shadows.card,
   },
   toggleText: {
     fontFamily: Fonts.body,
     fontSize: 13,
-    color: '#666',
   },
   toggleTextActive: {
     fontWeight: 'bold',
-    color: Colors.darkBg,
   },
   body: {
     flex: 1,
@@ -1098,7 +1129,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     fontWeight: 'bold',
     fontSize: 12,
-    color: '#888',
   },
   monthCellsGrid: {
     flexDirection: 'row',
@@ -1128,7 +1158,6 @@ const styles = StyleSheet.create({
   dayText: {
     fontFamily: Fonts.body,
     fontSize: 14,
-    color: Colors.textDark,
   },
   todayText: {
     color: '#FFFFFF',
@@ -1158,7 +1187,6 @@ const styles = StyleSheet.create({
     width: 50,
     fontSize: 11,
     fontFamily: Fonts.body,
-    color: '#888',
     paddingTop: 4,
     textAlign: 'right',
     paddingRight: 8,
@@ -1166,13 +1194,11 @@ const styles = StyleSheet.create({
   hourTimelineCell: {
     flex: 1,
     borderTopWidth: 1,
-    borderTopColor: '#E5E5E5',
     paddingLeft: 8,
     justifyContent: 'center',
   },
   hourlyBlockCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
     borderRadius: 8,
     borderLeftWidth: 4,
     padding: 8,
@@ -1184,12 +1210,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: Fonts.body,
     fontWeight: 'bold',
-    color: Colors.textDark,
   },
   hourlyBlockTime: {
     fontSize: 10,
     fontFamily: Fonts.body,
-    color: '#777',
     marginTop: 2,
   },
   emptyHourSlot: {
@@ -1204,13 +1228,12 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     fontWeight: 'bold',
     marginBottom: 8,
-    color: '#555',
   },
 
   // FAB
   fab: {
     position: 'absolute',
-    bottom: 96, // Above custom navigation bar
+    bottom: 96,
     right: 16,
     width: 56,
     height: 56,
@@ -1235,7 +1258,6 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 24,
     width: '100%',
@@ -1246,15 +1268,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 16,
-    color: Colors.textDark,
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: '#CCC',
     borderRadius: 8,
     padding: 12,
     fontSize: 14,
-    color: Colors.textDark,
     marginBottom: 12,
   },
   modalTimeRow: {
@@ -1267,31 +1286,25 @@ const styles = StyleSheet.create({
   },
   timeInputLabel: {
     fontSize: 11,
-    color: '#777',
     marginBottom: 4,
   },
   modalInputSmall: {
     borderWidth: 1,
-    borderColor: '#CCC',
     borderRadius: 8,
     padding: 10,
     fontSize: 14,
-    color: Colors.textDark,
     textAlign: 'center',
   },
   timePickerBtn: {
     borderWidth: 1,
-    borderColor: '#CCC',
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 10,
-    backgroundColor: '#F9F9F9',
     alignItems: 'center',
   },
   timePickerBtnText: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.textDark,
     fontFamily: Fonts.body,
     letterSpacing: 1,
   },
@@ -1305,7 +1318,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#CCC',
     marginRight: 6,
     marginBottom: 6,
   },
@@ -1315,7 +1327,6 @@ const styles = StyleSheet.create({
   },
   categoryChipText: {
     fontSize: 12,
-    color: '#555',
   },
   categoryChipTextActive: {
     color: '#FFF',
@@ -1333,9 +1344,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  colorBubbleActive: {
-    borderColor: '#333',
-  },
+  colorBubbleActive: {},
   textArea: {
     height: 80,
     textAlignVertical: 'top',
@@ -1353,9 +1362,7 @@ const styles = StyleSheet.create({
   saveBtn: {
     backgroundColor: Colors.red,
   },
-  cancelBtn: {
-    backgroundColor: '#E5E5E5',
-  },
+  cancelBtn: {},
   deleteBtn: {
     backgroundColor: Colors.error,
     marginRight: 'auto',
@@ -1367,7 +1374,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   modalBtnTextDark: {
-    color: '#333',
     fontSize: 14,
   },
 
@@ -1382,7 +1388,6 @@ const styles = StyleSheet.create({
     width: 50,
     height: 68,
     borderRadius: 25,
-    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -1398,13 +1403,11 @@ const styles = StyleSheet.create({
   pillDayName: {
     fontSize: 10,
     fontFamily: Fonts.body,
-    color: '#555',
   },
   pillDayNum: {
     fontSize: 16,
     fontFamily: Fonts.body,
     fontWeight: 'bold',
-    color: '#111',
     marginTop: 4,
   },
   pillTextActive: {
@@ -1416,7 +1419,6 @@ const styles = StyleSheet.create({
 
   // Overdue banner styles
   overdueBanner: {
-    backgroundColor: '#FCE4D6',
     borderRadius: 12,
     padding: 8,
     flexDirection: 'row',
@@ -1439,7 +1441,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   overdueChip: {
-    backgroundColor: 'rgba(255,255,255,0.7)',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -1448,7 +1449,6 @@ const styles = StyleSheet.create({
   },
   overdueChipText: {
     fontSize: 11,
-    color: Colors.textDark,
   },
 
   // Feed list styles
@@ -1457,13 +1457,11 @@ const styles = StyleSheet.create({
   },
   card: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
     borderRadius: Layout.borderRadiusCard,
     marginBottom: 12,
     overflow: 'hidden',
     alignItems: 'center',
     paddingRight: 16,
-    ...Shadows.card,
   },
   categoryBar: {
     width: 6,
@@ -1478,7 +1476,6 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#9E9E9E',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1490,7 +1487,6 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F0F0FF',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
@@ -1504,7 +1500,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     fontSize: 14,
     fontWeight: 'bold',
-    color: Colors.textDark,
   },
   cardTitleCompleted: {
     textDecorationLine: 'line-through',
@@ -1513,7 +1508,6 @@ const styles = StyleSheet.create({
   cardTime: {
     fontFamily: Fonts.body,
     fontSize: 11,
-    color: '#777',
     marginTop: 2,
   },
 
@@ -1523,7 +1517,6 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     padding: 10,
     marginBottom: 12,
-    backgroundColor: '#FFFFFF',
   },
   blockBandContent: {
     paddingLeft: 4,
@@ -1535,7 +1528,6 @@ const styles = StyleSheet.create({
   },
   blockBandTime: {
     fontSize: 10,
-    color: '#555',
     marginTop: 2,
     fontFamily: Fonts.body,
   },
@@ -1556,13 +1548,11 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.heading,
     fontSize: 18,
     fontWeight: 'bold',
-    color: Colors.textDark,
     marginBottom: 8,
   },
   emptySubtitle: {
     fontFamily: Fonts.body,
     fontSize: 13,
-    color: '#666',
     textAlign: 'center',
     lineHeight: 18,
   },
@@ -1578,12 +1568,10 @@ const styles = StyleSheet.create({
   },
   modalColLabel: {
     fontSize: 11,
-    color: '#777',
     marginBottom: 4,
   },
   segmentedRow: {
     flexDirection: 'row',
-    backgroundColor: '#EAEAEA',
     borderRadius: 8,
     padding: 2,
     marginBottom: 12,
@@ -1599,10 +1587,207 @@ const styles = StyleSheet.create({
   },
   segmentBtnText: {
     fontSize: 12,
-    color: '#555',
   },
   segmentBtnTextActive: {
     color: '#FFF',
     fontWeight: 'bold',
   },
 });
+
+function useThemedStyles() {
+  const { colors, isDarkMode } = useTheme();
+  return {
+    container: {
+      backgroundColor: colors.background,
+    },
+    monthGridContainer: {},
+    weekdayHeaderRow: {},
+    hourlyContainer: {},
+    modalBtn: {},
+    headerTitle: {
+      color: colors.textPrimary,
+    },
+    chevronButton: {
+      backgroundColor: colors.inputBg,
+    },
+    toggleRow: {
+      backgroundColor: colors.divider,
+    },
+    toggleBtn: {
+      backgroundColor: 'transparent',
+    },
+    toggleBtnActive: {
+      backgroundColor: colors.cardBg,
+    },
+    toggleText: {
+      color: colors.textSecondary,
+    },
+    toggleTextActive: {
+      color: colors.textPrimary,
+    },
+    weekdayRow: {},
+    weekdayLabel: {
+      color: colors.textSecondary,
+    },
+    calendarCell: {},
+    dayContainer: {},
+    dayText: {
+      color: colors.textPrimary,
+    },
+    hourRow: {},
+    hourLabel: {
+      color: colors.textSecondary,
+    },
+    hourTimelineCell: {
+      borderTopColor: colors.border,
+    },
+    hourlyBlockCard: {
+      backgroundColor: colors.cardBg,
+    },
+    hourlyBlockTitle: {
+      color: colors.textPrimary,
+    },
+    hourlyBlockTime: {
+      color: colors.textSecondary,
+    },
+    emptyHourSlot: {},
+    weekViewContainer: {},
+    weekSubheader: {
+      color: colors.textSecondary,
+    },
+    modalOverlay: {},
+    modalContent: {
+      backgroundColor: colors.cardBg,
+    },
+    modalHeaderTitle: {
+      color: colors.textPrimary,
+    },
+    modalInput: {
+      borderColor: colors.border,
+      color: colors.textPrimary,
+      backgroundColor: colors.inputBg,
+    },
+    timeInputLabel: {
+      color: colors.textSecondary,
+    },
+    timePickerBtn: {
+      borderColor: colors.border,
+      backgroundColor: colors.inputBg,
+    },
+    timePickerBtnText: {
+      color: colors.textPrimary,
+    },
+    categoryChip: {
+      borderColor: colors.border,
+      backgroundColor: 'transparent',
+    },
+    categoryChipActive: {
+      backgroundColor: colors.red,
+      borderColor: colors.red,
+    },
+    categoryChipText: {
+      color: colors.textSecondary,
+    },
+    categoryChipTextActive: {
+      color: '#FFFFFF',
+    },
+    colorBubble: {},
+    colorBubbleActive: {
+      borderColor: colors.textPrimary,
+    },
+    cancelBtn: {
+      backgroundColor: colors.divider,
+    },
+    modalBtnTextDark: {
+      color: colors.textPrimary,
+    },
+    scrollerContainer: {},
+    datePill: {
+      backgroundColor: colors.cardBg,
+    },
+    datePillActive: {
+      backgroundColor: colors.red,
+    },
+    datePillToday: {
+      borderColor: colors.red,
+    },
+    pillDayName: {
+      color: colors.textSecondary,
+    },
+    pillDayNum: {
+      color: colors.textPrimary,
+    },
+    pillTextActive: {
+      color: '#FFFFFF',
+    },
+    pillTodayNum: {
+      color: colors.red,
+    },
+    overdueBanner: {
+      backgroundColor: isDarkMode ? '#2C1B18' : '#FCE4D6',
+    },
+    overdueChip: {
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.7)',
+    },
+    overdueChipText: {
+      color: colors.textPrimary,
+    },
+    card: {
+      backgroundColor: colors.cardBg,
+    },
+    checkboxContainer: {},
+    checkbox: {
+      borderColor: colors.border,
+    },
+    checkboxChecked: {
+      backgroundColor: colors.success,
+      borderColor: colors.success,
+    },
+    eventIconContainer: {
+      backgroundColor: isDarkMode ? '#1E1E3F' : '#F0F0FF',
+    },
+    cardTitle: {
+      color: colors.textPrimary,
+    },
+    cardTitleCompleted: {
+      color: colors.textMuted,
+    },
+    cardTime: {
+      color: colors.textSecondary,
+    },
+    blockBandCard: {
+      backgroundColor: colors.cardBg,
+    },
+    blockBandTitle: {
+      color: colors.textPrimary,
+    },
+    blockBandTime: {
+      color: colors.textSecondary,
+    },
+    emptyState: {},
+    emptyTitle: {
+      color: colors.textPrimary,
+    },
+    emptySubtitle: {
+      color: colors.textSecondary,
+    },
+    modalColLabel: {
+      color: colors.textSecondary,
+    },
+    segmentedRow: {
+      backgroundColor: colors.divider,
+    },
+    segmentBtn: {
+      backgroundColor: 'transparent',
+    },
+    segmentBtnActive: {
+      backgroundColor: colors.red,
+    },
+    segmentBtnText: {
+      color: colors.textSecondary,
+    },
+    segmentBtnTextActive: {
+      color: '#FFFFFF',
+    },
+  };
+}

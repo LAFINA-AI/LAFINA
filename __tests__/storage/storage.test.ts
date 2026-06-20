@@ -408,7 +408,7 @@ describe('Storage Layer', () => {
       behaviorStore.saveFeatureSnapshot(userId, 'schedule_preference', vector1);
       
       // Fast forward time slightly to test ordering
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise<void>(resolve => setTimeout(resolve, 50));
       behaviorStore.saveFeatureSnapshot(userId, 'schedule_preference', vector2);
 
       const latest = behaviorStore.getLatestFeatureSnapshot(userId, 'schedule_preference');

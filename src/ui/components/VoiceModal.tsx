@@ -14,6 +14,7 @@ import {
 import { Colors, Fonts, Shadows } from '../theme';
 import { X, Check, ArrowRight } from 'lucide-react-native';
 import { processCommand } from '../../ai/nlu/parser';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface VoiceModalProps {
   visible: boolean;
@@ -41,6 +42,9 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
   // Waveform bars
   const waveBars = useRef(Array.from({ length: 9 }, () => new Animated.Value(8))).current;
   const waveIntervalRef = useRef<any>(null);
+
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
 
   useEffect(() => {
     let animation: Animated.CompositeAnimation | null = null;
@@ -155,17 +159,17 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
         onPress={() => onClose(false)}
       >
         <TouchableOpacity
-          style={styles.modalContent}
+          style={[styles.modalContent, themed.modalContent]}
           activeOpacity={1}
           onPress={() => Keyboard.dismiss()}
         >
           {/* Close button */}
-          <TouchableOpacity style={styles.closeButton} onPress={() => onClose(false)}>
-            <X size={16} color="#FFFFFF" />
+          <TouchableOpacity style={[styles.closeButton, themed.closeButton]} onPress={() => onClose(false)}>
+            <X size={16} color={colors.textPrimary} />
           </TouchableOpacity>
 
           {/* Heading */}
-          <Text style={styles.modalTitle}>LAFINA Voice Assistant</Text>
+          <Text style={[styles.modalTitle, themed.modalTitle]}>LAFINA Voice Assistant</Text>
 
           {/* Animation View */}
           <View style={styles.animationArea}>
@@ -185,10 +189,10 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
                   transform: [{ translateX: shakeAnim }],
                   backgroundColor:
                     voiceState === 'success'
-                      ? Colors.success
+                      ? colors.success
                       : voiceState === 'error'
-                      ? Colors.error
-                      : Colors.blue,
+                      ? colors.error
+                      : colors.blue,
                 },
               ]}
             >
@@ -205,7 +209,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
           </View>
 
           {/* Transcribed Command Text */}
-          <Text style={styles.transcriptionText}>{transcribedText}</Text>
+          <Text style={[styles.transcriptionText, themed.transcriptionText]}>{transcribedText}</Text>
 
           {/* Waveform indicator */}
           {voiceState === 'listening' && (
@@ -215,7 +219,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
                   key={i}
                   style={[
                     styles.waveformBar,
-                    { height: bar, backgroundColor: Colors.red },
+                    { height: bar, backgroundColor: colors.red },
                   ]}
                 />
               ))}
@@ -228,15 +232,15 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
           {/* Simulated presets (for developer evaluation and user review) */}
           {voiceState === 'listening' && (
             <View style={styles.presetsBlock}>
-              <Text style={styles.presetsTitle}>Try a simulated command:</Text>
+              <Text style={[styles.presetsTitle, themed.presetsTitle]}>Try a simulated command:</Text>
               <View style={styles.presetsRow}>
                 {PRESET_COMMANDS.slice(0, 3).map((cmd, i) => (
                   <TouchableOpacity
                     key={i}
-                    style={styles.presetChip}
+                    style={[styles.presetChip, themed.presetChip]}
                     onPress={() => handleCommandProcess(cmd)}
                   >
-                    <Text style={styles.presetChipText} numberOfLines={1}>{cmd}</Text>
+                    <Text style={[styles.presetChipText, themed.presetChipText]} numberOfLines={1}>{cmd}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -244,10 +248,10 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
                 {PRESET_COMMANDS.slice(3).map((cmd, i) => (
                   <TouchableOpacity
                     key={i}
-                    style={styles.presetChip}
+                    style={[styles.presetChip, themed.presetChip]}
                     onPress={() => handleCommandProcess(cmd)}
                   >
-                    <Text style={styles.presetChipText} numberOfLines={1}>{cmd}</Text>
+                    <Text style={[styles.presetChipText, themed.presetChipText]} numberOfLines={1}>{cmd}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -256,11 +260,11 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
 
           {/* Keyboard input fallback */}
           {voiceState === 'listening' && (
-            <View style={styles.inputRow}>
+            <View style={[styles.inputRow, themed.inputRow]}>
               <TextInput
-                style={styles.textInput}
+                style={[styles.textInput, themed.textInput]}
                 placeholder="Or type a command..."
-                placeholderTextColor="#777777"
+                placeholderTextColor={colors.textSecondary}
                 value={inputText}
                 onChangeText={setInputText}
                 onSubmitEditing={() => handleCommandProcess(inputText)}
@@ -279,6 +283,39 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
   );
 };
 
+function useThemedStyles() {
+  const { colors, isDarkMode } = useTheme();
+  return {
+    modalContent: {
+      backgroundColor: colors.cardBg,
+    },
+    closeButton: {
+      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+    },
+    modalTitle: {
+      color: colors.textPrimary,
+    },
+    transcriptionText: {
+      color: colors.textPrimary,
+    },
+    presetsTitle: {
+      color: colors.textSecondary,
+    },
+    presetChip: {
+      backgroundColor: colors.inputBg,
+    },
+    presetChipText: {
+      color: colors.textPrimary,
+    },
+    inputRow: {
+      backgroundColor: colors.inputBg,
+    },
+    textInput: {
+      color: colors.textPrimary,
+    },
+  };
+}
+
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -286,7 +323,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#1E1E1E',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     paddingHorizontal: 24,
@@ -301,7 +337,6 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -313,7 +348,6 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontFamily: Fonts.heading,
     fontSize: 18,
-    color: '#FFFFFF',
     fontWeight: 'bold',
     marginBottom: 24,
   },
@@ -354,7 +388,6 @@ const styles = StyleSheet.create({
   transcriptionText: {
     fontFamily: Fonts.body,
     fontSize: 16,
-    color: '#FFFFFF',
     textAlign: 'center',
     marginHorizontal: 24,
     height: 24,
@@ -388,7 +421,6 @@ const styles = StyleSheet.create({
     marginVertical: 12,
   },
   presetsTitle: {
-    color: '#9E9E9E',
     fontFamily: Fonts.body,
     fontSize: 12,
     marginBottom: 8,
@@ -402,7 +434,6 @@ const styles = StyleSheet.create({
   },
   presetChip: {
     flex: 1,
-    backgroundColor: '#2A2A2C',
     borderRadius: 16,
     paddingVertical: 8,
     paddingHorizontal: 10,
@@ -410,7 +441,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   presetChipText: {
-    color: '#E5E5E5',
     fontSize: 11,
     fontFamily: Fonts.body,
   },
@@ -420,7 +450,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     width: '100%',
     height: 48,
-    backgroundColor: '#2A2A2C',
     borderRadius: 24,
     alignItems: 'center',
     paddingLeft: 16,
@@ -429,7 +458,6 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    color: '#FFFFFF',
     fontSize: 14,
     fontFamily: Fonts.body,
     paddingVertical: 0,
@@ -448,3 +476,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
+

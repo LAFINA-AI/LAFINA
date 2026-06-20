@@ -12,6 +12,7 @@ import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { userStore } from '../../storage/userStore';
 import { behaviorStore } from '../../storage/behaviorStore';
 import { BookOpen, Clock, Activity, Award } from 'lucide-react-native';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface OnboardingScreenProps {
   userId: string;
@@ -70,6 +71,9 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
 
   const wakeTimeOptions = ['05:00', '06:00', '07:00', '08:00', '09:00'];
   const sleepTimeOptions = ['21:00', '22:00', '23:00', '00:00', '01:00'];
+
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
 
   const toggleStudyPeak = (value: string) => {
     if (studyPeak.includes(value)) {
@@ -137,39 +141,41 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
             <View style={styles.iconHeaderContainer}>
               <Clock size={40} color={Colors.blue} />
             </View>
-            <Text style={styles.stepTitle}>Daily Routine</Text>
-            <Text style={styles.stepDesc}>When does your day usually begin and end?</Text>
+            <Text style={[styles.stepTitle, themed.stepTitle]}>Daily Routine</Text>
+            <Text style={[styles.stepDesc, themed.stepDesc]}>When does your day usually begin and end?</Text>
 
-            <Text style={styles.inputLabel}>Typical Wake-Up Time</Text>
+            <Text style={[styles.inputLabel, themed.inputLabel]}>Typical Wake-Up Time</Text>
             <View style={styles.chipContainer}>
               {wakeTimeOptions.map((time) => (
                 <TouchableOpacity
                   key={time}
                   style={[
                     styles.chip,
+                    themed.chip,
                     wakeTime === time && styles.activeChip,
                   ]}
                   onPress={() => setWakeTime(time)}
                 >
-                  <Text style={[styles.chipText, wakeTime === time && styles.activeChipText]}>
+                  <Text style={[styles.chipText, themed.chipText, wakeTime === time && styles.activeChipText]}>
                     {time}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={styles.inputLabel}>Typical Sleep Time</Text>
+            <Text style={[styles.inputLabel, themed.inputLabel]}>Typical Sleep Time</Text>
             <View style={styles.chipContainer}>
               {sleepTimeOptions.map((time) => (
                 <TouchableOpacity
                   key={time}
                   style={[
                     styles.chip,
+                    themed.chip,
                     sleepTime === time && styles.activeChip,
                   ]}
                   onPress={() => setSleepTime(time)}
                 >
-                  <Text style={[styles.chipText, sleepTime === time && styles.activeChipText]}>
+                  <Text style={[styles.chipText, themed.chipText, sleepTime === time && styles.activeChipText]}>
                     {time}
                   </Text>
                 </TouchableOpacity>
@@ -183,10 +189,10 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
             <View style={styles.iconHeaderContainer}>
               <BookOpen size={40} color={Colors.blue} />
             </View>
-            <Text style={styles.stepTitle}>Study Habits</Text>
-            <Text style={styles.stepDesc}>Tell us when you feel most productive studying.</Text>
+            <Text style={[styles.stepTitle, themed.stepTitle]}>Study Habits</Text>
+            <Text style={[styles.stepDesc, themed.stepDesc]}>Tell us when you feel most productive studying.</Text>
 
-            <Text style={styles.inputLabel}>Peak Study Hours (Select multiple)</Text>
+            <Text style={[styles.inputLabel, themed.inputLabel]}>Peak Study Hours (Select multiple)</Text>
             <View style={styles.chipContainer}>
               {studyPeakOptions.map((option) => {
                 const isSelected = studyPeak.includes(option.value);
@@ -195,11 +201,12 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
                     key={option.value}
                     style={[
                       styles.chip,
+                      themed.chip,
                       isSelected && styles.activeChip,
                     ]}
                     onPress={() => toggleStudyPeak(option.value)}
                   >
-                    <Text style={[styles.chipText, isSelected && styles.activeChipText]}>
+                    <Text style={[styles.chipText, themed.chipText, isSelected && styles.activeChipText]}>
                       {option.label}
                     </Text>
                   </TouchableOpacity>
@@ -207,18 +214,19 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
               })}
             </View>
 
-            <Text style={styles.inputLabel}>Your Busiest Weekday</Text>
+            <Text style={[styles.inputLabel, themed.inputLabel]}>Your Busiest Weekday</Text>
             <View style={styles.chipContainer}>
               {busiestDayOptions.map((day) => (
                 <TouchableOpacity
                   key={day}
                   style={[
                     styles.chip,
+                    themed.chip,
                     busiestDay === day && styles.activeChip,
                   ]}
                   onPress={() => setBusiestDay(day)}
                 >
-                  <Text style={[styles.chipText, busiestDay === day && styles.activeChipText]}>
+                  <Text style={[styles.chipText, themed.chipText, busiestDay === day && styles.activeChipText]}>
                     {day}
                   </Text>
                 </TouchableOpacity>
@@ -232,39 +240,41 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
             <View style={styles.iconHeaderContainer}>
               <Activity size={40} color={Colors.blue} />
             </View>
-            <Text style={styles.stepTitle}>Task Reminders</Text>
-            <Text style={styles.stepDesc}>How do you react to task notifications?</Text>
+            <Text style={[styles.stepTitle, themed.stepTitle]}>Task Reminders</Text>
+            <Text style={[styles.stepDesc, themed.stepDesc]}>How do you react to task notifications?</Text>
 
-            <Text style={styles.inputLabel}>Reminder Lead Time</Text>
+            <Text style={[styles.inputLabel, themed.inputLabel]}>Reminder Lead Time</Text>
             <View style={styles.chipContainer}>
               {reminderLeadOptions.map((opt) => (
                 <TouchableOpacity
                   key={opt.value}
                   style={[
                     styles.chip,
+                    themed.chip,
                     reminderLead === opt.value && styles.activeChip,
                   ]}
                   onPress={() => setReminderLead(opt.value)}
                 >
-                  <Text style={[styles.chipText, reminderLead === opt.value && styles.activeChipText]}>
+                  <Text style={[styles.chipText, themed.chipText, reminderLead === opt.value && styles.activeChipText]}>
                     {opt.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={styles.inputLabel}>How do you handle call alarms?</Text>
+            <Text style={[styles.inputLabel, themed.inputLabel]}>How do you handle call alarms?</Text>
             <View style={styles.chipContainer}>
               {snoozeTendencyOptions.map((opt) => (
                 <TouchableOpacity
                   key={opt.value}
                   style={[
                     styles.chip,
+                    themed.chip,
                     snoozeTendency === opt.value && styles.activeChip,
                   ]}
                   onPress={() => setSnoozeTendency(opt.value)}
                 >
-                  <Text style={[styles.chipText, snoozeTendency === opt.value && styles.activeChipText]}>
+                  <Text style={[styles.chipText, themed.chipText, snoozeTendency === opt.value && styles.activeChipText]}>
                     {opt.label}
                   </Text>
                 </TouchableOpacity>
@@ -278,39 +288,41 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
             <View style={styles.iconHeaderContainer}>
               <Award size={40} color={Colors.blue} />
             </View>
-            <Text style={styles.stepTitle}>Academic Load</Text>
-            <Text style={styles.stepDesc}>Help us optimize schedule gaps for task creation.</Text>
+            <Text style={[styles.stepTitle, themed.stepTitle]}>Academic Load</Text>
+            <Text style={[styles.stepDesc, themed.stepDesc]}>Help us optimize schedule gaps for task creation.</Text>
 
-            <Text style={styles.inputLabel}>Weekly Class Load</Text>
+            <Text style={[styles.inputLabel, themed.inputLabel]}>Weekly Class Load</Text>
             <View style={styles.chipContainer}>
               {classCountOptions.map((load) => (
                 <TouchableOpacity
                   key={load}
                   style={[
                     styles.chip,
+                    themed.chip,
                     classCount === load && styles.activeChip,
                   ]}
                   onPress={() => setClassCount(load)}
                 >
-                  <Text style={[styles.chipText, classCount === load && styles.activeChipText]}>
+                  <Text style={[styles.chipText, themed.chipText, classCount === load && styles.activeChipText]}>
                     {load} Classes
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={styles.inputLabel}>Longest Class Gap</Text>
+            <Text style={[styles.inputLabel, themed.inputLabel]}>Longest Class Gap</Text>
             <View style={styles.chipContainer}>
               {longestGapOptions.map((gap) => (
                 <TouchableOpacity
                   key={gap}
                   style={[
                     styles.chip,
+                    themed.chip,
                     longestGap === gap && styles.activeChip,
                   ]}
                   onPress={() => setLongestGap(gap)}
                 >
-                  <Text style={[styles.chipText, longestGap === gap && styles.activeChipText]}>
+                  <Text style={[styles.chipText, themed.chipText, longestGap === gap && styles.activeChipText]}>
                     {gap}
                   </Text>
                 </TouchableOpacity>
@@ -321,20 +333,20 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
       case 5:
         return (
           <View style={styles.finishContainer}>
-            <View style={[styles.iconCircle, Shadows.card]}>
-              <Award size={50} color={Colors.success} />
+            <View style={[styles.iconCircle, themed.iconCircle, Shadows.card]}>
+              <Award size={50} color={colors.success} />
             </View>
-            <Text style={styles.stepTitle}>Ready to Sync</Text>
-            <Text style={styles.stepDesc}>
+            <Text style={[styles.stepTitle, themed.stepTitle]}>Ready to Sync</Text>
+            <Text style={[styles.stepDesc, themed.stepDesc]}>
               We've created a baseline configuration. LAFINA will now learn from your daily schedule choices, phone call reminder responses, and voice scheduler tasks to offer adaptive scheduling.
             </Text>
 
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryTitle}>Configuration Baseline</Text>
-              <Text style={styles.summaryItem}>• Sleep Cycle: {wakeTime} - {sleepTime}</Text>
-              <Text style={styles.summaryItem}>• Study Preference: {studyPeak.length > 0 ? studyPeak.join(', ') : 'Flexible'}</Text>
-              <Text style={styles.summaryItem}>• Reminder Lead: {reminderLead} minutes</Text>
-              <Text style={styles.summaryItem}>• Class Gap Slots: {longestGap}</Text>
+            <View style={[styles.summaryCard, themed.summaryCard]}>
+              <Text style={[styles.summaryTitle, themed.summaryTitle]}>Configuration Baseline</Text>
+              <Text style={[styles.summaryItem, themed.summaryItem]}>• Sleep Cycle: {wakeTime} - {sleepTime}</Text>
+              <Text style={[styles.summaryItem, themed.summaryItem]}>• Study Preference: {studyPeak.length > 0 ? studyPeak.join(', ') : 'Flexible'}</Text>
+              <Text style={[styles.summaryItem, themed.summaryItem]}>• Reminder Lead: {reminderLead} minutes</Text>
+              <Text style={[styles.summaryItem, themed.summaryItem]}>• Class Gap Slots: {longestGap}</Text>
             </View>
           </View>
         );
@@ -342,12 +354,12 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FAF9F6" />
+    <SafeAreaView style={[styles.container, themed.container]}>
+      <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
       
       {/* Top Progress bar */}
       <View style={styles.progressContainer}>
-        <View style={styles.progressBarBg}>
+        <View style={[styles.progressBarBg, themed.progressBarBg]}>
           <View
             style={[
               styles.progressBarActive,
@@ -355,25 +367,25 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
             ]}
           />
         </View>
-        <Text style={styles.progressText}>
+        <Text style={[styles.progressText, themed.progressText]}>
           Step {step} of {totalSteps}
         </Text>
       </View>
-
+ 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={[styles.card, Shadows.card]}>{renderStepContent()}</View>
+        <View style={[styles.card, Shadows.card, themed.card]}>{renderStepContent()}</View>
       </ScrollView>
-
+ 
       {/* Navigation Buttons */}
-      <View style={styles.navigation}>
+      <View style={[styles.navigation, themed.navigation]}>
         {step > 1 && step < totalSteps ? (
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <Text style={styles.backButtonText}>Back</Text>
+            <Text style={[styles.backButtonText, themed.backButtonText]}>Back</Text>
           </TouchableOpacity>
         ) : (
           <View style={styles.backSpacer} />
         )}
-
+ 
         <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
           <Text style={styles.nextButtonText}>
             {step === totalSteps ? 'Get Started' : 'Continue'}
@@ -384,10 +396,62 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
   );
 };
 
+function useThemedStyles() {
+  const { colors, isDarkMode } = useTheme();
+  return {
+    container: {
+      backgroundColor: colors.background,
+    },
+    progressBarBg: {
+      backgroundColor: colors.border,
+    },
+    progressText: {
+      color: colors.textMuted,
+    },
+    card: {
+      backgroundColor: colors.cardBg,
+    },
+    stepTitle: {
+      color: colors.textPrimary,
+    },
+    stepDesc: {
+      color: colors.textSecondary,
+    },
+    inputLabel: {
+      color: colors.textPrimary,
+    },
+    chip: {
+      backgroundColor: colors.inputBg,
+      borderColor: colors.border,
+    },
+    chipText: {
+      color: colors.textPrimary,
+    },
+    navigation: {
+      borderTopColor: colors.border,
+    },
+    backButtonText: {
+      color: colors.textSecondary,
+    },
+    iconCircle: {
+      backgroundColor: isDarkMode ? 'rgba(46, 204, 113, 0.15)' : '#E8F8F0',
+    },
+    summaryCard: {
+      backgroundColor: colors.inputBg,
+      borderColor: colors.border,
+    },
+    summaryTitle: {
+      color: colors.textPrimary,
+    },
+    summaryItem: {
+      color: colors.textPrimary,
+    },
+  };
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF9F6',
   },
   progressContainer: {
     paddingHorizontal: 24,
@@ -396,7 +460,6 @@ const styles = StyleSheet.create({
   },
   progressBarBg: {
     height: 6,
-    backgroundColor: Colors.border,
     borderRadius: 3,
     overflow: 'hidden',
   },
@@ -407,7 +470,6 @@ const styles = StyleSheet.create({
   progressText: {
     fontFamily: Fonts.body,
     fontSize: 12,
-    color: Colors.textMuted,
     marginTop: 6,
     textAlign: 'right',
   },
@@ -417,7 +479,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   card: {
-    backgroundColor: Colors.cardBg,
     borderRadius: Layout.borderRadiusCard,
     padding: 24,
     minHeight: 380,
@@ -430,13 +491,11 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.heading,
     fontSize: 22,
     fontWeight: 'bold',
-    color: Colors.textDark,
     textAlign: 'center',
   },
   stepDesc: {
     fontFamily: Fonts.body,
     fontSize: 14,
-    color: Colors.textMuted,
     textAlign: 'center',
     marginTop: 6,
     marginBottom: 24,
@@ -446,7 +505,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     fontSize: 12,
     fontWeight: 'bold',
-    color: Colors.textDark,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 10,
@@ -458,9 +516,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   chip: {
-    backgroundColor: '#FAF9F6',
     borderWidth: 1.5,
-    borderColor: Colors.border,
     borderRadius: Layout.borderRadiusPill,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -474,7 +530,6 @@ const styles = StyleSheet.create({
   chipText: {
     fontFamily: Fonts.body,
     fontSize: 13,
-    color: Colors.textDark,
   },
   activeChipText: {
     color: '#FFFFFF',
@@ -487,7 +542,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 16,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
   },
   backButton: {
     paddingVertical: 12,
@@ -498,7 +552,6 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     fontFamily: Fonts.body,
-    color: Colors.textMuted,
     fontSize: 15,
     fontWeight: '600',
   },
@@ -524,15 +577,12 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#E8F8F0',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
   },
   summaryCard: {
-    backgroundColor: '#FAF9F6',
     borderWidth: 1.5,
-    borderColor: Colors.border,
     borderRadius: Layout.borderRadiusCard,
     padding: 16,
     width: '100%',
@@ -542,13 +592,12 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.heading,
     fontSize: 14,
     fontWeight: 'bold',
-    color: Colors.textDark,
     marginBottom: 8,
   },
   summaryItem: {
     fontFamily: Fonts.body,
     fontSize: 13,
-    color: Colors.textDark,
     marginBottom: 4,
   },
 });
+

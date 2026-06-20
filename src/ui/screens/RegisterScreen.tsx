@@ -15,6 +15,7 @@ import {
 import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { userStore } from '../../storage/userStore';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface RegisterScreenProps {
   onRegisterSuccess: (userId: string) => void;
@@ -32,6 +33,9 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
 
   const handleRegister = async () => {
     if (!username.trim() || !email.trim() || !password || !confirmPassword) {
@@ -67,9 +71,9 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
+      style={[styles.container, themed.container]}
     >
-      <StatusBar barStyle="dark-content" backgroundColor="#FAF9F6" />
+      <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         
         {/* Header Section */}
@@ -82,20 +86,20 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         </View>
 
         {/* Card Form */}
-        <View style={[styles.card, Shadows.card]}>
-          <Text style={styles.cardTitle}>Create Account</Text>
-          <Text style={styles.cardSubtitle}>Get started with your smart study companion</Text>
+        <View style={[styles.card, Shadows.card, themed.card]}>
+          <Text style={[styles.cardTitle, themed.cardTitle]}>Create Account</Text>
+          <Text style={[styles.cardSubtitle, themed.cardSubtitle]}>Get started with your smart study companion</Text>
 
           {error && <Text style={styles.errorText}>{error}</Text>}
 
-          {/* Full Name / Username */}
-          <Text style={styles.fieldLabel}>Display Name</Text>
-          <View style={styles.inputContainer}>
-            <User size={20} color={Colors.textMuted} style={styles.inputIcon} />
+          {/* Display Name */}
+          <Text style={[styles.fieldLabel, themed.fieldLabel]}>Display Name</Text>
+          <View style={[styles.inputContainer, themed.inputContainer]}>
+            <User size={20} color={colors.textSecondary} style={styles.inputIcon} />
             <TextInput
-              style={styles.input}
+              style={[styles.input, themed.input]}
               placeholder="e.g. Juan dela Cruz"
-              placeholderTextColor={Colors.textMutedLight}
+              placeholderTextColor={colors.textSecondary}
               value={username}
               onChangeText={setUsername}
               autoCapitalize="words"
@@ -104,13 +108,13 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
           </View>
 
           {/* Email Field */}
-          <Text style={styles.fieldLabel}>Email Address</Text>
-          <View style={styles.inputContainer}>
-            <Mail size={20} color={Colors.textMuted} style={styles.inputIcon} />
+          <Text style={[styles.fieldLabel, themed.fieldLabel]}>Email Address</Text>
+          <View style={[styles.inputContainer, themed.inputContainer]}>
+            <Mail size={20} color={colors.textSecondary} style={styles.inputIcon} />
             <TextInput
-              style={styles.input}
+              style={[styles.input, themed.input]}
               placeholder="student@ustp.edu.ph"
-              placeholderTextColor={Colors.textMutedLight}
+              placeholderTextColor={colors.textSecondary}
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -120,13 +124,13 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
           </View>
 
           {/* Password Field */}
-          <Text style={styles.fieldLabel}>Password</Text>
-          <View style={styles.inputContainer}>
-            <Lock size={20} color={Colors.textMuted} style={styles.inputIcon} />
+          <Text style={[styles.fieldLabel, themed.fieldLabel]}>Password</Text>
+          <View style={[styles.inputContainer, themed.inputContainer]}>
+            <Lock size={20} color={colors.textSecondary} style={styles.inputIcon} />
             <TextInput
-              style={styles.input}
+              style={[styles.input, themed.input]}
               placeholder="••••••••"
-              placeholderTextColor={Colors.textMutedLight}
+              placeholderTextColor={colors.textSecondary}
               secureTextEntry={!showPassword}
               value={password}
               onChangeText={setPassword}
@@ -138,21 +142,21 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
               style={styles.eyeIcon}
             >
               {showPassword ? (
-                <EyeOff size={20} color={Colors.textMuted} />
+                <EyeOff size={20} color={colors.textSecondary} />
               ) : (
-                <Eye size={20} color={Colors.textMuted} />
+                <Eye size={20} color={colors.textSecondary} />
               )}
             </TouchableOpacity>
           </View>
 
           {/* Confirm Password Field */}
-          <Text style={styles.fieldLabel}>Confirm Password</Text>
-          <View style={styles.inputContainer}>
-            <Lock size={20} color={Colors.textMuted} style={styles.inputIcon} />
+          <Text style={[styles.fieldLabel, themed.fieldLabel]}>Confirm Password</Text>
+          <View style={[styles.inputContainer, themed.inputContainer]}>
+            <Lock size={20} color={colors.textSecondary} style={styles.inputIcon} />
             <TextInput
-              style={styles.input}
+              style={[styles.input, themed.input]}
               placeholder="••••••••"
-              placeholderTextColor={Colors.textMutedLight}
+              placeholderTextColor={colors.textSecondary}
               secureTextEntry={!showPassword}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
@@ -177,7 +181,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
         {/* Footer Navigation */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Already have an account? </Text>
+          <Text style={[styles.footerText, themed.footerText]}>Already have an account? </Text>
           <TouchableOpacity onPress={onNavigateToLogin}>
             <Text style={styles.loginLink}>Log In</Text>
           </TouchableOpacity>
@@ -188,10 +192,40 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   );
 };
 
+function useThemedStyles() {
+  const { colors } = useTheme();
+  return {
+    container: {
+      backgroundColor: colors.background,
+    },
+    card: {
+      backgroundColor: colors.cardBg,
+    },
+    cardTitle: {
+      color: colors.textPrimary,
+    },
+    cardSubtitle: {
+      color: colors.textSecondary,
+    },
+    fieldLabel: {
+      color: colors.textPrimary,
+    },
+    inputContainer: {
+      borderColor: colors.border,
+      backgroundColor: colors.inputBg,
+    },
+    input: {
+      color: colors.textPrimary,
+    },
+    footerText: {
+      color: colors.textSecondary,
+    },
+  };
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF9F6',
   },
   scrollContainer: {
     flexGrow: 1,
@@ -212,7 +246,6 @@ const styles = StyleSheet.create({
     height: 80,
   },
   card: {
-    backgroundColor: Colors.cardBg,
     borderRadius: Layout.borderRadiusCard,
     padding: 24,
     width: '100%',
@@ -221,12 +254,10 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.heading,
     fontSize: 20,
     fontWeight: 'bold',
-    color: Colors.textDark,
   },
   cardSubtitle: {
     fontFamily: Fonts.body,
     fontSize: 13,
-    color: Colors.textMuted,
     marginTop: 4,
     marginBottom: 20,
   },
@@ -241,7 +272,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.textDark,
     marginBottom: 6,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -250,11 +280,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: Colors.border,
     borderRadius: Layout.borderRadiusButton,
     marginBottom: 16,
     paddingHorizontal: 12,
-    backgroundColor: '#FAF9F6',
   },
   inputIcon: {
     marginRight: 8,
@@ -264,7 +292,6 @@ const styles = StyleSheet.create({
     height: 48,
     fontFamily: Fonts.body,
     fontSize: 14,
-    color: Colors.textDark,
   },
   eyeIcon: {
     padding: 8,
@@ -293,7 +320,6 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontFamily: Fonts.body,
-    color: Colors.textMuted,
     fontSize: 14,
   },
   loginLink: {
@@ -304,3 +330,4 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 });
+

@@ -18,6 +18,7 @@ import {
   UIManager,
 } from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
+import { useTheme } from '../contexts/ThemeContext';
 import { notesStore, Note } from '../../storage/notesStore';
 import { tasksStore } from '../../storage/tasksStore';
 import {
@@ -146,6 +147,9 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
   refreshTrigger,
   onRefresh,
 }) => {
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
+
   const [notes, setNotes] = useState<Note[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchActive, setSearchActive] = useState(false);
@@ -580,32 +584,32 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
   }, [activeDragId, isGridView, selectedFilter, searchQuery, handleNoteCardPress, handleDragStart, handleDragRelease]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, themed.container]}>
       {/* Header Notes */}
       <View style={styles.header}>
         {searchActive ? (
-          <View style={styles.searchRow}>
+          <View style={[styles.searchRow, themed.searchRow]}>
             <TextInput
-              style={styles.searchInput}
+              style={[styles.searchInput, themed.searchInput]}
               placeholder="Search notes..."
-              placeholderTextColor="#777"
+              placeholderTextColor={colors.textSecondary}
               autoFocus
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
             <TouchableOpacity onPress={() => { setSearchActive(false); setSearchQuery(''); }} style={styles.headerIconBtn}>
-              <X size={16} color={Colors.textDark} />
+              <X size={16} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
         ) : (
           <>
-            <Text style={styles.headerTitle}>Notes</Text>
+            <Text style={[styles.headerTitle, themed.headerTitle]}>Notes</Text>
             <View style={styles.headerIcons}>
               <TouchableOpacity onPress={() => setSearchActive(true)} style={styles.headerIconBtn}>
-                <Search size={18} color={Colors.textDark} />
+                <Search size={18} color={colors.textPrimary} />
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setIsGridView(!isGridView)} style={styles.headerIconBtn}>
-                {isGridView ? <List size={18} color={Colors.textDark} /> : <Grid size={18} color={Colors.textDark} />}
+                {isGridView ? <List size={18} color={colors.textPrimary} /> : <Grid size={18} color={colors.textPrimary} />}
               </TouchableOpacity>
             </View>
           </>
@@ -620,11 +624,12 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
               key={filter}
               style={[
                 styles.filterChip,
+                themed.filterChip,
                 selectedFilter === filter && styles.filterChipActive,
               ]}
               onPress={() => setSelectedFilter(filter)}
             >
-              <Text style={[styles.filterChipText, selectedFilter === filter && styles.filterChipTextActive]}>
+              <Text style={[styles.filterChipText, themed.filterChipText, selectedFilter === filter && styles.filterChipTextActive]}>
                 {filter}
               </Text>
             </TouchableOpacity>
@@ -635,9 +640,9 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
       {/* Notes Content List */}
       {filtered.length === 0 ? (
         <View style={styles.emptyState}>
-          <FileText size={48} color={Colors.red} style={{ marginBottom: 16 }} />
-          <Text style={styles.emptyTitle}>No notes found</Text>
-          <Text style={styles.emptySubtitle}>Tap the + button below to write a new note, or use the voice assistant.</Text>
+          <FileText size={48} color={colors.red} style={{ marginBottom: 16 }} />
+          <Text style={[styles.emptyTitle, themed.emptyTitle]}>No notes found</Text>
+          <Text style={[styles.emptySubtitle, themed.emptySubtitle]}>Tap the + button below to write a new note, or use the voice assistant.</Text>
         </View>
       ) : (
         <FlatList
@@ -662,17 +667,17 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
 
       {/* Editor Modal Sheet */}
       <Modal visible={editorVisible} animationType="slide" transparent={false}>
-        <View style={styles.editorContainer}>
+        <View style={[styles.editorContainer, themed.editorContainer]}>
           {/* Header */}
-          <View style={styles.editorHeader}>
+          <View style={[styles.editorHeader, themed.editorHeader]}>
             <TouchableOpacity onPress={() => handleDeleteNote(editingNote!.id)} style={styles.deleteNoteBtn} disabled={!editingNote}>
               <Text style={[styles.deleteNoteText, !editingNote && { opacity: 0.3 }]}>Delete</Text>
             </TouchableOpacity>
 
             <View style={styles.editorHeaderActions}>
               <TouchableOpacity onPress={() => setIsPinned(!isPinned)} style={[styles.headerPinBtn, { flexDirection: 'row', alignItems: 'center' }]}>
-                <Pin size={14} color={isPinned ? Colors.red : '#555'} style={{ marginRight: 4, transform: [{ rotate: isPinned ? '45deg' : '0deg' }] }} />
-                <Text style={[styles.pinIcon, { color: isPinned ? Colors.red : '#555', marginTop: 0 }]}>{isPinned ? 'Pinned' : 'Pin'}</Text>
+                <Pin size={14} color={isPinned ? colors.red : colors.textSecondary} style={{ marginRight: 4, transform: [{ rotate: isPinned ? '45deg' : '0deg' }] }} />
+                <Text style={[styles.pinIcon, themed.pinIcon, { color: isPinned ? colors.red : colors.textSecondary, marginTop: 0 }]}>{isPinned ? 'Pinned' : 'Pin'}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleSaveNote} style={styles.doneBtn}>
                 <Text style={styles.doneText}>Done</Text>
@@ -683,25 +688,26 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
           {/* Form */}
           <ScrollView style={styles.editorForm} keyboardShouldPersistTaps="handled">
             <TextInput
-              style={styles.editorTitleInput}
+              style={[styles.editorTitleInput, themed.editorTitleInput]}
               placeholder="Title"
-              placeholderTextColor="#888"
+              placeholderTextColor={colors.textSecondary}
               value={noteTitle}
               onChangeText={setNoteTitle}
             />
 
             <View style={styles.categoryEditorRow}>
-              <Text style={styles.categoryLabel}>Category:</Text>
+              <Text style={[styles.categoryLabel, themed.categoryLabel]}>Category:</Text>
               {['Work', 'Personal', 'Health', 'Learning'].map((cat) => (
                 <TouchableOpacity
                   key={cat}
                   style={[
                     styles.catChipSmall,
+                    themed.catChipSmall,
                     noteCategory === cat && { backgroundColor: getCategoryColor(cat), borderColor: 'transparent' },
                   ]}
                   onPress={() => setNoteCategory(cat)}
                 >
-                  <Text style={[styles.catChipSmallText, noteCategory === cat && { color: '#FFF', fontWeight: 'bold' }]}>
+                  <Text style={[styles.catChipSmallText, themed.catChipSmallText, noteCategory === cat && { color: '#FFF', fontWeight: 'bold' }]}>
                     {cat}
                   </Text>
                 </TouchableOpacity>
@@ -709,7 +715,7 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
             </View>
 
             {imageUri && (
-              <View style={styles.editorImageContainer}>
+              <View style={[styles.editorImageContainer, themed.editorImageContainer]}>
                 <Image
                   source={getLocalImage(imageUri)}
                   style={styles.editorImage}
@@ -726,32 +732,38 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
             )}
 
             {/* Text styling toolbar */}
-            <View style={styles.editorToolbar}>
-              <TouchableOpacity onPress={() => applyFormatting('bold')} style={styles.toolbarBtn} activeOpacity={0.7}>
-                <Bold size={16} color={Colors.textDark} />
+            <View style={[styles.editorToolbar, themed.editorToolbar]}>
+              <TouchableOpacity onPress={() => applyFormatting('bold')} style={[styles.toolbarBtn, themed.toolbarBtn]} activeOpacity={0.7}>
+                <Bold size={16} color={colors.textPrimary} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => applyFormatting('italic')} style={styles.toolbarBtn} activeOpacity={0.7}>
-                <Italic size={16} color={Colors.textDark} />
+              <TouchableOpacity onPress={() => applyFormatting('italic')} style={[styles.toolbarBtn, themed.toolbarBtn]} activeOpacity={0.7}>
+                <Italic size={16} color={colors.textPrimary} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => applyFormatting('checklist')} style={styles.toolbarBtn} activeOpacity={0.7}>
-                <CheckSquare size={16} color={Colors.textDark} />
+              <TouchableOpacity onPress={() => applyFormatting('checklist')} style={[styles.toolbarBtn, themed.toolbarBtn]} activeOpacity={0.7}>
+                <CheckSquare size={16} color={colors.textPrimary} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={imageUri ? handleRemoveImage : handleAttachImage}
-                style={[styles.toolbarBtn, styles.imageToolbarBtn, imageUri && styles.imageToolbarBtnActive]}
+                style={[
+                  styles.toolbarBtn,
+                  themed.toolbarBtn,
+                  styles.imageToolbarBtn,
+                  themed.imageToolbarBtn,
+                  imageUri && styles.imageToolbarBtnActive
+                ]}
                 activeOpacity={0.7}
               >
-                <ImageIcon size={16} color={imageUri ? '#FFF' : Colors.textDark} style={{ marginRight: 4 }} />
-                <Text style={[styles.imageToolbarText, imageUri && styles.imageToolbarTextActive]}>
+                <ImageIcon size={16} color={imageUri ? '#FFF' : colors.textPrimary} style={{ marginRight: 4 }} />
+                <Text style={[styles.imageToolbarText, themed.imageToolbarText, imageUri && styles.imageToolbarTextActive]}>
                   {imageUri ? 'Remove Image' : 'Image'}
                 </Text>
               </TouchableOpacity>
             </View>
 
             <TextInput
-              style={styles.editorBodyInput}
+              style={[styles.editorBodyInput, themed.editorBodyInput]}
               placeholder="Start writing..."
-              placeholderTextColor="#888"
+              placeholderTextColor={colors.textSecondary}
               multiline
               value={noteBody}
               onChangeText={setNoteBody}
@@ -762,21 +774,21 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
 
           {/* AI Loader Overlay */}
           {aiLoading && (
-            <View style={styles.aiLoadingOverlay}>
-              <ActivityIndicator size="large" color={Colors.yellow} />
-              <Text style={styles.aiLoadingText}>AI is performing {aiActionType}...</Text>
+            <View style={[styles.aiLoadingOverlay, themed.aiLoadingOverlay]}>
+              <ActivityIndicator size="large" color={colors.yellow} />
+              <Text style={[styles.aiLoadingText, themed.aiLoadingText]}>AI is performing {aiActionType}...</Text>
             </View>
           )}
 
           {/* AI Actions Strip */}
-          <View style={styles.aiActionsStrip}>
-            <TouchableOpacity onPress={() => triggerAiAction('summarize')} style={styles.aiActionBtn}>
+          <View style={[styles.aiActionsStrip, themed.aiActionsStrip]}>
+            <TouchableOpacity onPress={() => triggerAiAction('summarize')} style={[styles.aiActionBtn, themed.aiActionBtn]}>
               <Text style={styles.aiActionBtnText}>✨ Summarize</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => triggerAiAction('clean')} style={styles.aiActionBtn}>
+            <TouchableOpacity onPress={() => triggerAiAction('clean')} style={[styles.aiActionBtn, themed.aiActionBtn]}>
               <Text style={styles.aiActionBtnText}>✍ Clean Up</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => triggerAiAction('tasks')} style={styles.aiActionBtn}>
+            <TouchableOpacity onPress={() => triggerAiAction('tasks')} style={[styles.aiActionBtn, themed.aiActionBtn]}>
               <Text style={styles.aiActionBtnText}>📋 Extract Tasks</Text>
             </TouchableOpacity>
           </View>
@@ -826,6 +838,9 @@ const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
 
   const onDragReleaseRef = useRef(onDragRelease);
   onDragReleaseRef.current = onDragRelease;
+
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
 
   if (!panRef.current && canDrag) {
     panRef.current = PanResponder.create({
@@ -890,6 +905,7 @@ const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
     <Animated.View
       style={[
         isGridView ? styles.gridCard : styles.listCard,
+        isGridView ? themed.gridCard : themed.listCard,
         Shadows.card,
         cardStyle,
       ]}
@@ -907,13 +923,13 @@ const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
           {item.imageUri && (
             <Image
               source={getLocalImage(item.imageUri)}
-              style={styles.gridCardImage}
+              style={[styles.gridCardImage, themed.gridCardImage]}
               resizeMode="cover"
             />
           )}
           <View style={styles.cardPadding}>
             <View style={styles.titleRow}>
-              <Text style={styles.noteCardTitle} numberOfLines={1}>
+              <Text style={[styles.noteCardTitle, themed.noteCardTitle]} numberOfLines={1}>
                 {item.title}
               </Text>
               {canDrag && (
@@ -924,18 +940,18 @@ const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
                   <GripVertical size={14} color="#AAA" />
                 </View>
               )}
-              {item.isPinned && <Pin size={12} color={Colors.red} style={{ transform: [{ rotate: '45deg' }] }} />}
+              {item.isPinned && <Pin size={12} color={colors.red} style={{ transform: [{ rotate: '45deg' }] }} />}
             </View>
-            <Text style={styles.noteCardBody} numberOfLines={item.imageUri ? 2 : 4}>
+            <Text style={[styles.noteCardBody, themed.noteCardBody]} numberOfLines={item.imageUri ? 2 : 4}>
               {renderMarkdown(item.body)}
             </Text>
             <View style={styles.cardFooter}>
-              <Text style={styles.cardDate}>
+              <Text style={[styles.cardDate, themed.cardDate]}>
                 {new Date(item.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               </Text>
               {item.isVoiceTranscribed && (
-                <View style={styles.voiceBadge}>
-                  <Text style={styles.voiceBadgeText}>AI</Text>
+                <View style={[styles.voiceBadge, themed.voiceBadge]}>
+                  <Text style={[styles.voiceBadgeText, themed.voiceBadgeText]}>AI</Text>
                 </View>
               )}
             </View>
@@ -953,21 +969,21 @@ const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
             <View style={{ flexDirection: 'row', padding: 12, alignItems: 'center' }}>
               <View style={{ flex: 1, marginRight: item.imageUri ? 12 : 0 }}>
                 <View style={styles.titleRow}>
-                  <Text style={styles.noteCardTitle} numberOfLines={1}>
+                  <Text style={[styles.noteCardTitle, themed.noteCardTitle]} numberOfLines={1}>
                     {item.title}
                   </Text>
-                  {item.isPinned && <Pin size={12} color={Colors.red} style={{ transform: [{ rotate: '45deg' }] }} />}
+                  {item.isPinned && <Pin size={12} color={colors.red} style={{ transform: [{ rotate: '45deg' }] }} />}
                 </View>
-                <Text style={styles.noteCardBody} numberOfLines={2}>
+                <Text style={[styles.noteCardBody, themed.noteCardBody]} numberOfLines={2}>
                   {renderMarkdown(item.body)}
                 </Text>
                 <View style={styles.cardFooter}>
-                  <Text style={styles.cardDate}>
+                  <Text style={[styles.cardDate, themed.cardDate]}>
                     {new Date(item.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </Text>
                   {item.isVoiceTranscribed && (
-                    <View style={styles.voiceBadge}>
-                      <Text style={styles.voiceBadgeText}>AI Transcribed</Text>
+                    <View style={[styles.voiceBadge, themed.voiceBadge]}>
+                      <Text style={[styles.voiceBadgeText, themed.voiceBadgeText]}>AI Transcribed</Text>
                     </View>
                   )}
                 </View>
@@ -976,7 +992,7 @@ const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
               {item.imageUri && (
                 <Image
                   source={getLocalImage(item.imageUri)}
-                  style={styles.listCardImage}
+                  style={[styles.listCardImage, themed.listCardImage]}
                   resizeMode="cover"
                 />
               )}
@@ -986,7 +1002,7 @@ const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
           {canDrag && (
             <View
               {...panHandlers}
-              style={dragHandleStyles.listHandle}
+              style={[dragHandleStyles.listHandle, themed.listHandle]}
             >
               <GripVertical size={18} color="#AAA" />
             </View>
@@ -1021,14 +1037,12 @@ const dragHandleStyles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderLeftWidth: 1,
-    borderLeftColor: '#F5F5F5',
   },
 });
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF9F6',
     paddingHorizontal: 16,
     paddingTop: 16,
   },
@@ -1043,14 +1057,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    backgroundColor: '#EAEAEA',
     borderRadius: 8,
     paddingLeft: 12,
   },
   searchInput: {
     flex: 1,
     height: '100%',
-    color: Colors.textDark,
     fontSize: 14,
     fontFamily: Fonts.body,
     paddingVertical: 0,
@@ -1058,7 +1070,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: Fonts.heading,
     fontSize: 24,
-    color: Colors.darkBg,
     fontWeight: 'bold',
   },
   headerIcons: {
@@ -1070,7 +1081,6 @@ const styles = StyleSheet.create({
   },
   headerIconText: {
     fontSize: 16,
-    color: '#333',
   },
   filterContainer: {
     marginBottom: 12,
@@ -1082,7 +1092,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: Layout.borderRadiusPill,
-    backgroundColor: '#EAEAEA',
     marginRight: 6,
   },
   filterChipActive: {
@@ -1091,7 +1100,6 @@ const styles = StyleSheet.create({
   filterChipText: {
     fontFamily: Fonts.body,
     fontSize: 12,
-    color: '#555',
   },
   filterChipTextActive: {
     color: '#FFF',
@@ -1107,14 +1115,12 @@ const styles = StyleSheet.create({
   },
   gridCard: {
     width: '48%',
-    backgroundColor: '#FFFFFF',
     borderRadius: Layout.borderRadiusCard,
     marginBottom: 12,
     overflow: 'hidden',
   },
   listCard: {
     width: '100%',
-    backgroundColor: '#FFFFFF',
     borderRadius: Layout.borderRadiusCard,
     marginBottom: 12,
     overflow: 'hidden',
@@ -1136,7 +1142,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     fontSize: 14,
     fontWeight: 'bold',
-    color: Colors.textDark,
     flex: 1,
   },
   pinText: {
@@ -1146,7 +1151,6 @@ const styles = StyleSheet.create({
   noteCardBody: {
     fontFamily: Fonts.body,
     fontSize: 12,
-    color: '#666',
     lineHeight: 16,
     marginBottom: 8,
   },
@@ -1157,17 +1161,14 @@ const styles = StyleSheet.create({
   },
   cardDate: {
     fontSize: 10,
-    color: '#9E9E9E',
     fontFamily: Fonts.body,
   },
   voiceBadge: {
-    backgroundColor: '#F0F0FF',
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   voiceBadgeText: {
-    color: '#5B5BFF',
     fontSize: 8,
     fontWeight: 'bold',
   },
@@ -1188,13 +1189,11 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.heading,
     fontSize: 18,
     fontWeight: 'bold',
-    color: Colors.textDark,
     marginBottom: 8,
   },
   emptySubtitle: {
     fontFamily: Fonts.body,
     fontSize: 13,
-    color: '#666',
     textAlign: 'center',
     lineHeight: 18,
   },
@@ -1221,7 +1220,6 @@ const styles = StyleSheet.create({
   // Editor Modal
   editorContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
   },
   editorHeader: {
     flexDirection: 'row',
@@ -1231,7 +1229,6 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 48 : 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
   },
   deleteNoteBtn: {
     paddingVertical: 6,
@@ -1250,7 +1247,6 @@ const styles = StyleSheet.create({
   },
   pinIcon: {
     fontSize: 13,
-    color: '#555',
   },
   doneBtn: {
     backgroundColor: Colors.red,
@@ -1270,7 +1266,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.heading,
     fontSize: 22,
     fontWeight: 'bold',
-    color: Colors.textDark,
     marginBottom: 12,
     paddingVertical: 0,
   },
@@ -1281,7 +1276,6 @@ const styles = StyleSheet.create({
   },
   categoryLabel: {
     fontSize: 12,
-    color: '#777',
     marginRight: 8,
   },
   catChipSmall: {
@@ -1289,19 +1283,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#CCC',
     marginRight: 4,
   },
   catChipSmallText: {
     fontSize: 11,
-    color: '#555',
   },
   editorToolbar: {
     flexDirection: 'row',
     alignItems: 'center',
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#E5E5E5',
     paddingVertical: 6,
     marginBottom: 12,
   },
@@ -1311,12 +1302,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
   },
   imageToolbarBtn: {
     flexDirection: 'row',
     paddingHorizontal: 12,
-    backgroundColor: '#F5F5F5',
   },
   imageToolbarBtnActive: {
     backgroundColor: Colors.red,
@@ -1324,7 +1313,6 @@ const styles = StyleSheet.create({
   imageToolbarText: {
     fontSize: 12,
     fontFamily: Fonts.body,
-    color: Colors.textDark,
   },
   imageToolbarTextActive: {
     color: '#FFF',
@@ -1336,7 +1324,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#E5E5E5',
     height: 180,
     width: '100%',
   },
@@ -1358,18 +1345,15 @@ const styles = StyleSheet.create({
   gridCardImage: {
     width: '100%',
     height: 80,
-    backgroundColor: '#EAEAEA',
   },
   listCardImage: {
     width: 60,
     height: 60,
     borderRadius: 8,
-    backgroundColor: '#EAEAEA',
   },
   editorBodyInput: {
     fontFamily: Fonts.body,
     fontSize: 15,
-    color: Colors.textDark,
     lineHeight: 22,
     height: 400,
     textAlignVertical: 'top',
@@ -1383,14 +1367,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(255,255,255,0.85)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 100,
   },
   aiLoadingText: {
     marginTop: 12,
-    color: Colors.textDark,
     fontWeight: 'bold',
     fontFamily: Fonts.body,
   },
@@ -1398,7 +1380,6 @@ const styles = StyleSheet.create({
   // AI Actions Strip
   aiActionsStrip: {
     flexDirection: 'row',
-    backgroundColor: '#000000',
     paddingTop: 10,
     paddingBottom: Platform.OS === 'ios' ? 24 : 10,
     paddingHorizontal: 12,
@@ -1406,7 +1387,6 @@ const styles = StyleSheet.create({
   },
   aiActionBtn: {
     flex: 1,
-    backgroundColor: '#1E1E1E',
     borderRadius: 8,
     paddingVertical: 8,
     marginHorizontal: 4,
@@ -1419,3 +1399,115 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
   },
 });
+
+function useThemedStyles() {
+  const { colors, isDarkMode } = useTheme();
+  return {
+    container: {
+      backgroundColor: colors.background,
+    },
+    searchRow: {
+      backgroundColor: colors.inputBg,
+    },
+    searchInput: {
+      color: colors.textPrimary,
+    },
+    headerTitle: {
+      color: colors.textPrimary,
+    },
+    filterChip: {
+      backgroundColor: colors.inputBg,
+    },
+    filterChipText: {
+      color: colors.textSecondary,
+    },
+    gridCard: {
+      backgroundColor: colors.cardBg,
+    },
+    listCard: {
+      backgroundColor: colors.cardBg,
+    },
+    noteCardTitle: {
+      color: colors.textPrimary,
+    },
+    noteCardBody: {
+      color: colors.textSecondary,
+    },
+    cardDate: {
+      color: colors.textMuted,
+    },
+    voiceBadge: {
+      backgroundColor: isDarkMode ? 'rgba(91, 91, 255, 0.15)' : '#F0F0FF',
+    },
+    voiceBadgeText: {
+      color: isDarkMode ? '#8F8FFF' : '#5B5BFF',
+    },
+    emptyTitle: {
+      color: colors.textPrimary,
+    },
+    emptySubtitle: {
+      color: colors.textSecondary,
+    },
+    editorContainer: {
+      backgroundColor: colors.background,
+    },
+    editorHeader: {
+      borderBottomColor: colors.border,
+    },
+    pinIcon: {
+      color: colors.textSecondary,
+    },
+    editorTitleInput: {
+      color: colors.textPrimary,
+    },
+    categoryLabel: {
+      color: colors.textSecondary,
+    },
+    catChipSmall: {
+      borderColor: colors.border,
+    },
+    catChipSmallText: {
+      color: colors.textSecondary,
+    },
+    editorToolbar: {
+      borderColor: colors.border,
+    },
+    toolbarBtn: {
+      backgroundColor: colors.inputBg,
+    },
+    imageToolbarBtn: {
+      backgroundColor: colors.inputBg,
+    },
+    imageToolbarText: {
+      color: colors.textPrimary,
+    },
+    editorImageContainer: {
+      borderColor: colors.border,
+    },
+    gridCardImage: {
+      backgroundColor: colors.inputBg,
+    },
+    listCardImage: {
+      backgroundColor: colors.inputBg,
+    },
+    editorBodyInput: {
+      color: colors.textPrimary,
+    },
+    aiLoadingOverlay: {
+      backgroundColor: isDarkMode ? 'rgba(18, 18, 18, 0.85)' : 'rgba(255, 255, 255, 0.85)',
+    },
+    aiLoadingText: {
+      color: colors.textPrimary,
+    },
+    aiActionsStrip: {
+      backgroundColor: colors.cardBg,
+    },
+    aiActionBtn: {
+      backgroundColor: colors.inputBg,
+    },
+    listHandle: {
+      borderLeftColor: colors.border,
+    },
+  };
+}
+

@@ -8,6 +8,8 @@ export interface User {
   role: string;
   isNewUser: boolean;
   timeFormat24h: boolean;
+  weekStartsMonday: boolean;
+  darkModeEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -74,6 +76,8 @@ export const userStore = {
         role: userRow.role,
         isNewUser: userRow.is_new_user === 1,
         timeFormat24h: userRow.time_format_24h === 1,
+        weekStartsMonday: userRow.week_starts_monday === 1,
+        darkModeEnabled: userRow.dark_mode === 1,
         createdAt: userRow.created_at,
         updatedAt: userRow.updated_at,
       };
@@ -172,6 +176,8 @@ export const userStore = {
           role: row.role,
           isNewUser: row.is_new_user === 1,
           timeFormat24h: row.time_format_24h === 1,
+          weekStartsMonday: row.week_starts_monday === 1,
+          darkModeEnabled: row.dark_mode === 1,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
         };
@@ -214,6 +220,112 @@ export const userStore = {
       );
     } catch (error) {
       console.error('Error saving 24-hour time format setting:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Retrieves whether the week starts on Monday setting for a specific user.
+   */
+  getWeekStartsMonday: (userId: string): boolean => {
+    try {
+      const result = db.executeSync(
+        `SELECT week_starts_monday FROM users WHERE id = ?`,
+        [userId]
+      );
+      if (result.rows && result.rows.length > 0) {
+        return !!result.rows[0].week_starts_monday;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error fetching week starts on Monday setting:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Updates whether the week starts on Monday setting for a specific user.
+   */
+  setWeekStartsMonday: (userId: string, enabled: boolean): void => {
+    const now = new Date().toISOString();
+    try {
+      db.executeSync(
+        `UPDATE users SET week_starts_monday = ?, updated_at = ? WHERE id = ?`,
+        [enabled ? 1 : 0, now, userId]
+      );
+    } catch (error) {
+      console.error('Error saving week starts on Monday setting:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Retrieves whether dark mode is enabled for a specific user.
+   */
+  getDarkModeEnabled: (userId: string): boolean => {
+    try {
+      const result = db.executeSync(
+        `SELECT dark_mode FROM users WHERE id = ?`,
+        [userId]
+      );
+      if (result.rows && result.rows.length > 0) {
+        return !!result.rows[0].dark_mode;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error fetching dark mode setting:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Updates whether dark mode is enabled for a specific user.
+   */
+  setDarkModeEnabled: (userId: string, enabled: boolean): void => {
+    const now = new Date().toISOString();
+    try {
+      db.executeSync(
+        `UPDATE users SET dark_mode = ?, updated_at = ? WHERE id = ?`,
+        [enabled ? 1 : 0, now, userId]
+      );
+    } catch (error) {
+      console.error('Error saving dark mode setting:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Retrieves the Remember Me configuration.
+   */
+  getRememberMe: (): { enabled: boolean; email: string | null } => {
+    try {
+      const result = db.executeSync('SELECT * FROM remember_me WHERE id = 1');
+      if (result.rows && result.rows.length > 0) {
+        const row = result.rows[0];
+        return {
+          enabled: row.enabled === 1,
+          email: row.email,
+        };
+      }
+      return { enabled: false, email: null };
+    } catch (error) {
+      console.error('Error fetching Remember Me setting:', error);
+      return { enabled: false, email: null };
+    }
+  },
+
+  /**
+   * Updates the Remember Me configuration.
+   */
+  setRememberMe: (enabled: boolean, email: string | null): void => {
+    const now = new Date().toISOString();
+    try {
+      db.executeSync(
+        `INSERT OR REPLACE INTO remember_me (id, enabled, email, updated_at) VALUES (1, ?, ?, ?)`,
+        [enabled ? 1 : 0, email, now]
+      );
+    } catch (error) {
+      console.error('Error saving Remember Me setting:', error);
       throw error;
     }
   },

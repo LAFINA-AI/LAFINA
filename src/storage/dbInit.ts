@@ -37,16 +37,61 @@ export const initDatabase = async (): Promise<void> => {
           role TEXT NOT NULL DEFAULT 'user',
           is_new_user INTEGER NOT NULL DEFAULT 1,
           time_format_24h INTEGER NOT NULL DEFAULT 0,
+          week_starts_monday INTEGER NOT NULL DEFAULT 0,
+          dark_mode INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
         )
       `);
 
-      // Soft migration for existing user tables
-      try {
-        (tx as any).executeSync(`ALTER TABLE users ADD COLUMN time_format_24h INTEGER NOT NULL DEFAULT 0`);
-      } catch {
-        // Safe to ignore if the column/table already exists
+      // Create remember_me table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS remember_me (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          enabled INTEGER NOT NULL DEFAULT 0,
+          email TEXT,
+          updated_at TEXT NOT NULL
+        )
+      `);
+
+      // Schema versioning and migration error handling [Fix #5]
+      const versionResult = (tx as any).executeSync('PRAGMA user_version');
+      const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;
+      const TARGET_VERSION = 2; // Increment for each migration batch
+
+      if (currentVersion < TARGET_VERSION) {
+        if (currentVersion < 1) {
+          try {
+            (tx as any).executeSync('ALTER TABLE users ADD COLUMN time_format_24h INTEGER NOT NULL DEFAULT 0');
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (!msg.toLowerCase().includes('duplicate column')) {
+              throw e;
+            }
+          }
+        }
+
+        if (currentVersion < 2) {
+          try {
+            (tx as any).executeSync('ALTER TABLE users ADD COLUMN week_starts_monday INTEGER NOT NULL DEFAULT 0');
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (!msg.toLowerCase().includes('duplicate column')) {
+              throw e;
+            }
+          }
+
+          try {
+            (tx as any).executeSync('ALTER TABLE users ADD COLUMN dark_mode INTEGER NOT NULL DEFAULT 0');
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (!msg.toLowerCase().includes('duplicate column')) {
+              throw e;
+            }
+          }
+        }
+
+        (tx as any).executeSync(`PRAGMA user_version = ${TARGET_VERSION}`);
       }
 
       // Create reminders table

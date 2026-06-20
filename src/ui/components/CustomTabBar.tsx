@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
+import { useTheme } from '../contexts/ThemeContext';
 
 import { Calendar, MessageSquare, FileText, User, Mic } from 'lucide-react-native';
 
@@ -17,18 +18,21 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
   onTabPress,
   onMicPress,
 }) => {
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
+
   return (
     <View style={styles.outerContainer}>
-      <View style={styles.container}>
+      <View style={[styles.container, themed.container]}>
         {/* Chat Tab */}
         <TouchableOpacity
           style={styles.tab}
           onPress={() => onTabPress('chat')}
           activeOpacity={0.8}
         >
-          <MessageSquare size={22} color={activeTab === 'chat' ? Colors.red : '#9E9E9E'} />
+          <MessageSquare size={22} color={activeTab === 'chat' ? colors.red : colors.textMuted} />
           {activeTab === 'chat' && (
-            <Text style={[styles.label, styles.activeLabel]}>Chat</Text>
+            <Text style={[styles.label, themed.label, styles.activeLabel, themed.activeLabel]}>Chat</Text>
           )}
         </TouchableOpacity>
 
@@ -38,9 +42,9 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
           onPress={() => onTabPress('calendar')}
           activeOpacity={0.8}
         >
-          <Calendar size={22} color={activeTab === 'calendar' ? Colors.red : '#9E9E9E'} />
+          <Calendar size={22} color={activeTab === 'calendar' ? colors.red : colors.textMuted} />
           {activeTab === 'calendar' && (
-            <Text style={[styles.label, styles.activeLabel]}>Calendar</Text>
+            <Text style={[styles.label, themed.label, styles.activeLabel, themed.activeLabel]}>Calendar</Text>
           )}
         </TouchableOpacity>
 
@@ -63,9 +67,9 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
           onPress={() => onTabPress('notes')}
           activeOpacity={0.8}
         >
-          <FileText size={22} color={activeTab === 'notes' ? Colors.red : '#9E9E9E'} />
+          <FileText size={22} color={activeTab === 'notes' ? colors.red : colors.textMuted} />
           {activeTab === 'notes' && (
-            <Text style={[styles.label, styles.activeLabel]}>Notes</Text>
+            <Text style={[styles.label, themed.label, styles.activeLabel, themed.activeLabel]}>Notes</Text>
           )}
         </TouchableOpacity>
 
@@ -75,15 +79,31 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
           onPress={() => onTabPress('profile')}
           activeOpacity={0.8}
         >
-          <User size={22} color={activeTab === 'profile' ? Colors.red : '#9E9E9E'} />
+          <User size={22} color={activeTab === 'profile' ? colors.red : colors.textMuted} />
           {activeTab === 'profile' && (
-            <Text style={[styles.label, styles.activeLabel]}>Profile</Text>
+            <Text style={[styles.label, themed.label, styles.activeLabel, themed.activeLabel]}>Profile</Text>
           )}
         </TouchableOpacity>
       </View>
     </View>
   );
 };
+
+function useThemedStyles() {
+  const { colors } = useTheme();
+  return {
+    container: {
+      backgroundColor: colors.cardBg,
+      borderColor: colors.border,
+    },
+    label: {
+      color: colors.textMuted,
+    },
+    activeLabel: {
+      color: colors.red,
+    },
+  };
+}
 
 // --- Stylesheet ---
 
@@ -100,13 +120,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
     borderRadius: 36,
     height: Layout.navbarHeight,
     width: '100%',
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.04)',
     ...Shadows.navbar,
   },
   tab: {
@@ -120,11 +138,9 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: Fonts.body,
     marginTop: 4,
-    color: '#9E9E9E',
   },
   activeLabel: {
     fontFamily: Fonts.heading,
-    color: Colors.red,
     fontWeight: 'bold',
   },
   
@@ -161,3 +177,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+

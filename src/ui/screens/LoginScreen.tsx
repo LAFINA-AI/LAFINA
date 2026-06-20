@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,9 +12,10 @@ import {
   StatusBar,
   ActivityIndicator,
 } from 'react-native';
-import { Eye, EyeOff, Mail, Lock } from 'lucide-react-native';
+import { Eye, EyeOff, Mail, Lock, Check } from 'lucide-react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { userStore } from '../../storage/userStore';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface LoginScreenProps {
   onLoginSuccess: (userId: string) => void;
@@ -30,6 +31,37 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
+
+  // Load saved credentials on mount [Fix #9]
+  useEffect(() => {
+    const saved = userStore.getRememberMe();
+    if (saved.enabled && saved.email) {
+      setEmail(saved.email);
+      setRememberMe(true);
+    }
+  }, []);
+
+  const handleRememberMeToggle = () => {
+    const newValue = !rememberMe;
+    setRememberMe(newValue);
+
+    if (newValue) {
+      userStore.setRememberMe(true, email.trim() || null);
+    } else {
+      userStore.setRememberMe(false, null);
+    }
+  };
+
+  const handleEmailChange = (text: string) => {
+    setEmail(text);
+    if (rememberMe) {
+      userStore.setRememberMe(true, text.trim() || null);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -47,6 +79,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       const user = await userStore.login(email.trim(), password);
       if (user) {
         userStore.setCurrentUser(user.id);
+        if (rememberMe) {
+          userStore.setRememberMe(true, email.trim());
+        }
         onLoginSuccess(user.id);
       } else {
         setError('Invalid email or password');
@@ -61,9 +96,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
+      style={[styles.container, themed.container]}
     >
-      <StatusBar barStyle="dark-content" backgroundColor="#FAF9F6" />
+      <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         
         {/* Header Section */}
@@ -73,26 +108,25 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             style={styles.logoText}
             resizeMode="contain"
           />
-          {/* <Text style={styles.subtitle}>USTP Academic Scheduler</Text> */}
         </View>
 
         {/* Card Form */}
-        <View style={[styles.card, Shadows.card]}>
-          <Text style={styles.cardTitle}>Welcome Back</Text>
-          <Text style={styles.cardSubtitle}>Sign in to access your offline schedule</Text>
+        <View style={[styles.card, Shadows.card, themed.card]}>
+          <Text style={[styles.cardTitle, themed.cardTitle]}>Welcome Back</Text>
+          <Text style={[styles.cardSubtitle, themed.cardSubtitle]}>Sign in to access your offline schedule</Text>
 
           {error && <Text style={styles.errorText}>{error}</Text>}
 
           {/* Email Field */}
-          <Text style={styles.fieldLabel}>Email Address</Text>
-          <View style={styles.inputContainer}>
-            <Mail size={20} color={Colors.textMuted} style={styles.inputIcon} />
+          <Text style={[styles.fieldLabel, themed.fieldLabel]}>Email Address</Text>
+          <View style={[styles.inputContainer, themed.inputContainer]}>
+            <Mail size={20} color={colors.textSecondary} style={styles.inputIcon} />
             <TextInput
-              style={styles.input}
+              style={[styles.input, themed.input]}
               placeholder="student@ustp.edu.ph"
-              placeholderTextColor={Colors.textMutedLight}
+              placeholderTextColor={colors.textSecondary}
               value={email}
-              onChangeText={setEmail}
+              onChangeText={handleEmailChange}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
@@ -100,13 +134,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           </View>
 
           {/* Password Field */}
-          <Text style={styles.fieldLabel}>Password</Text>
-          <View style={styles.inputContainer}>
-            <Lock size={20} color={Colors.textMuted} style={styles.inputIcon} />
+          <Text style={[styles.fieldLabel, themed.fieldLabel]}>Password</Text>
+          <View style={[styles.inputContainer, themed.inputContainer]}>
+            <Lock size={20} color={colors.textSecondary} style={styles.inputIcon} />
             <TextInput
-              style={styles.input}
+              style={[styles.input, themed.input]}
               placeholder="••••••••"
-              placeholderTextColor={Colors.textMutedLight}
+              placeholderTextColor={colors.textSecondary}
               secureTextEntry={!showPassword}
               value={password}
               onChangeText={setPassword}
@@ -118,12 +152,31 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               style={styles.eyeIcon}
             >
               {showPassword ? (
-                <EyeOff size={20} color={Colors.textMuted} />
+                <EyeOff size={20} color={colors.textSecondary} />
               ) : (
-                <Eye size={20} color={Colors.textMuted} />
+                <Eye size={20} color={colors.textSecondary} />
               )}
             </TouchableOpacity>
           </View>
+
+          {/* Remember Me Checkbox [Fix #9] */}
+          <TouchableOpacity
+            style={styles.rememberMeRow}
+            onPress={handleRememberMeToggle}
+            activeOpacity={0.7}
+          >
+            <View style={[
+              styles.checkbox,
+              themed.checkbox,
+              rememberMe && styles.checkboxChecked,
+              rememberMe && themed.checkboxChecked,
+            ]}>
+              {rememberMe && <Check size={14} color="#FFFFFF" />}
+            </View>
+            <Text style={[styles.rememberMeText, themed.rememberMeText]}>
+              Remember me
+            </Text>
+          </TouchableOpacity>
 
           {/* Log In Button */}
           <TouchableOpacity
@@ -141,7 +194,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
         {/* Footer Navigation */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Don't have an account? </Text>
+          <Text style={[styles.footerText, themed.footerText]}>Don't have an account? </Text>
           <TouchableOpacity onPress={onNavigateToRegister}>
             <Text style={styles.registerLink}>Register</Text>
           </TouchableOpacity>
@@ -152,10 +205,51 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   );
 };
 
+function useThemedStyles() {
+  const { colors } = useTheme();
+  return {
+    container: {
+      backgroundColor: colors.background,
+    },
+    card: {
+      backgroundColor: colors.cardBg,
+    },
+    cardTitle: {
+      color: colors.textPrimary,
+    },
+    cardSubtitle: {
+      color: colors.textSecondary,
+    },
+    fieldLabel: {
+      color: colors.textPrimary,
+    },
+    inputContainer: {
+      borderColor: colors.border,
+      backgroundColor: colors.inputBg,
+    },
+    input: {
+      color: colors.textPrimary,
+    },
+    rememberMeText: {
+      color: colors.textSecondary,
+    },
+    checkbox: {
+      borderColor: colors.border,
+      backgroundColor: colors.cardBg,
+    },
+    checkboxChecked: {
+      backgroundColor: colors.blue,
+      borderColor: colors.blue,
+    },
+    footerText: {
+      color: colors.textSecondary,
+    },
+  };
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF9F6',
   },
   scrollContainer: {
     flexGrow: 1,
@@ -178,12 +272,10 @@ const styles = StyleSheet.create({
   subtitle: {
     fontFamily: Fonts.body,
     fontSize: 12,
-    color: Colors.textMuted,
     marginTop: 4,
     letterSpacing: 0.5,
   },
   card: {
-    backgroundColor: Colors.cardBg,
     borderRadius: Layout.borderRadiusCard,
     padding: 24,
     width: '100%',
@@ -192,12 +284,10 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.heading,
     fontSize: 20,
     fontWeight: 'bold',
-    color: Colors.textDark,
   },
   cardSubtitle: {
     fontFamily: Fonts.body,
     fontSize: 13,
-    color: Colors.textMuted,
     marginTop: 4,
     marginBottom: 20,
   },
@@ -212,7 +302,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.textDark,
     marginBottom: 6,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -221,11 +310,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: Colors.border,
     borderRadius: Layout.borderRadiusButton,
     marginBottom: 16,
     paddingHorizontal: 12,
-    backgroundColor: '#FAF9F6',
   },
   inputIcon: {
     marginRight: 8,
@@ -235,10 +322,31 @@ const styles = StyleSheet.create({
     height: 48,
     fontFamily: Fonts.body,
     fontSize: 14,
-    color: Colors.textDark,
   },
   eyeIcon: {
     padding: 8,
+  },
+  rememberMeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    marginTop: 4,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  checkboxChecked: {
+    // themed styles handle background and borders
+  },
+  rememberMeText: {
+    fontFamily: Fonts.body,
+    fontSize: 14,
   },
   loginButton: {
     height: 48,
@@ -264,7 +372,6 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontFamily: Fonts.body,
-    color: Colors.textMuted,
     fontSize: 14,
   },
   registerLink: {
@@ -275,3 +382,4 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 });
+

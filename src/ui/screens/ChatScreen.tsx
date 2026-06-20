@@ -15,6 +15,7 @@ import { Send, Trash2 } from 'lucide-react-native';
 import { Colors, Fonts, Shadows } from '../theme';
 import { chatStore, ChatMessage } from '../../storage/chatStore';
 import { processCommand } from '../../ai/nlu/parser';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface ChatScreenProps {
   userId: string;
@@ -31,6 +32,9 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const [inputText, setInputText] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
@@ -129,11 +133,11 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     const isUser = item.sender === 'user';
     return (
       <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
-        <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
-          <Text style={[styles.messageText, isUser ? styles.userText : styles.assistantText]}>
+        <View style={[styles.bubble, isUser ? styles.userBubble : [styles.assistantBubble, themed.assistantBubble]]}>
+          <Text style={[styles.messageText, isUser ? styles.userText : [styles.assistantText, themed.assistantText]]}>
             {item.content}
           </Text>
-          <Text style={[styles.timeText, isUser ? styles.userTime : styles.assistantTime]}>
+          <Text style={[styles.timeText, isUser ? styles.userTime : [styles.assistantTime, themed.assistantTime]]}>
             {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
         </View>
@@ -143,28 +147,28 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, themed.container]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, themed.header]}>
         <View>
-          <Text style={styles.headerTitle}>LAFINA Assistant</Text>
-          <Text style={styles.headerSubtitle}>Offline NLU Scheduler</Text>
+          <Text style={[styles.headerTitle, themed.headerTitle]}>LAFINA Assistant</Text>
+          <Text style={[styles.headerSubtitle, themed.headerSubtitle]}>Offline NLU Scheduler</Text>
         </View>
         <TouchableOpacity onPress={handleClearChat} style={styles.clearBtn}>
-          <Trash2 size={20} color={Colors.red} />
+          <Trash2 size={20} color={colors.red} />
         </TouchableOpacity>
       </View>
 
       {/* Message List */}
       {messages.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Ask me to schedule events, create tasks, or save notes!</Text>
-          <Text style={styles.exampleText}>Try: "add task Submit paper by 9:00 PM"</Text>
-          <Text style={styles.exampleText}>Try: "block 13:00-15:00 for Exam Review"</Text>
-          <Text style={styles.exampleText}>Try: "note Remind me to call Mom"</Text>
+          <Text style={[styles.emptyText, themed.emptyText]}>Ask me to schedule events, create tasks, or save notes!</Text>
+          <Text style={[styles.exampleText, themed.exampleText]}>Try: "add task Submit paper by 9:00 PM"</Text>
+          <Text style={[styles.exampleText, themed.exampleText]}>Try: "block 13:00-15:00 for Exam Review"</Text>
+          <Text style={[styles.exampleText, themed.exampleText]}>Try: "note Remind me to call Mom"</Text>
         </View>
       ) : (
         <FlatList
@@ -178,11 +182,11 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       )}
 
       {/* Input Row */}
-      <View style={[styles.inputContainer, { bottom: isKeyboardVisible ? 0 : 104 }]}>
+      <View style={[styles.inputContainer, themed.inputContainer, { bottom: isKeyboardVisible ? 0 : 104 }]}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, themed.input]}
           placeholder="Ask LAFINA..."
-          placeholderTextColor="#888"
+          placeholderTextColor={colors.textSecondary}
           value={inputText}
           onChangeText={setInputText}
           onSubmitEditing={handleSend}
@@ -197,10 +201,53 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   );
 };
 
+function useThemedStyles() {
+  const { colors } = useTheme();
+  return {
+    container: {
+      backgroundColor: colors.background,
+    },
+    header: {
+      backgroundColor: colors.cardBg,
+      borderBottomColor: colors.border,
+    },
+    headerTitle: {
+      color: colors.textPrimary,
+    },
+    headerSubtitle: {
+      color: colors.textSecondary,
+    },
+    emptyText: {
+      color: colors.textSecondary,
+    },
+    exampleText: {
+      color: colors.textMuted,
+    },
+    assistantBubble: {
+      backgroundColor: colors.cardBg,
+      borderColor: colors.border,
+    },
+    assistantText: {
+      color: colors.textPrimary,
+    },
+    assistantTime: {
+      color: colors.textMuted,
+    },
+    inputContainer: {
+      backgroundColor: colors.cardBg,
+      borderTopColor: colors.border,
+    },
+    input: {
+      borderColor: colors.border,
+      backgroundColor: colors.inputBg,
+      color: colors.textPrimary,
+    },
+  };
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF9F6',
   },
   header: {
     flexDirection: 'row',
@@ -210,18 +257,14 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 50 : 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderColor: '#EFEFEF',
-    backgroundColor: '#FFFFFF',
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     fontFamily: Fonts.heading,
-    color: Colors.textDark,
   },
   headerSubtitle: {
     fontSize: 11,
-    color: '#888',
     fontFamily: Fonts.body,
     marginTop: 2,
   },
@@ -255,10 +298,8 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 2,
   },
   assistantBubble: {
-    backgroundColor: '#FFFFFF',
     borderBottomLeftRadius: 2,
     borderWidth: 1,
-    borderColor: '#EFEFEF',
   },
   messageText: {
     fontSize: 14,
@@ -269,7 +310,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   assistantText: {
-    color: Colors.textDark,
+    // Handled by themed styles
   },
   timeText: {
     fontSize: 9,
@@ -281,7 +322,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.7)',
   },
   assistantTime: {
-    color: '#999',
+    // Handled by themed styles
   },
   emptyContainer: {
     flex: 1,
@@ -292,14 +333,12 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 15,
     fontFamily: Fonts.heading,
-    color: '#555',
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 22,
   },
   exampleText: {
     fontSize: 12,
-    color: '#888',
     fontFamily: Fonts.body,
     marginTop: 6,
     fontStyle: 'italic',
@@ -309,9 +348,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderColor: '#EFEFEF',
     position: 'absolute',
     left: 0,
     right: 0,
@@ -321,12 +358,9 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     borderWidth: 1.5,
-    borderColor: '#DDD',
-    backgroundColor: '#F9F9F9',
     paddingHorizontal: 16,
     fontSize: 14,
     fontFamily: Fonts.body,
-    color: Colors.textDark,
     marginRight: 10,
   },
   sendBtn: {
