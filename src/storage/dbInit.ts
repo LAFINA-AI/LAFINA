@@ -183,6 +183,34 @@ export const initDatabase = async (): Promise<void> => {
           FOREIGN KEY (session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
         )
       `);
+
+      // Create user_behavior_logs table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS user_behavior_logs (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          event_key TEXT NOT NULL,
+          event_value TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
+
+      // Create ml_feature_snapshots table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS ml_feature_snapshots (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          feature_type TEXT NOT NULL,
+          feature_vector TEXT NOT NULL,
+          computed_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
     });
     console.log('Database schema initialized successfully.');
   } catch (error) {

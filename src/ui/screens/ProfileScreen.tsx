@@ -18,12 +18,14 @@ interface ProfileScreenProps {
   userId: string;
   refreshTrigger: number;
   onRefresh: () => void;
+  onLogout?: () => void;
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   userId,
   refreshTrigger,
   onRefresh,
+  onLogout,
 }) => {
   // Stats
   const [completedTasksCount, setCompletedTasksCount] = useState(0);
@@ -108,7 +110,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         text: 'Sign Out',
         style: 'destructive',
         onPress: () => {
-          Alert.alert('Signed Out', 'You have been signed out. Sync pipeline suspended.');
+          userStore.logout();
+          if (onLogout) {
+            onLogout();
+          } else {
+            Alert.alert('Signed Out', 'You have been signed out. Sync pipeline suspended.');
+          }
         },
       },
     ]);
