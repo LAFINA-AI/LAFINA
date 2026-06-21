@@ -15,24 +15,40 @@ import { initDatabase } from './src/storage/dbInit';
 import { db } from './src/storage/database';
 import { CustomTabBar, TabType } from './src/ui/components/CustomTabBar';
 import { VoiceModal } from './src/ui/components/VoiceModal';
+import { ThemeProvider, useTheme } from './src/ui/contexts/ThemeContext';
 
 // Screens
 import { ChatScreen } from './src/ui/screens/ChatScreen';
 import { CalendarScreen, ViewMode } from './src/ui/screens/CalendarScreen';
 import { NotesScreen } from './src/ui/screens/NotesScreen';
 import { ProfileScreen } from './src/ui/screens/ProfileScreen';
+import { LoginScreen } from './src/ui/screens/LoginScreen';
+import { RegisterScreen } from './src/ui/screens/RegisterScreen';
+import { OnboardingScreen } from './src/ui/screens/OnboardingScreen';
+import { userStore } from './src/storage/userStore';
 
 // Assets
 const lafinaDefaultLogo = require('./src/assets/lafina_default_logo.png');
 const spashIcon = require('./src/assets/spash_icon.png');
 
-function App() {
+function AppContent({
+  userId,
+  setUserId,
+}: {
+  userId: string | null;
+  setUserId: React.Dispatch<React.SetStateAction<string | null>>;
+}) {
   const [isLoading, setIsLoading] = useState(true);
+  const [authScreen, setAuthScreen] = useState<'login' | 'register'>('login');
+  const [isOnboarding, setIsOnboarding] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('calendar');
   const [voiceVisible, setVoiceVisible] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [calendarViewMode, setCalendarViewMode] = useState<ViewMode>('week');
+
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
@@ -49,11 +65,12 @@ function App() {
         // 1. Initialize SQLite Database
         await initDatabase();
 
-        // 2. Seed Mock User for Foreign Key Constraints
-        db.executeSync(
-          `INSERT OR IGNORE INTO users (id, username, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-          ['user1', 'USTP CDO Student', 'student@ustp.edu.ph', new Date().toISOString(), new Date().toISOString()]
-        );
+        // 2. Check for active session
+        const currentUser = userStore.getCurrentUser();
+        if (currentUser) {
+          setUserId(currentUser.id);
+          setIsOnboarding(currentUser.isNewUser);
+        }
 
         // Simulate a minor visual delay for the premium splash screen display
         setTimeout(() => {
@@ -65,7 +82,7 @@ function App() {
       }
     };
     setupApp();
-  }, []);
+  }, [setUserId]);
 
   const triggerRefresh = () => {
     setRefreshTrigger((prev) => prev + 1);
@@ -78,13 +95,35 @@ function App() {
     }
   };
 
+  const handleLoginSuccess = (uid: string) => {
+    setUserId(uid);
+    const user = userStore.getUserById(uid);
+    setIsOnboarding(user ? user.isNewUser : false);
+  };
+
+  const handleRegisterSuccess = (uid: string) => {
+    setUserId(uid);
+    setIsOnboarding(true);
+  };
+
+  const handleOnboardingComplete = () => {
+    setIsOnboarding(false);
+  };
+
+  const handleLogout = () => {
+    setUserId(null);
+    setAuthScreen('login');
+    setIsOnboarding(false);
+  };
+
   // Render Active Screen Component
   const renderScreen = () => {
+    if (!userId) return <View style={[styles.errorScreen, themed.errorScreen]}><Text style={themed.errorText}>Access Denied</Text></View>;
     switch (activeTab) {
       case 'chat':
         return (
           <ChatScreen
-            userId="user1"
+            userId={userId}
             refreshTrigger={refreshTrigger}
             onRefresh={triggerRefresh}
           />
@@ -92,7 +131,7 @@ function App() {
       case 'calendar':
         return (
           <CalendarScreen
-            userId="user1"
+            userId={userId}
             refreshTrigger={refreshTrigger}
             onRefresh={triggerRefresh}
             viewMode={calendarViewMode}
@@ -102,7 +141,7 @@ function App() {
       case 'notes':
         return (
           <NotesScreen
-            userId="user1"
+            userId={userId}
             refreshTrigger={refreshTrigger}
             onRefresh={triggerRefresh}
           />
@@ -110,21 +149,22 @@ function App() {
       case 'profile':
         return (
           <ProfileScreen
-            userId="user1"
+            userId={userId}
             refreshTrigger={refreshTrigger}
             onRefresh={triggerRefresh}
+            onLogout={handleLogout}
           />
         );
       default:
-        return <View style={styles.errorScreen}><Text>Page Not Found</Text></View>;
+        return <View style={[styles.errorScreen, themed.errorScreen]}><Text style={themed.errorText}>Page Not Found</Text></View>;
     }
   };
 
   // Render Splash Loading Screen
   if (isLoading) {
     return (
-      <View style={styles.splashContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <View style={[styles.splashContainer, themed.splashContainer]}>
+        <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
         <Image source={spashIcon} style={styles.splashIconStyle} resizeMode="contain" />
         <View style={styles.splashFooter}>
           <Image source={lafinaDefaultLogo} style={styles.splashLogoStyle} resizeMode="contain" />
@@ -134,10 +174,39 @@ function App() {
     );
   }
 
+  // Render Auth Flow
+  if (!userId) {
+    if (authScreen === 'login') {
+      return (
+        <LoginScreen
+          onLoginSuccess={handleLoginSuccess}
+          onNavigateToRegister={() => setAuthScreen('register')}
+        />
+      );
+    } else {
+      return (
+        <RegisterScreen
+          onRegisterSuccess={handleRegisterSuccess}
+          onNavigateToLogin={() => setAuthScreen('login')}
+        />
+      );
+    }
+  }
+
+  // Render Onboarding Flow
+  if (isOnboarding) {
+    return (
+      <OnboardingScreen
+        userId={userId}
+        onOnboardingComplete={handleOnboardingComplete}
+      />
+    );
+  }
+
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.safeContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FAF9F6" />
+      <SafeAreaView style={[styles.safeContainer, themed.safeContainer]}>
+        <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
         
         {/* Render Active Page Content */}
         <View style={styles.content}>{renderScreen()}</View>
@@ -158,10 +227,37 @@ function App() {
   );
 }
 
+function useThemedStyles() {
+  const { colors } = useTheme();
+  return {
+    safeContainer: {
+      backgroundColor: colors.background,
+    },
+    splashContainer: {
+      backgroundColor: colors.background,
+    },
+    errorScreen: {
+      backgroundColor: colors.background,
+    },
+    errorText: {
+      color: colors.textPrimary,
+    },
+  };
+}
+
+function App() {
+  const [userId, setUserId] = useState<string | null>(null);
+
+  return (
+    <ThemeProvider userId={userId}>
+      <AppContent userId={userId} setUserId={setUserId} />
+    </ThemeProvider>
+  );
+}
+
 const styles = StyleSheet.create({
   safeContainer: {
     flex: 1,
-    backgroundColor: '#FAF9F6',
   },
   content: {
     flex: 1,
@@ -175,7 +271,6 @@ const styles = StyleSheet.create({
   // Splash Screen Sizing & Styling
   splashContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -200,3 +295,4 @@ const styles = StyleSheet.create({
 });
 
 export default App;
+

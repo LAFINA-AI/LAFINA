@@ -37,16 +37,61 @@ export const initDatabase = async (): Promise<void> => {
           role TEXT NOT NULL DEFAULT 'user',
           is_new_user INTEGER NOT NULL DEFAULT 1,
           time_format_24h INTEGER NOT NULL DEFAULT 0,
+          week_starts_monday INTEGER NOT NULL DEFAULT 0,
+          dark_mode INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
         )
       `);
 
-      // Soft migration for existing user tables
-      try {
-        (tx as any).executeSync(`ALTER TABLE users ADD COLUMN time_format_24h INTEGER NOT NULL DEFAULT 0`);
-      } catch {
-        // Safe to ignore if the column/table already exists
+      // Create remember_me table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS remember_me (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          enabled INTEGER NOT NULL DEFAULT 0,
+          email TEXT,
+          updated_at TEXT NOT NULL
+        )
+      `);
+
+      // Schema versioning and migration error handling [Fix #5]
+      const versionResult = (tx as any).executeSync('PRAGMA user_version');
+      const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;
+      const TARGET_VERSION = 2; // Increment for each migration batch
+
+      if (currentVersion < TARGET_VERSION) {
+        if (currentVersion < 1) {
+          try {
+            (tx as any).executeSync('ALTER TABLE users ADD COLUMN time_format_24h INTEGER NOT NULL DEFAULT 0');
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (!msg.toLowerCase().includes('duplicate column')) {
+              throw e;
+            }
+          }
+        }
+
+        if (currentVersion < 2) {
+          try {
+            (tx as any).executeSync('ALTER TABLE users ADD COLUMN week_starts_monday INTEGER NOT NULL DEFAULT 0');
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (!msg.toLowerCase().includes('duplicate column')) {
+              throw e;
+            }
+          }
+
+          try {
+            (tx as any).executeSync('ALTER TABLE users ADD COLUMN dark_mode INTEGER NOT NULL DEFAULT 0');
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (!msg.toLowerCase().includes('duplicate column')) {
+              throw e;
+            }
+          }
+        }
+
+        (tx as any).executeSync(`PRAGMA user_version = ${TARGET_VERSION}`);
       }
 
       // Create reminders table
@@ -181,6 +226,34 @@ export const initDatabase = async (): Promise<void> => {
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           FOREIGN KEY (session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
+        )
+      `);
+
+      // Create user_behavior_logs table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS user_behavior_logs (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          event_key TEXT NOT NULL,
+          event_value TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
+
+      // Create ml_feature_snapshots table
+      (tx as any).executeSync(`
+        CREATE TABLE IF NOT EXISTS ml_feature_snapshots (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          feature_type TEXT NOT NULL,
+          feature_vector TEXT NOT NULL,
+          computed_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
       `);
     });

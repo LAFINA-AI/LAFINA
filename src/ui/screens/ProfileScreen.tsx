@@ -8,23 +8,49 @@ import {
   Switch,
   Alert,
   Platform,
+  SafeAreaView,
+  Modal,
 } from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { tasksStore } from '../../storage/tasksStore';
 import { notesStore } from '../../storage/notesStore';
-import { userStore } from '../../storage/userStore';
+import { userStore, User } from '../../storage/userStore';
+import { useTheme } from '../contexts/ThemeContext';
+
+/**
+ * Derives avatar initials from a username string. [Fix #7]
+ * Handles: multi-word names, single-word names, snake_case/kebab-case,
+ * empty/null/undefined inputs.
+ */
+function getInitials(username: string | null | undefined): string {
+  if (!username || username.trim().length === 0) {
+    return '?';
+  }
+  const words = username.trim().split(/[\s_-]+/).filter(Boolean);
+  if (words.length === 1) {
+    // Single word: take first 2 characters → "juandelacruz" → "JU"
+    return words[0].slice(0, 2).toUpperCase();
+  }
+  // Multi-word: first letter of first two words → "Juan Dela Cruz" → "JD"
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
 
 interface ProfileScreenProps {
   userId: string;
   refreshTrigger: number;
   onRefresh: () => void;
+  onLogout?: () => void;
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   userId,
   refreshTrigger,
   onRefresh,
+  onLogout,
 }) => {
+  // Current user info
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
   // Stats
   const [completedTasksCount, setCompletedTasksCount] = useState(0);
   const [notesCount, setNotesCount] = useState(0);
@@ -36,7 +62,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
   const [summaryStyleDetailed, setSummaryStyleDetailed] = useState(false);
   const [dailyBriefingEnabled, setDailyBriefingEnabled] = useState(true);
-  const [darkModeEnabled, setDarkModeEnabled] = useState(false);
+
+  // Privacy Modal state
+  const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
+
+  const { colors, isDarkMode, toggleTheme } = useTheme();
+  const themed = useThemedStyles();
 
   useEffect(() => {
     loadStats();
@@ -45,13 +76,25 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   }, [userId, refreshTrigger]);
 
   const loadSettings = () => {
+    // Sync current logged in user
+    setCurrentUser(userStore.getUserById(userId));
+
     const is24h = userStore.get24HourFormat(userId);
     setTimeFormat24h(is24h);
+
+    const mondayStart = userStore.getWeekStartsMonday(userId);
+    setWeekStartsMonday(mondayStart);
   };
 
   const handleToggleTimeFormat = (value: boolean) => {
     setTimeFormat24h(value);
     userStore.set24HourFormat(userId, value);
+    onRefresh();
+  };
+
+  const handleToggleWeekStart = (value: boolean) => {
+    setWeekStartsMonday(value);
+    userStore.setWeekStartsMonday(userId, value);
     onRefresh();
   };
 
@@ -66,7 +109,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     setNotesCount(allNotes.length);
 
     // 3. Voice commands used
-    // Query notes transcribed + voice generated tasks
     const voiceNotes = allNotes.filter((n) => n.isVoiceTranscribed).length;
     const voiceTasks = allTasks.filter((t) => t.notes?.includes('voice') || t.notes?.includes('Voice')).length;
     setVoiceCommandsCount(voiceNotes + voiceTasks + 3); // Base 3 for onboarding voice checks
@@ -86,7 +128,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           text: 'Delete Everything',
           style: 'destructive',
           onPress: () => {
-            // Delete notes, tasks, events
             const allNotes = notesStore.getAll(userId);
             allNotes.forEach((n) => notesStore.delete(n.id));
             const allTasks = tasksStore.getAllTasks(userId);
@@ -108,24 +149,35 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         text: 'Sign Out',
         style: 'destructive',
         onPress: () => {
-          Alert.alert('Signed Out', 'You have been signed out. Sync pipeline suspended.');
+          userStore.logout();
+          if (onLogout) {
+            onLogout();
+          } else {
+            Alert.alert('Signed Out', 'You have been signed out. Sync pipeline suspended.');
+          }
         },
       },
     ]);
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={[styles.container, themed.container]} contentContainerStyle={styles.content}>
       {/* Header */}
-      <Text style={styles.headerTitle}>Profile</Text>
+      <Text style={[styles.headerTitle, themed.headerTitle]}>Profile</Text>
 
       {/* Avatar Section */}
       <View style={styles.avatarSection}>
         <View style={styles.avatarCircle}>
-          <Text style={styles.avatarInitials}>US</Text>
+          <Text style={styles.avatarInitials}>
+            {getInitials(currentUser?.username)}
+          </Text>
         </View>
-        <Text style={styles.userName}>USTP CDO Student</Text>
-        <Text style={styles.userEmail}>student@ustp.edu.ph</Text>
+        <Text style={[styles.userName, themed.userName]}>
+          {currentUser?.username || 'Student'}
+        </Text>
+        <Text style={[styles.userEmail, themed.userEmail]}>
+          {currentUser?.email || 'No email set'}
+        </Text>
         <TouchableOpacity onPress={handleEditProfile} style={styles.editLink}>
           <Text style={styles.editLinkText}>Edit Profile</Text>
         </TouchableOpacity>
@@ -133,120 +185,124 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
       {/* Stats Row */}
       <View style={styles.statsRow}>
-        <View style={[styles.statCard, Shadows.card]}>
-          <Text style={styles.statVal}>{completedTasksCount}</Text>
-          <Text style={styles.statLabel}>Tasks Done</Text>
+        <View style={[styles.statCard, Shadows.card, themed.statCard]}>
+          <Text style={[styles.statVal, themed.statVal]}>{completedTasksCount}</Text>
+          <Text style={[styles.statLabel, themed.statLabel]}>Tasks Done</Text>
         </View>
-        <View style={[styles.statCard, Shadows.card]}>
-          <Text style={styles.statVal}>{notesCount}</Text>
-          <Text style={styles.statLabel}>Notes Saved</Text>
+        <View style={[styles.statCard, Shadows.card, themed.statCard]}>
+          <Text style={[styles.statVal, themed.statVal]}>{notesCount}</Text>
+          <Text style={[styles.statLabel, themed.statLabel]}>Notes Saved</Text>
         </View>
-        <View style={[styles.statCard, Shadows.card]}>
-          <Text style={styles.statVal}>{voiceCommandsCount}</Text>
-          <Text style={styles.statLabel}>Voice Uses</Text>
+        <View style={[styles.statCard, Shadows.card, themed.statCard]}>
+          <Text style={[styles.statVal, themed.statVal]}>{voiceCommandsCount}</Text>
+          <Text style={[styles.statLabel, themed.statLabel]}>Voice Uses</Text>
         </View>
       </View>
 
       {/* Settings Grouped List */}
       <View style={styles.settingsContainer}>
         {/* Preferences Group */}
-        <Text style={styles.settingsGroupHeader}>Preferences</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card]}>
+        <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Preferences</Text>
+        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
           <View style={styles.settingItem}>
-            <Text style={styles.settingText}>24-Hour Time Format</Text>
+            <Text style={[styles.settingText, themed.settingText]}>24-Hour Time Format</Text>
             <Switch
               value={timeFormat24h}
               onValueChange={handleToggleTimeFormat}
-              trackColor={{ false: '#767577', true: Colors.red }}
+              trackColor={{ false: '#767577', true: colors.red }}
               thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
             />
           </View>
-          <View style={styles.settingDivider} />
+          <View style={[styles.settingDivider, themed.settingDivider]} />
           <View style={styles.settingItem}>
-            <Text style={styles.settingText}>Week Starts on Monday</Text>
+            <Text style={[styles.settingText, themed.settingText]}>Week Starts on Monday</Text>
             <Switch
               value={weekStartsMonday}
-              onValueChange={setWeekStartsMonday}
-              trackColor={{ false: '#767577', true: Colors.red }}
+              onValueChange={handleToggleWeekStart}
+              trackColor={{ false: '#767577', true: colors.red }}
               thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
             />
           </View>
         </View>
 
         {/* AI & Voice Group */}
-        <Text style={styles.settingsGroupHeader}>AI & Voice</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card]}>
+        <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>AI & Voice</Text>
+        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
           <View style={styles.settingItem}>
-            <Text style={styles.settingText}>Wake Word ("Hey LAFINA")</Text>
+            <Text style={[styles.settingText, themed.settingText]}>Wake Word ("Hey LAFINA")</Text>
             <Switch
               value={wakeWordEnabled}
               onValueChange={setWakeWordEnabled}
-              trackColor={{ false: '#767577', true: Colors.red }}
+              trackColor={{ false: '#767577', true: colors.red }}
               thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
             />
           </View>
-          <View style={styles.settingDivider} />
+          <View style={[styles.settingDivider, themed.settingDivider]} />
           <View style={styles.settingItem}>
-            <Text style={styles.settingText}>Detailed AI Summaries</Text>
+            <Text style={[styles.settingText, themed.settingText]}>Detailed AI Summaries</Text>
             <Switch
               value={summaryStyleDetailed}
               onValueChange={setSummaryStyleDetailed}
-              trackColor={{ false: '#767577', true: Colors.red }}
+              trackColor={{ false: '#767577', true: colors.red }}
               thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
             />
           </View>
         </View>
 
         {/* Notifications Group */}
-        <Text style={styles.settingsGroupHeader}>Notifications</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card]}>
+        <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Notifications</Text>
+        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
           <View style={styles.settingItem}>
-            <Text style={styles.settingText}>Daily Morning Briefing</Text>
+            <Text style={[styles.settingText, themed.settingText]}>Daily Morning Briefing</Text>
             <Switch
               value={dailyBriefingEnabled}
               onValueChange={setDailyBriefingEnabled}
-              trackColor={{ false: '#767577', true: Colors.red }}
+              trackColor={{ false: '#767577', true: colors.red }}
               thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
             />
           </View>
         </View>
 
         {/* Appearance Group */}
-        <Text style={styles.settingsGroupHeader}>Appearance</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card]}>
+        <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Appearance</Text>
+        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
           <View style={styles.settingItem}>
-            <Text style={styles.settingText}>Dark Mode</Text>
+            <Text style={[styles.settingText, themed.settingText]}>Dark Mode</Text>
             <Switch
-              value={darkModeEnabled}
-              onValueChange={setDarkModeEnabled}
-              trackColor={{ false: '#767577', true: Colors.red }}
+              value={isDarkMode}
+              onValueChange={toggleTheme}
+              trackColor={{ false: '#767577', true: colors.red }}
               thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
             />
           </View>
         </View>
 
         {/* Data Management Group */}
-        <Text style={styles.settingsGroupHeader}>Data Settings</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card]}>
+        <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Data Settings</Text>
+        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
           <TouchableOpacity onPress={handleClearData} style={styles.settingItemClickable}>
-            <Text style={[styles.settingText, { color: Colors.error, fontWeight: 'bold' }]}>
+            <Text style={[styles.settingText, { color: colors.error, fontWeight: 'bold' }]}>
               Clear All Data
             </Text>
           </TouchableOpacity>
         </View>
 
         {/* About Group */}
-        <Text style={styles.settingsGroupHeader}>About</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card]}>
+        <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>About</Text>
+        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
           <View style={styles.settingItem}>
-            <Text style={styles.settingText}>App Version</Text>
-            <Text style={styles.settingValue}>1.0.0 (Beta-Offline)</Text>
+            <Text style={[styles.settingText, themed.settingText]}>App Version</Text>
+            <Text style={[styles.settingValue, themed.settingValue]}>1.0.0 (Beta-Offline)</Text>
           </View>
-          <View style={styles.settingDivider} />
-          <View style={styles.settingItem}>
-            <Text style={styles.settingText}>Privacy Policy</Text>
-            <Text style={styles.linkArrow}>➔</Text>
-          </View>
+          <View style={[styles.settingDivider, themed.settingDivider]} />
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => setPrivacyModalVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.settingText, themed.settingText]}>Privacy Policy</Text>
+            <Text style={[styles.linkArrow, themed.linkArrow]}>➔</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -256,14 +312,120 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       </TouchableOpacity>
       
       <View style={{ height: 120 }} />
+
+      {/* Privacy Policy Modal [Fix #1] */}
+      <Modal
+        visible={privacyModalVisible}
+        animationType="slide"
+        onRequestClose={() => setPrivacyModalVisible(false)}
+      >
+        <SafeAreaView style={[styles.privacyContainer, themed.privacyContainer]}>
+          <View style={[styles.privacyHeader, themed.privacyHeader]}>
+            <Text style={[styles.privacyHeaderTitle, themed.privacyHeaderTitle]}>Privacy Policy</Text>
+            <TouchableOpacity onPress={() => setPrivacyModalVisible(false)} style={styles.privacyCloseBtn}>
+              <Text style={styles.privacyCloseBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.privacyContent} contentContainerStyle={styles.privacyContentContainer}>
+            <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>1. Data Collection</Text>
+            <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
+              LAFINA stores all scheduling data, notes, and tasks locally on your device using SQLite. No data is transmitted to external servers without your explicit action.
+            </Text>
+
+            <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>2. Voice Processing</Text>
+            <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
+              Voice recordings are processed entirely on-device using offline AI models. Audio is never uploaded, shared, or stored beyond the current session.
+            </Text>
+
+            <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>3. Account Information</Text>
+            <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
+              Your email and display name are stored locally for profile display and optional cloud sync.
+            </Text>
+
+            <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>4. No Third-Party Sharing</Text>
+            <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
+              LAFINA does not share, sell, or transmit your personal data to third parties.
+            </Text>
+
+            <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>5. Data Deletion</Text>
+            <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
+              You can delete all personal data at any time using the "Clear All Data" option in Profile Settings.
+            </Text>
+
+            <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>6. Contact</Text>
+            <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
+              For privacy concerns, contact the LAFINA development team at USTP Cagayan de Oro.
+            </Text>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </ScrollView>
   );
 };
 
+function useThemedStyles() {
+  const { colors } = useTheme();
+  return {
+    container: {
+      backgroundColor: colors.background,
+    },
+    headerTitle: {
+      color: colors.textPrimary,
+    },
+    userName: {
+      color: colors.textPrimary,
+    },
+    userEmail: {
+      color: colors.textSecondary,
+    },
+    statCard: {
+      backgroundColor: colors.cardBg,
+    },
+    statVal: {
+      color: colors.textPrimary,
+    },
+    statLabel: {
+      color: colors.textSecondary,
+    },
+    settingsGroupHeader: {
+      color: colors.textSecondary,
+    },
+    settingsGroupCard: {
+      backgroundColor: colors.cardBg,
+    },
+    settingText: {
+      color: colors.textPrimary,
+    },
+    settingValue: {
+      color: colors.textSecondary,
+    },
+    settingDivider: {
+      backgroundColor: colors.divider,
+    },
+    linkArrow: {
+      color: colors.textMuted,
+    },
+    privacyContainer: {
+      backgroundColor: colors.background,
+    },
+    privacyHeader: {
+      borderBottomColor: colors.border,
+    },
+    privacyHeaderTitle: {
+      color: colors.textPrimary,
+    },
+    privacySectionTitle: {
+      color: colors.textPrimary,
+    },
+    privacyBodyText: {
+      color: colors.textSecondary,
+    },
+  };
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF9F6',
   },
   content: {
     padding: 16,
@@ -271,7 +433,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: Fonts.heading,
     fontSize: 24,
-    color: Colors.darkBg,
     fontWeight: 'bold',
     marginBottom: 20,
   },
@@ -298,12 +459,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: Fonts.heading,
     fontWeight: 'bold',
-    color: Colors.textDark,
   },
   userEmail: {
     fontSize: 12,
     fontFamily: Fonts.body,
-    color: '#666',
     marginTop: 4,
   },
   editLink: {
@@ -324,7 +483,6 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
     borderRadius: Layout.borderRadiusCard,
     paddingVertical: 12,
     alignItems: 'center',
@@ -333,11 +491,9 @@ const styles = StyleSheet.create({
   statVal: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: Colors.textDark,
   },
   statLabel: {
     fontSize: 10,
-    color: '#777',
     marginTop: 4,
     fontFamily: Fonts.body,
   },
@@ -349,13 +505,11 @@ const styles = StyleSheet.create({
   settingsGroupHeader: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#888',
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   settingsGroupCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: Layout.borderRadiusCard,
     paddingHorizontal: 16,
     marginBottom: 16,
@@ -371,20 +525,16 @@ const styles = StyleSheet.create({
   },
   settingDivider: {
     height: 1,
-    backgroundColor: '#F0F0F0',
   },
   settingText: {
     fontSize: 14,
     fontFamily: Fonts.body,
-    color: Colors.textDark,
   },
   settingValue: {
     fontSize: 12,
-    color: '#777',
   },
   linkArrow: {
     fontSize: 12,
-    color: '#CCC',
   },
   signOutBtn: {
     width: '100%',
@@ -402,4 +552,49 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: Fonts.body,
   },
+  privacyContainer: {
+    flex: 1,
+  },
+  privacyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  privacyHeaderTitle: {
+    fontFamily: Fonts.heading,
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  privacyCloseBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  privacyCloseBtnText: {
+    fontFamily: Fonts.body,
+    color: Colors.red,
+    fontWeight: 'bold',
+  },
+  privacyContent: {
+    flex: 1,
+    padding: 16,
+  },
+  privacyContentContainer: {
+    paddingBottom: 32,
+  },
+  privacySectionTitle: {
+    fontFamily: Fonts.heading,
+    fontSize: 15,
+    fontWeight: 'bold',
+    marginTop: 16,
+    marginBottom: 6,
+  },
+  privacyBodyText: {
+    fontFamily: Fonts.body,
+    fontSize: 13,
+    lineHeight: 18,
+  },
 });
+

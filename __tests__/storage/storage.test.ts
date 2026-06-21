@@ -4,6 +4,8 @@ import { timeBlocksStore } from '../../src/storage/timeBlocksStore';
 import { tasksStore } from '../../src/storage/tasksStore';
 import { notesStore } from '../../src/storage/notesStore';
 import { userStore } from '../../src/storage/userStore';
+import { behaviorStore } from '../../src/storage/behaviorStore';
+import { hashPassword, verifyPassword } from '../../src/storage/authUtils';
 
 describe('Storage Layer', () => {
   beforeAll(async () => {
@@ -279,24 +281,139 @@ describe('Storage Layer', () => {
     });
   });
 
+  describe('authUtils', () => {
+    it('should hash a password and verify it correctly', async () => {
+      const password = 'mySecretPassword123';
+      const hash = await hashPassword(password);
+      
+      expect(hash).toBeDefined();
+      expect(hash.length).toBe(64); // SHA-256 is 64 hex characters
+      
+      const isMatch = await verifyPassword(password, hash);
+      expect(isMatch).toBe(true);
+      
+      const isNotMatch = await verifyPassword('wrongpassword', hash);
+      expect(isNotMatch).toBe(false);
+    });
+  });
+
   describe('userStore', () => {
     it('defaults to 12-hour format and can update preference', () => {
-      // Create user
       db.executeSync(
         `INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, ?, ?)`,
         ['pref_user', 'prefuser', new Date().toISOString(), new Date().toISOString()]
       );
 
-      // Default should be false
       expect(userStore.get24HourFormat('pref_user')).toBe(false);
 
-      // Set to true
       userStore.set24HourFormat('pref_user', true);
       expect(userStore.get24HourFormat('pref_user')).toBe(true);
 
-      // Set to false
       userStore.set24HourFormat('pref_user', false);
       expect(userStore.get24HourFormat('pref_user')).toBe(false);
+    });
+
+    it('can register a user and handle duplicate emails', async () => {
+      const userId = await userStore.register('Test User', 'test@ustp.edu.ph', 'password123');
+      expect(userId).toBeDefined();
+      
+      const user = userStore.getUserById(userId);
+      expect(user).not.toBeNull();
+      expect(user?.username).toBe('Test User');
+      expect(user?.email).toBe('test@ustp.edu.ph');
+      expect(user?.isNewUser).toBe(true);
+
+      // Registering same email should fail
+      await expect(
+        userStore.register('Another User', 'test@ustp.edu.ph', 'password456')
+      ).rejects.toThrow('Email already registered');
+    });
+
+    it('can authenticate a user on login', async () => {
+      await userStore.register('Login User', 'login@ustp.edu.ph', 'securepass');
+      
+      // Success case
+      const user = await userStore.login('login@ustp.edu.ph', 'securepass');
+      expect(user).not.toBeNull();
+      expect(user?.username).toBe('Login User');
+      
+      // Wrong password
+      const wrongPass = await userStore.login('login@ustp.edu.ph', 'wrongpass');
+      expect(wrongPass).toBeNull();
+      
+      // Wrong email
+      const wrongEmail = await userStore.login('nonexistent@ustp.edu.ph', 'securepass');
+      expect(wrongEmail).toBeNull();
+    });
+
+    it('can manage user sessions', async () => {
+      const userId = await userStore.register('Session User', 'session@ustp.edu.ph', 'password');
+      
+      // No active session initially
+      expect(userStore.getCurrentUser()).toBeNull();
+      
+      // Set session
+      userStore.setCurrentUser(userId);
+      const current = userStore.getCurrentUser();
+      expect(current).not.toBeNull();
+      expect(current?.id).toBe(userId);
+      
+      // Logout
+      userStore.logout();
+      expect(userStore.getCurrentUser()).toBeNull();
+    });
+
+    it('can manage onboarding status', async () => {
+      const userId = await userStore.register('Onboard User', 'onboard@ustp.edu.ph', 'password');
+      expect(userStore.isOnboardingComplete(userId)).toBe(false);
+      
+      userStore.markOnboardingComplete(userId);
+      expect(userStore.isOnboardingComplete(userId)).toBe(true);
+    });
+  });
+
+  describe('behaviorStore', () => {
+    it('can log and retrieve behavioral events', () => {
+      const userId = 'user_behavior_test';
+      db.executeSync(
+        `INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+        [userId, 'behaviorUser', new Date().toISOString(), new Date().toISOString()]
+      );
+
+      behaviorStore.logBehaviorEvent(userId, 'onboarding_response', 'typical_wake_time', '07:00');
+      behaviorStore.logBehaviorEvent(userId, 'onboarding_response', 'busiest_day', 'Monday');
+      behaviorStore.logBehaviorEvent(userId, 'task_event', 'snooze_reminder', 'rem1');
+
+      // Fetch all onboarding responses
+      const onboardingLogs = behaviorStore.getBehaviorLogs(userId, 'onboarding_response');
+      expect(onboardingLogs.length).toBe(2);
+      expect(onboardingLogs.find(l => l.eventKey === 'typical_wake_time')?.eventValue).toBe('07:00');
+      expect(onboardingLogs.find(l => l.eventKey === 'busiest_day')?.eventValue).toBe('Monday');
+
+      // Fetch all logs
+      const allLogs = behaviorStore.getBehaviorLogs(userId);
+      expect(allLogs.length).toBe(3);
+    });
+
+    it('can save and retrieve ML feature snapshots', async () => {
+      const userId = 'user_feature_test';
+      db.executeSync(
+        `INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+        [userId, 'featureUser', new Date().toISOString(), new Date().toISOString()]
+      );
+
+      const vector1 = JSON.stringify({ hours: 4, pref: 'morning' });
+      const vector2 = JSON.stringify({ hours: 6, pref: 'evening' });
+
+      behaviorStore.saveFeatureSnapshot(userId, 'schedule_preference', vector1);
+      
+      // Fast forward time slightly to test ordering
+      await new Promise<void>(resolve => setTimeout(resolve, 50));
+      behaviorStore.saveFeatureSnapshot(userId, 'schedule_preference', vector2);
+
+      const latest = behaviorStore.getLatestFeatureSnapshot(userId, 'schedule_preference');
+      expect(latest).not.toBeNull();
+      expect(latest?.featureVector).toBe(vector2);
     });
   });
 });
