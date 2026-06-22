@@ -108,10 +108,15 @@ const renderMarkdown = (text: string): React.ReactNode => {
 
 /** Smooth spring-like LayoutAnimation preset for swap transitions */
 const swapAnimation = {
-  duration: 200,
+  duration: 300,
+  create: {
+    type: LayoutAnimation.Types.spring,
+    property: LayoutAnimation.Properties.scaleXY,
+    springDamping: 0.7,
+  },
   update: {
-    type: LayoutAnimation.Types.easeInEaseOut,
-    property: LayoutAnimation.Properties.opacity,
+    type: LayoutAnimation.Types.spring,
+    springDamping: 0.7,
   },
 };
 
@@ -184,9 +189,10 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
 
   const activeDragIdRef = useRef<string | null>(null);
 
-  // Track the drag threshold for swaps
-  const lastSwapDyRef = useRef(0);
-  const lastSwapDxRef = useRef(0);
+  const cardLayoutsRef = useRef<{ [id: string]: { x: number; y: number; width: number; height: number } }>({});
+  const dragStartLayoutRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+
 
   // AI loading simulations
   const [aiLoading, setAiLoading] = useState(false);
@@ -204,98 +210,132 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
 
   // ── Drag lifecycle handlers ──
 
+  const onCardLayout = useCallback((id: string, layout: { x: number; y: number; width: number; height: number }) => {
+    cardLayoutsRef.current[id] = layout;
+  }, []);
+
   /**
    * Called when a drag gesture begins on a card.
    * Sets up refs and state for the drag session.
    */
   const handleDragStart = useCallback((noteId: string, _index: number) => {
     activeDragIdRef.current = noteId;
-    lastSwapDyRef.current = 0;
-    lastSwapDxRef.current = 0;
+    dragOffsetRef.current = { x: 0, y: 0 };
+
+    const layout = cardLayoutsRef.current[noteId];
+    if (layout) {
+      dragStartLayoutRef.current = { ...layout };
+    } else {
+      dragStartLayoutRef.current = null;
+    }
+
     setActiveDragId(noteId);
     setIsDragging(true);
   }, []);
 
   /**
-   * Listener attached to dragY to perform live swap detection.
-   * This runs on every Animated frame, reads refs (no setState during drag).
+   * Called on every PanResponder move event to perform live hover-based swap detection.
    */
-  useEffect(() => {
-    const currentDragY = dragYRef.current;
-    const listenerId = currentDragY.addListener(({ value: dy }) => {
-      const draggedId = activeDragIdRef.current;
-      if (!draggedId) return;
+  const handleDragMove = useCallback((dx: number, dy: number) => {
+    const draggedId = activeDragIdRef.current;
+    if (!draggedId) return;
 
-      const currentNotes = notesRef.current;
-      const curIdx = currentNotes.findIndex(n => n.id === draggedId);
-      if (curIdx === -1) return;
+    const initialLayout = dragStartLayoutRef.current;
+    if (!initialLayout) return;
 
-      let targetIdx = curIdx;
-      const isGrid = isGridView; // captured from the closure
+    // Calculate current coordinates of the card center
+    const currentX = initialLayout.x + dx + dragOffsetRef.current.x;
+    const currentY = initialLayout.y + dy + dragOffsetRef.current.y;
 
-      if (isGrid) {
-        const HEIGHT_STEP = 110;
-        const WIDTH_STEP = 150;
-        // Read the current dx value synchronously
-        const dx = (dragXRef.current as any)._value || 0;
+    // Update the animated values for rendering
+    dragXRef.current.setValue(dx + dragOffsetRef.current.x);
+    dragYRef.current.setValue(dy + dragOffsetRef.current.y);
 
-        const rowDelta = Math.round((dy - lastSwapDyRef.current) / HEIGHT_STEP);
-        const colDelta = Math.round((dx - lastSwapDxRef.current) / WIDTH_STEP);
+    const centerX = currentX + initialLayout.width / 2;
+    const centerY = currentY + initialLayout.height / 2;
 
-        if (rowDelta === 0 && colDelta === 0) return;
+    const currentNotes = notesRef.current;
+    const curIdx = currentNotes.findIndex(n => n.id === draggedId);
+    if (curIdx === -1) return;
 
-        const curCol = curIdx % 2;
-        const curRow = Math.floor(curIdx / 2);
-        let newCol = curCol + colDelta;
-        let newRow = curRow + rowDelta;
+    const draggedNote = currentNotes[curIdx];
+    if (!draggedNote) return;
 
-        // Clamp
-        if (newCol < 0) newCol = 0;
-        if (newCol > 1) newCol = 1;
-        const maxRow = Math.floor((currentNotes.length - 1) / 2);
-        if (newRow < 0) newRow = 0;
-        if (newRow > maxRow) newRow = maxRow;
+    let targetIdx = -1;
+    let minDistance = Infinity;
 
-        targetIdx = newRow * 2 + newCol;
-      } else {
-        const HEIGHT_STEP = 90;
-        const rowDelta = Math.round((dy - lastSwapDyRef.current) / HEIGHT_STEP);
-        if (rowDelta === 0) return;
-        targetIdx = curIdx + rowDelta;
+    // The current active slot's center is the center of initialLayout (shifted by dragOffset)
+    const baseCenterX = initialLayout.x + dragOffsetRef.current.x + initialLayout.width / 2;
+    const baseCenterY = initialLayout.y + dragOffsetRef.current.y + initialLayout.height / 2;
+    const distToSelfSqr = Math.pow(centerX - baseCenterX, 2) + Math.pow(centerY - baseCenterY, 2);
+
+    for (let i = 0; i < currentNotes.length; i++) {
+      const note = currentNotes[i];
+      if (note.id === draggedId || note.isPinned) continue;
+
+      const layout = cardLayoutsRef.current[note.id];
+      if (layout) {
+        const layoutCenterX = layout.x + layout.width / 2;
+        const layoutCenterY = layout.y + layout.height / 2;
+
+        const distToTargetSqr = Math.pow(centerX - layoutCenterX, 2) + Math.pow(centerY - layoutCenterY, 2);
+
+        if (distToTargetSqr < distToSelfSqr && distToTargetSqr < minDistance) {
+          minDistance = distToTargetSqr;
+          targetIdx = i;
+        }
       }
+    }
 
-      // Clamp bounds
-      if (targetIdx < 0) targetIdx = 0;
-      if (targetIdx >= currentNotes.length) targetIdx = currentNotes.length - 1;
-      if (targetIdx === curIdx) return;
+    if (targetIdx === -1 || targetIdx === curIdx) return;
 
-      const draggedNote = currentNotes[curIdx];
-      const targetNote = currentNotes[targetIdx];
+    const targetNote = currentNotes[targetIdx];
+    const targetLayout = cardLayoutsRef.current[targetNote.id];
+    if (!targetLayout) return;
 
-      // Skip if either is pinned
-      if (!draggedNote || !targetNote || draggedNote.isPinned || targetNote.isPinned) return;
+    // Perform the reorder via LayoutAnimation for a smooth transition
+    LayoutAnimation.configureNext(swapAnimation);
 
-      // Perform the swap via LayoutAnimation for a smooth transition
-      LayoutAnimation.configureNext(swapAnimation);
+    const newNotes = [...currentNotes];
+    newNotes.splice(curIdx, 1);
+    newNotes.splice(targetIdx, 0, draggedNote);
 
-      const newNotes = [...currentNotes];
-      newNotes[curIdx] = targetNote;
-      newNotes[targetIdx] = draggedNote;
-      notesRef.current = newNotes;
-      setNotes(newNotes);
-
-      // Update swap reference point
-      if (isGrid) {
-        const dx = (dragXRef.current as any)._value || 0;
-        lastSwapDxRef.current = dx;
+    // Synchronously shift layouts in cardLayoutsRef to match the reorder
+    const oldLayoutsMap = { ...cardLayoutsRef.current };
+    for (let i = 0; i < currentNotes.length; i++) {
+      const oldNote = currentNotes[i];
+      const newIndex = newNotes.findIndex(n => n.id === oldNote.id);
+      if (newIndex !== -1) {
+        const correspondingOldNoteAtNewIndex = currentNotes[newIndex];
+        cardLayoutsRef.current[oldNote.id] = oldLayoutsMap[correspondingOldNoteAtNewIndex.id];
       }
-      lastSwapDyRef.current = dy;
-    });
+    }
 
-    return () => {
-      currentDragY.removeListener(listenerId);
+    notesRef.current = newNotes;
+    setNotes(newNotes);
+
+    // Update offsets to compensate for base position change
+    const oldBaseX = initialLayout.x + dragOffsetRef.current.x;
+    const oldBaseY = initialLayout.y + dragOffsetRef.current.y;
+
+    const newBaseX = targetLayout.x;
+    const newBaseY = targetLayout.y;
+
+    dragOffsetRef.current.x += oldBaseX - newBaseX;
+    dragOffsetRef.current.y += oldBaseY - newBaseY;
+
+    // Adjust the animated values immediately to prevent jumps
+    dragXRef.current.setValue(dx + dragOffsetRef.current.x);
+    dragYRef.current.setValue(dy + dragOffsetRef.current.y);
+
+    // Update initial layout reference to the new base position
+    dragStartLayoutRef.current = {
+      x: targetLayout.x - dragOffsetRef.current.x,
+      y: targetLayout.y - dragOffsetRef.current.y,
+      width: initialLayout.width,
+      height: initialLayout.height,
     };
-  }, [isGridView]);
+  }, []);
 
   /**
    * Called when the drag gesture ends. Saves the new order to SQLite
@@ -315,8 +355,8 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
     activeDragIdRef.current = null;
     setActiveDragId(null);
     setIsDragging(false);
-    lastSwapDyRef.current = 0;
-    lastSwapDxRef.current = 0;
+    dragOffsetRef.current = { x: 0, y: 0 };
+    dragStartLayoutRef.current = null;
 
     // Bump generation to ensure FlatList picks up the final order
     setRenderGen(g => g + 1);
@@ -569,6 +609,7 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
 
     return (
       <NoteCardWithRelease
+        key={item.id}
         item={item}
         index={index}
         isGridView={isGridView}
@@ -578,10 +619,12 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
         dragY={dragYRef.current}
         onPress={handleNoteCardPress}
         onDragStart={handleDragStart}
+        onDragMove={handleDragMove}
         onDragRelease={handleDragRelease}
+        onLayout={onCardLayout}
       />
     );
-  }, [activeDragId, isGridView, selectedFilter, searchQuery, handleNoteCardPress, handleDragStart, handleDragRelease]);
+  }, [activeDragId, isGridView, selectedFilter, searchQuery, handleNoteCardPress, handleDragStart, handleDragMove, handleDragRelease, onCardLayout]);
 
   return (
     <View style={[styles.container, themed.container]}>
@@ -644,14 +687,21 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
           <Text style={[styles.emptyTitle, themed.emptyTitle]}>No notes found</Text>
           <Text style={[styles.emptySubtitle, themed.emptySubtitle]}>Tap the + button below to write a new note, or use the voice assistant.</Text>
         </View>
+      ) : isGridView ? (
+        <ScrollView
+          style={styles.notesListScroll}
+          contentContainerStyle={[styles.notesList, styles.gridContainer]}
+          scrollEnabled={!isDragging}
+        >
+          {filtered.map((item, index) => renderItem({ item, index }))}
+        </ScrollView>
       ) : (
         <FlatList
-          key={isGridView ? 'grid' : 'list'}
+          key="list"
           data={filtered}
-          numColumns={isGridView ? 2 : 1}
+          numColumns={1}
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.notesList}
-          columnWrapperStyle={isGridView ? styles.gridRow : undefined}
           scrollEnabled={!isDragging}
           extraData={renderGen}
           renderItem={renderItem}
@@ -813,7 +863,9 @@ interface NoteCardWithReleaseProps {
   dragY: Animated.Value;
   onPress: (note: Note) => void;
   onDragStart: (noteId: string, index: number) => void;
+  onDragMove: (dx: number, dy: number) => void;
   onDragRelease: () => void;
+  onLayout: (id: string, layout: { x: number; y: number; width: number; height: number }) => void;
 }
 
 const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
@@ -826,7 +878,9 @@ const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
   dragY,
   onPress,
   onDragStart,
+  onDragMove,
   onDragRelease,
+  onLayout,
 }) => {
   const panRef = useRef<ReturnType<typeof PanResponder.create> | null>(null);
 
@@ -835,6 +889,9 @@ const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
 
   const onDragStartRef = useRef(onDragStart);
   onDragStartRef.current = onDragStart;
+
+  const onDragMoveRef = useRef(onDragMove);
+  onDragMoveRef.current = onDragMove;
 
   const onDragReleaseRef = useRef(onDragRelease);
   onDragReleaseRef.current = onDragRelease;
@@ -852,10 +909,9 @@ const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
         dragY.setValue(0);
         onDragStartRef.current(currentItem.id, -1);
       },
-      onPanResponderMove: Animated.event(
-        [null, { dx: dragX, dy: dragY }],
-        { useNativeDriver: false }
-      ),
+      onPanResponderMove: (_, gs) => {
+        onDragMoveRef.current(gs.dx, gs.dy);
+      },
       onPanResponderRelease: () => {
         // Animate back to origin with a spring, then notify parent
         Animated.parallel([
@@ -890,6 +946,7 @@ const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
         transform: [
           { translateX: dragX },
           { translateY: dragY },
+          { scale: 1.04 },
         ],
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 8 },
@@ -903,6 +960,10 @@ const NoteCardWithRelease = React.memo<NoteCardWithReleaseProps>(({
 
   return (
     <Animated.View
+      onLayout={(e) => {
+        const { x, y, width, height } = e.nativeEvent.layout;
+        onLayout(item.id, { x, y, width, height });
+      }}
       style={[
         isGridView ? styles.gridCard : styles.listCard,
         isGridView ? themed.gridCard : themed.listCard,
@@ -1109,6 +1170,14 @@ const styles = StyleSheet.create({
   // Notes lists
   notesList: {
     paddingBottom: 120,
+  },
+  notesListScroll: {
+    flex: 1,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
   gridRow: {
     justifyContent: 'space-between',
