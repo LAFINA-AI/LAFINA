@@ -78,6 +78,9 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const [weekDays, setWeekDays] = useState<Date[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [allEvents, setAllEvents] = useState<Event[]>([]);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   
   // TimeBlock Modal state
   const [modalVisible, setModalVisible] = useState(false);
@@ -111,18 +114,24 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   useEffect(() => {
     loadBlocks();
     loadScheduleData();
-    loadSettings();
     generateWeekDays();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, selectedDate, refreshTrigger]);
 
+  // Separate effect for user preferences to ensure they always reload
+  // on mount and when refreshTrigger changes (e.g. toggling 24h in Profile)
+  useEffect(() => {
+    loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, refreshTrigger]);
+
   const generateWeekDays = () => {
     const days: Date[] = [];
-    const today = new Date();
-    // Get past 3 days and next 3 days
+    const base = new Date(selectedDate);
+    // Get past 3 days and next 3 days around selectedDate
     for (let i = -3; i <= 3; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
+      const d = new Date(base);
+      d.setDate(base.getDate() + i);
       days.push(d);
     }
     setWeekDays(days);
@@ -141,16 +150,41 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   };
 
   const loadScheduleData = () => {
-    const allTasks = tasksStore.getAllTasks(userId);
-    const allEvents = tasksStore.getAllEvents(userId);
+    const tasksData = tasksStore.getAllTasks(userId);
+    const eventsData = tasksStore.getAllEvents(userId);
+    setAllTasks(tasksData);
+    setAllEvents(eventsData);
+
     const dateStr = selectedDate.toISOString().split('T')[0];
 
     // Filter for the selected day
-    const dayTasks = allTasks.filter((t) => t.dueDate === dateStr);
-    const dayEvents = allEvents.filter((e) => e.date === dateStr);
+    const dayTasks = tasksData.filter((t) => t.dueDate === dateStr);
+    const dayEvents = eventsData.filter((e) => e.date === dateStr);
 
     setTasks(dayTasks);
     setEvents(dayEvents);
+  };
+
+  const navigateDay = (direction: 'prev' | 'next') => {
+    const newDate = new Date(selectedDate);
+    if (direction === 'prev') {
+      newDate.setDate(newDate.getDate() - 1);
+    } else {
+      newDate.setDate(newDate.getDate() + 1);
+    }
+    setSelectedDate(newDate);
+    setCurrentDate(newDate);
+  };
+
+  const navigateWeek = (direction: 'prev' | 'next') => {
+    const newDate = new Date(selectedDate);
+    if (direction === 'prev') {
+      newDate.setDate(newDate.getDate() - 7);
+    } else {
+      newDate.setDate(newDate.getDate() + 7);
+    }
+    setSelectedDate(newDate);
+    setCurrentDate(newDate);
   };
 
   const navigateMonth = (direction: 'prev' | 'next') => {
@@ -161,6 +195,53 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       newDate.setMonth(newDate.getMonth() + 1);
     }
     setCurrentDate(newDate);
+  };
+
+  const handlePrevPress = () => {
+    if (viewMode === 'day') {
+      navigateDay('prev');
+    } else if (viewMode === 'week') {
+      navigateWeek('prev');
+    } else {
+      navigateMonth('prev');
+    }
+  };
+
+  const handleNextPress = () => {
+    if (viewMode === 'day') {
+      navigateDay('next');
+    } else if (viewMode === 'week') {
+      navigateWeek('next');
+    } else {
+      navigateMonth('next');
+    }
+  };
+
+  const handleGoToToday = () => {
+    const today = new Date();
+    setSelectedDate(today);
+    setCurrentDate(today);
+  };
+
+  const getHeaderTitle = () => {
+    if (viewMode === 'day') {
+      return selectedDate.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    }
+    if (viewMode === 'week') {
+      if (weekDays.length === 0) return '';
+      const start = weekDays[0];
+      const end = weekDays[weekDays.length - 1];
+      if (start.getFullYear() !== end.getFullYear()) {
+        return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+      }
+      return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${start.getFullYear()}`;
+    }
+    return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
   const getDaysInMonth = (date: Date) => {
@@ -399,9 +480,9 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   };
 
   const getOverdueTasks = () => {
-    const allTasks = tasksStore.getAllTasks(userId);
+    const tasksData = tasksStore.getAllTasks(userId);
     const todayStr = new Date().toISOString().split('T')[0];
-    return allTasks.filter((t) => t.dueDate && t.dueDate < todayStr && !t.isCompleted);
+    return tasksData.filter((t) => t.dueDate && t.dueDate < todayStr && !t.isCompleted);
   };
 
   const getChronologicalFeed = () => {
@@ -629,13 +710,47 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       const isToday = isCurrentMonth && today.getDate() === day;
       const cellDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       
-      // Check if day has time blocks
-      const hasBlocks = blocks.some((b) => b.date === cellDateStr);
+      // Get all blocks, tasks, events for this day
+      const cellBlocks = blocks.filter((b) => b.date === cellDateStr);
+      const cellTasks = allTasks.filter((t) => t.dueDate === cellDateStr);
+      const cellEvents = allEvents.filter((e) => e.date === cellDateStr);
+
+      const combined: { title: string; time: string; color: string }[] = [];
+      
+      cellBlocks.forEach((b) => {
+        combined.push({
+          title: b.title,
+          time: b.startTime,
+          color: b.color,
+        });
+      });
+
+      cellTasks.forEach((t) => {
+        combined.push({
+          title: t.title,
+          time: t.dueTime || '00:00',
+          color: getCategoryColor(t.category),
+        });
+      });
+
+      cellEvents.forEach((e) => {
+        combined.push({
+          title: e.title,
+          time: e.startTime,
+          color: Colors.blue,
+        });
+      });
+
+      // Sort by time
+      combined.sort((a, b) => a.time.localeCompare(b.time));
+
+      const displayItems = combined.slice(0, 3);
+      const remainingCount = combined.length - 3;
 
       cells.push(
         <TouchableOpacity
           key={`day-${day}`}
-          style={styles.calendarCell}
+          style={[styles.calendarCell, themed.calendarCell]}
           onPress={() => handleDayTap(day)}
         >
           <View style={[styles.dayContainer, themed.dayContainer, isToday && styles.todayContainer]}>
@@ -643,11 +758,20 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
               {day}
             </Text>
           </View>
-          {hasBlocks && (
-            <View style={styles.dotContainer}>
-              <View style={styles.blockDot} />
-            </View>
-          )}
+          <View style={styles.monthItemsWrapper}>
+            {displayItems.map((item, idx) => (
+              <View key={idx} style={[styles.monthItemPreview, themed.monthItemPreview, { borderLeftColor: item.color }]}>
+                <Text style={[styles.monthItemText, themed.monthItemText]} numberOfLines={1}>
+                  {item.title}
+                </Text>
+              </View>
+            ))}
+            {remainingCount > 0 && (
+              <Text style={[styles.monthItemMore, themed.monthItemMore]}>
+                +{remainingCount} more
+              </Text>
+            )}
+          </View>
         </TouchableOpacity>
       );
     }
@@ -675,32 +799,128 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const renderHourlySchedule = (targetDate: Date) => {
     const dateStr = targetDate.toISOString().split('T')[0];
     const dayBlocks = blocks.filter((b) => b.date === dateStr);
-    const hours = Array.from({ length: 13 }).map((_, i) => i + 8); // 8:00 to 20:00
+    
+    // Get tasks and events for the day
+    const dayTasks = allTasks.filter((t) => t.dueDate === dateStr);
+    const dayEvents = allEvents.filter((e) => e.date === dateStr);
+
+    const allDayTasks = dayTasks.filter((t) => !t.dueTime);
+    const timedTasks = dayTasks.filter((t) => t.dueTime);
+
+    // 24 hours of the day
+    const hours = Array.from({ length: 24 }).map((_, i) => i);
 
     return (
       <ScrollView style={[styles.hourlyContainer, themed.hourlyContainer]}>
+        {allDayTasks.length > 0 && (
+          <View style={[styles.allDayContainer, themed.allDayContainer]}>
+            <Text style={[styles.allDayTitle, themed.allDayTitle]}>All Day Tasks</Text>
+            {allDayTasks.map((t) => (
+              <View key={t.id} style={[styles.card, themed.card, Shadows.card]}>
+                <View style={[styles.categoryBar, { backgroundColor: getCategoryColor(t.category) }]} />
+                <TouchableOpacity
+                  style={styles.checkboxContainer}
+                  onPress={() => toggleTaskCompletion(t)}
+                >
+                  <View style={[styles.checkbox, themed.checkbox, t.isCompleted && styles.checkboxChecked, t.isCompleted && themed.checkboxChecked]}>
+                    {t.isCompleted && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.cardContent}
+                  onPress={() => handleEditScheduleItemPress(t, 'task')}
+                >
+                  <Text style={[styles.cardTitle, themed.cardTitle, t.isCompleted && styles.cardTitleCompleted]}>
+                    {t.title}
+                  </Text>
+                  <Text style={[styles.cardTime, themed.cardTime]}>
+                    All Day • {t.priority} Priority
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
         {hours.map((hour) => {
-          // Find if any block starts at this hour or overlaps
-          const activeBlock = dayBlocks.find((b) => b.startTime.startsWith(String(hour).padStart(2, '0')));
+          const hourStr = String(hour).padStart(2, '0');
+          
+          // Match blocks, tasks, and events starting in this hour
+          const slotBlocks = dayBlocks.filter((b) => b.startTime.startsWith(hourStr));
+          const slotTasks = timedTasks.filter((t) => t.dueTime && t.dueTime.startsWith(hourStr));
+          const slotEvents = dayEvents.filter((e) => e.startTime.startsWith(hourStr));
+
+          const hasItems = slotBlocks.length > 0 || slotTasks.length > 0 || slotEvents.length > 0;
 
           return (
             <View key={hour} style={[styles.hourRow, themed.hourRow]}>
               <Text style={[styles.hourLabel, themed.hourLabel]}>
                 {timeFormat24h 
-                  ? `${hour.toString().padStart(2, '0')}:00` 
-                  : `${hour === 12 ? 12 : hour % 12} ${hour >= 12 ? 'PM' : 'AM'}`}
+                  ? `${hourStr}:00` 
+                  : `${hour === 0 ? 12 : hour > 12 ? hour - 12 : hour} ${hour >= 12 ? 'PM' : 'AM'}`}
               </Text>
               <View style={[styles.hourTimelineCell, themed.hourTimelineCell]}>
-                {activeBlock ? (
-                  <TouchableOpacity
-                    style={[styles.hourlyBlockCard, themed.hourlyBlockCard, { borderLeftColor: activeBlock.color }]}
-                    onPress={() => handleEditBlockPress(activeBlock)}
-                  >
-                    <Text style={[styles.hourlyBlockTitle, themed.hourlyBlockTitle]}>{activeBlock.title}</Text>
-                    <Text style={[styles.hourlyBlockTime, themed.hourlyBlockTime]}>
-                      {formatTimeForDisplay(activeBlock.startTime, timeFormat24h)} - {formatTimeForDisplay(activeBlock.endTime, timeFormat24h)} • {activeBlock.category}
-                    </Text>
-                  </TouchableOpacity>
+                {hasItems ? (
+                  <View style={styles.hourlyItemsContainer}>
+                    {/* Render blocks */}
+                    {slotBlocks.map((b) => (
+                      <TouchableOpacity
+                        key={b.id}
+                        style={[styles.hourlyBlockCard, themed.hourlyBlockCard, { borderLeftColor: b.color }]}
+                        onPress={() => handleEditBlockPress(b)}
+                      >
+                        <Text style={[styles.hourlyBlockTitle, themed.hourlyBlockTitle]}>{b.title}</Text>
+                        <Text style={[styles.hourlyBlockTime, themed.hourlyBlockTime]}>
+                          {formatTimeForDisplay(b.startTime, timeFormat24h)} - {formatTimeForDisplay(b.endTime, timeFormat24h)} • {b.category}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+
+                    {/* Render tasks */}
+                    {slotTasks.map((t) => (
+                      <View key={t.id} style={[styles.card, themed.card, Shadows.card, styles.timelineCard]}>
+                        <View style={[styles.categoryBar, { backgroundColor: getCategoryColor(t.category) }]} />
+                        <TouchableOpacity
+                          style={styles.checkboxContainer}
+                          onPress={() => toggleTaskCompletion(t)}
+                        >
+                          <View style={[styles.checkbox, themed.checkbox, t.isCompleted && styles.checkboxChecked, t.isCompleted && themed.checkboxChecked]}>
+                            {t.isCompleted && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+                          </View>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.cardContent}
+                          onPress={() => handleEditScheduleItemPress(t, 'task')}
+                        >
+                          <Text style={[styles.cardTitle, themed.cardTitle, t.isCompleted && styles.cardTitleCompleted]}>
+                            {t.title}
+                          </Text>
+                          <Text style={[styles.cardTime, themed.cardTime]}>
+                            Due at {formatTimeForDisplay(t.dueTime!, timeFormat24h)} • {t.priority} Priority
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+
+                    {/* Render events */}
+                    {slotEvents.map((e) => (
+                      <View key={e.id} style={[styles.card, themed.card, Shadows.card, styles.timelineCard]}>
+                        <View style={[styles.categoryBar, { backgroundColor: Colors.blue }]} />
+                        <View style={[styles.eventIconContainer, themed.eventIconContainer]}>
+                          <Users size={16} color={Colors.blue} />
+                        </View>
+                        <TouchableOpacity
+                          style={styles.cardContent}
+                          onPress={() => handleEditScheduleItemPress(e, 'event')}
+                        >
+                          <Text style={[styles.cardTitle, themed.cardTitle]}>{e.title}</Text>
+                          <Text style={[styles.cardTime, themed.cardTime]}>
+                            {formatTimeForDisplay(e.startTime, timeFormat24h)} - {formatTimeForDisplay(e.endTime, timeFormat24h)} {e.location ? `• ${e.location}` : ''}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
                 ) : (
                   <TouchableOpacity
                     style={[styles.emptyHourSlot, themed.emptyHourSlot]}
@@ -712,27 +932,59 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             </View>
           );
         })}
-        <View style={{ height: 100 }} />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     );
   };
 
   return (
     <View style={[styles.container, themed.container]}>
-      {/* Header Month Year & Chevrons */}
+      {/* Header Month/Week/Day & Chevrons & Today */}
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, themed.headerTitle]}>
-          {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-        </Text>
-        <View style={styles.chevronContainer}>
-          <TouchableOpacity onPress={() => navigateMonth('prev')} style={[styles.chevronButton, themed.chevronButton]}>
-            <ChevronLeft size={16} color={colors.textPrimary} />
+        <TouchableOpacity
+          onPress={() => setShowDatePicker(true)}
+          style={styles.headerTitleContainer}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.headerTitle, themed.headerTitle]} numberOfLines={1}>
+            {getHeaderTitle()}
+          </Text>
+        </TouchableOpacity>
+        
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            onPress={handleGoToToday}
+            style={[styles.todayButton, themed.todayButton]}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.todayButtonText, themed.todayButtonText]}>Today</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigateMonth('next')} style={[styles.chevronButton, themed.chevronButton]}>
-            <ChevronRight size={16} color={colors.textPrimary} />
-          </TouchableOpacity>
+          
+          <View style={styles.chevronContainer}>
+            <TouchableOpacity onPress={handlePrevPress} style={[styles.chevronButton, themed.chevronButton]}>
+              <ChevronLeft size={16} color={colors.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleNextPress} style={[styles.chevronButton, themed.chevronButton]}>
+              <ChevronRight size={16} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
+
+      {showDatePicker && (
+        <DateTimePicker
+          value={viewMode === 'month' ? currentDate : selectedDate}
+          mode="date"
+          display="default"
+          onChange={(_event: DateTimePickerEvent, date?: Date) => {
+            setShowDatePicker(false);
+            if (date) {
+              setSelectedDate(date);
+              setCurrentDate(date);
+            }
+          }}
+        />
+      )}
 
       {/* Segmented Control Month | Week | Day */}
       <View style={[styles.toggleRow, themed.toggleRow]}>
@@ -1073,10 +1325,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  headerTitleContainer: {
+    flex: 1,
+    marginRight: 8,
+  },
   headerTitle: {
     fontFamily: Fonts.heading,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  todayButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  todayButtonText: {
+    fontSize: 12,
+    fontFamily: Fonts.body,
+    fontWeight: '600',
   },
   chevronContainer: {
     flexDirection: 'row',
@@ -1136,32 +1407,61 @@ const styles = StyleSheet.create({
   },
   calendarCell: {
     width: '14.28%',
-    aspectRatio: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
+    minHeight: 85,
+    padding: 2,
+    borderWidth: 0.5,
+    borderColor: '#E0E0E0',
+    alignItems: 'stretch',
   },
   calendarCellEmpty: {
     width: '14.28%',
-    aspectRatio: 1,
+    minHeight: 85,
+    borderWidth: 0.5,
+    borderColor: 'transparent',
   },
   dayContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 2,
   },
   todayContainer: {
     backgroundColor: Colors.red,
   },
   dayText: {
     fontFamily: Fonts.body,
-    fontSize: 14,
+    fontSize: 11,
   },
   todayText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
+  },
+  monthItemsWrapper: {
+    flex: 1,
+    width: '100%',
+  },
+  monthItemPreview: {
+    borderLeftWidth: 2,
+    paddingLeft: 3,
+    marginVertical: 1,
+    marginHorizontal: 1,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  monthItemText: {
+    fontSize: 8,
+    fontFamily: Fonts.body,
+    lineHeight: 10,
+  },
+  monthItemMore: {
+    fontSize: 8,
+    fontFamily: Fonts.body,
+    color: Colors.red,
+    textAlign: 'center',
+    marginTop: 1,
   },
   dotContainer: {
     height: 6,
@@ -1181,7 +1481,7 @@ const styles = StyleSheet.create({
   },
   hourRow: {
     flexDirection: 'row',
-    height: 70,
+    minHeight: 70,
   },
   hourLabel: {
     width: 50,
@@ -1219,6 +1519,30 @@ const styles = StyleSheet.create({
   emptyHourSlot: {
     flex: 1,
     height: '100%',
+    minHeight: 40,
+  },
+  bottomSpacer: {
+    height: 100,
+  },
+  timelineCard: {
+    marginVertical: 4,
+    marginBottom: 4,
+  },
+  allDayContainer: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  allDayTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    fontFamily: Fonts.heading,
+    marginBottom: 8,
+  },
+  hourlyItemsContainer: {
+    flex: 1,
+    width: '100%',
+    paddingVertical: 4,
   },
   weekViewContainer: {
     flex: 1,
@@ -1629,9 +1953,33 @@ function useThemedStyles() {
     weekdayLabel: {
       color: colors.textSecondary,
     },
-    calendarCell: {},
+    calendarCell: {
+      borderColor: colors.border,
+    },
     dayContainer: {},
     dayText: {
+      color: colors.textPrimary,
+    },
+    monthItemPreview: {
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+    },
+    monthItemText: {
+      color: colors.textPrimary,
+    },
+    monthItemMore: {
+      color: colors.red,
+    },
+    todayButton: {
+      borderColor: colors.border,
+      backgroundColor: colors.inputBg,
+    },
+    todayButtonText: {
+      color: colors.textPrimary,
+    },
+    allDayContainer: {
+      backgroundColor: colors.inputBg,
+    },
+    allDayTitle: {
       color: colors.textPrimary,
     },
     hourRow: {},

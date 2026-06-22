@@ -5,7 +5,7 @@
 
 The Sabrosa logo is a playful fusion of symbolic elements that represent the brand's personality and purpose. The "Apple" represents health, freshness, and the core of our product line, delicious, quality snacks made with care. The mustache adds a friendly and quirky personality, while the starry-eyed glasses reflect excitement and satisfaction.
 
-## Logo Color Options
+## Logo Color Options   
 1. **Dark Mode:** White text and white waveform on a black background.
 2. **Light Mode:** Black text and grey waveform on a white background.
 3. **Gradient Mode:** White text and white waveform on a vibrant yellow-to-blue gradient background.
