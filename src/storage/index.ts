@@ -1,0 +1,16 @@
+export { db } from './database';
+export type { QueryResult, DatabaseTransaction } from './database';
+export { initDatabase } from './dbInit';
+export { hashPassword, verifyPassword } from './authUtils';
+export { userStore } from './userStore';
+export type { User } from './userStore';
+export { tasksStore } from './tasksStore';
+export type { Task, Event } from './tasksStore';
+export { notesStore } from './notesStore';
+export type { Note } from './notesStore';
+export { timeBlocksStore } from './timeBlocksStore';
+export type { TimeBlock } from './timeBlocksStore';
+export { chatStore } from './chatStore';
+export type { ChatMessage, ChatSession } from './chatStore';
+export { behaviorStore } from './behaviorStore';
+export type { BehaviorLog, FeatureSnapshot } from './behaviorStore';

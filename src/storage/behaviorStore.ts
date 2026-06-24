@@ -1,3 +1,4 @@
+import { generateId } from '../utils';
 import { db } from './database';
 
 export interface BehaviorLog {
@@ -25,7 +26,7 @@ export const behaviorStore = {
    * Logs a user behavioral event (e.g. user_behavior_logs table).
    */
   logBehaviorEvent: (userId: string, eventType: string, eventKey: string, eventValue: string): void => {
-    const id = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+    const id = generateId('beh');
     const now = new Date().toISOString();
     try {
       db.executeSync(
@@ -70,7 +71,7 @@ export const behaviorStore = {
    * Saves a computed feature snapshot.
    */
   saveFeatureSnapshot: (userId: string, featureType: string, featureVector: string): void => {
-    const id = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+    const id = generateId('fs');
     const now = new Date().toISOString();
     try {
       db.executeSync(

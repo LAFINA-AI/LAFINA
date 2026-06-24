@@ -1,3 +1,15 @@
+/** Result of a sync SQL execution */
+export interface QueryResult {
+  rows: any[];
+  rowsAffected?: number;
+  insertId?: number;
+}
+
+/** Minimal transaction interface with executeSync */
+export interface DatabaseTransaction {
+  executeSync: (query: string, params?: any[]) => QueryResult;
+}
+
 let dbInstance: any;
 let useFallback = false;
 
@@ -21,7 +33,7 @@ const saveToStorage = () => {
     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
     if (AsyncStorage) {
       AsyncStorage.setItem('lafina_js_db', JSON.stringify(fallbackTables))
-        .catch((err: any) => console.error('Error saving JS database to storage:', err));
+        .catch((err: unknown) => console.error('Error saving JS database to storage:', err));
     }
   } catch {
     // AsyncStorage not installed/available, keep in-memory only
@@ -40,7 +52,7 @@ const loadFromStorage = () => {
             console.log('Loaded JS database state from AsyncStorage.');
           }
         })
-        .catch((err: any) => console.error('Error loading JS database from storage:', err));
+        .catch((err: unknown) => console.error('Error loading JS database from storage:', err));
     }
   } catch {
     // AsyncStorage not installed/available
@@ -51,7 +63,7 @@ if (useFallback) {
   loadFromStorage();
 }
 
-const executeFallbackQuery = (query: string, params: any[] = []): { rows: any[]; rowsAffected?: number; insertId?: number } => {
+const executeFallbackQuery = (query: string, params: any[] = []): QueryResult => {
   const q = query.trim();
   const upper = q.toUpperCase();
 
@@ -74,7 +86,7 @@ const executeFallbackQuery = (query: string, params: any[] = []): { rows: any[];
       if (match) {
         const tableName = match[1].toLowerCase();
         const cols = match[2].split(',').map(c => c.trim().toLowerCase());
-        
+
         const row: any = {};
         cols.forEach((col, index) => {
           row[col] = params[index];
@@ -108,7 +120,7 @@ const executeFallbackQuery = (query: string, params: any[] = []): { rows: any[];
       const match = q.match(/SELECT\s+.*\s+FROM\s+(\w+)/i);
       if (match) {
         const tableName = match[1].toLowerCase();
-        let rows = [...(fallbackTables[tableName] || [])];
+        let rows: any[] = [...(fallbackTables[tableName] || [])];
 
         // Filter: deleted_at IS NULL
         if (upper.includes('DELETED_AT IS NULL')) {
@@ -181,7 +193,7 @@ const executeFallbackQuery = (query: string, params: any[] = []): { rows: any[];
         }
       }
 
-      // Soft delete updates: UPDATE table SET deleted_at = ?, updated_at = ? WHERE id = ?
+      // Soft delete updates
       const softDeleteMatch = q.match(/UPDATE\s+(\w+)\s+SET\s+deleted_at\s*=\s*\?,\s*updated_at\s*=\s*\?\s+WHERE\s+id\s*=\s*\?/i);
       if (softDeleteMatch) {
         const tableName = softDeleteMatch[1].toLowerCase();
@@ -219,26 +231,26 @@ const executeFallbackQuery = (query: string, params: any[] = []): { rows: any[];
 
 // 3. Export Database API
 export const db = {
-  executeSync: (query: string, params?: any[]): { rows: any[]; rowsAffected?: number; insertId?: number } => {
+  executeSync: (query: string, params?: any[]): QueryResult => {
     if (useFallback) {
       return executeFallbackQuery(query, params);
     }
     return dbInstance.executeSync(query, params);
   },
 
-  transaction: async (cb: (tx: any) => Promise<void>): Promise<void> => {
+  transaction: async (cb: (tx: DatabaseTransaction) => Promise<void>): Promise<void> => {
     if (useFallback) {
-      const txFallback = {
+      const txFallback: DatabaseTransaction = {
         executeSync: (query: string, params?: any[]) => executeFallbackQuery(query, params),
       };
       await cb(txFallback);
       return;
     }
-    
-    // For native OP-SQLite, run manual transaction commands since JSI connection might not have .transaction
+
+    // For native OP-SQLite, run manual transaction commands
     dbInstance.executeSync('BEGIN TRANSACTION;');
     try {
-      const tx = {
+      const tx: DatabaseTransaction = {
         executeSync: (query: string, params?: any[]) => dbInstance.executeSync(query, params),
       };
       await cb(tx);

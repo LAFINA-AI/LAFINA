@@ -36,7 +36,7 @@ const mapRowToTask = (row: any): Task => ({
   dueDate: row.due_date,
   dueTime: row.due_time,
   isCompleted: row.is_completed === 1,
-  priority: row.priority as any,
+  priority: row.priority as Task['priority'],
   category: row.category,
   notes: row.notes,
   createdAt: row.created_at,

@@ -1,4 +1,4 @@
-import { db } from './database';
+import { db, DatabaseTransaction } from './database';
 
 /**
  * Initializes the SQLite database schema by creating required tables if they do not exist.
@@ -6,29 +6,29 @@ import { db } from './database';
  */
 export const initDatabase = async (): Promise<void> => {
   try {
-    await db.transaction(async (tx) => {
+    await db.transaction(async (tx: DatabaseTransaction) => {
       // Schema validation and automatic migration fallback
       const tablesToCheck = ['notes', 'tasks', 'events', 'time_blocks', 'reminders'];
       tablesToCheck.forEach((tableName) => {
         try {
-          const exists = (tx as any).executeSync(
+          const exists = tx.executeSync(
             `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
             [tableName]
           );
           if (exists.rows && exists.rows.length > 0) {
-            (tx as any).executeSync(`SELECT user_id FROM ${tableName} LIMIT 1`);
+            tx.executeSync(`SELECT user_id FROM ${tableName} LIMIT 1`);
             if (tableName === 'notes') {
-              (tx as any).executeSync(`SELECT image_uri, sort_order FROM notes LIMIT 1`);
+              tx.executeSync(`SELECT image_uri, sort_order FROM notes LIMIT 1`);
             }
           }
         } catch {
           console.warn(`Table "${tableName}" schema mismatch (missing user_id or columns). Recreating...`);
-          (tx as any).executeSync(`DROP TABLE IF EXISTS ${tableName}`);
+          tx.executeSync(`DROP TABLE IF EXISTS ${tableName}`);
         }
       });
 
       // Create users table
-      (tx as any).executeSync(`
+      tx.executeSync(`
         CREATE TABLE IF NOT EXISTS users (
           id TEXT PRIMARY KEY,
           username TEXT NOT NULL,
@@ -45,7 +45,7 @@ export const initDatabase = async (): Promise<void> => {
       `);
 
       // Create remember_me table
-      (tx as any).executeSync(`
+      tx.executeSync(`
         CREATE TABLE IF NOT EXISTS remember_me (
           id INTEGER PRIMARY KEY CHECK (id = 1),
           enabled INTEGER NOT NULL DEFAULT 0,
@@ -54,15 +54,15 @@ export const initDatabase = async (): Promise<void> => {
         )
       `);
 
-      // Schema versioning and migration error handling [Fix #5]
-      const versionResult = (tx as any).executeSync('PRAGMA user_version');
+      // Schema versioning and migration
+      const versionResult = tx.executeSync('PRAGMA user_version');
       const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;
-      const TARGET_VERSION = 2; // Increment for each migration batch
+      const TARGET_VERSION = 2;
 
       if (currentVersion < TARGET_VERSION) {
         if (currentVersion < 1) {
           try {
-            (tx as any).executeSync('ALTER TABLE users ADD COLUMN time_format_24h INTEGER NOT NULL DEFAULT 0');
+            tx.executeSync('ALTER TABLE users ADD COLUMN time_format_24h INTEGER NOT NULL DEFAULT 0');
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
             if (!msg.toLowerCase().includes('duplicate column')) {
@@ -73,7 +73,7 @@ export const initDatabase = async (): Promise<void> => {
 
         if (currentVersion < 2) {
           try {
-            (tx as any).executeSync('ALTER TABLE users ADD COLUMN week_starts_monday INTEGER NOT NULL DEFAULT 0');
+            tx.executeSync('ALTER TABLE users ADD COLUMN week_starts_monday INTEGER NOT NULL DEFAULT 0');
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
             if (!msg.toLowerCase().includes('duplicate column')) {
@@ -82,7 +82,7 @@ export const initDatabase = async (): Promise<void> => {
           }
 
           try {
-            (tx as any).executeSync('ALTER TABLE users ADD COLUMN dark_mode INTEGER NOT NULL DEFAULT 0');
+            tx.executeSync('ALTER TABLE users ADD COLUMN dark_mode INTEGER NOT NULL DEFAULT 0');
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
             if (!msg.toLowerCase().includes('duplicate column')) {
@@ -91,11 +91,11 @@ export const initDatabase = async (): Promise<void> => {
           }
         }
 
-        (tx as any).executeSync(`PRAGMA user_version = ${TARGET_VERSION}`);
+        tx.executeSync(`PRAGMA user_version = ${TARGET_VERSION}`);
       }
 
       // Create reminders table
-      (tx as any).executeSync(`
+      tx.executeSync(`
         CREATE TABLE IF NOT EXISTS reminders (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL,
@@ -113,7 +113,7 @@ export const initDatabase = async (): Promise<void> => {
       `);
 
       // Create job_queue_items table
-      (tx as any).executeSync(`
+      tx.executeSync(`
         CREATE TABLE IF NOT EXISTS job_queue_items (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL,
@@ -129,7 +129,7 @@ export const initDatabase = async (): Promise<void> => {
       `);
 
       // Create time_blocks table
-      (tx as any).executeSync(`
+      tx.executeSync(`
         CREATE TABLE IF NOT EXISTS time_blocks (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL,
@@ -148,7 +148,7 @@ export const initDatabase = async (): Promise<void> => {
       `);
 
       // Create tasks table
-      (tx as any).executeSync(`
+      tx.executeSync(`
         CREATE TABLE IF NOT EXISTS tasks (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL,
@@ -167,7 +167,7 @@ export const initDatabase = async (): Promise<void> => {
       `);
 
       // Create events table
-      (tx as any).executeSync(`
+      tx.executeSync(`
         CREATE TABLE IF NOT EXISTS events (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL,
@@ -185,7 +185,7 @@ export const initDatabase = async (): Promise<void> => {
       `);
 
       // Create notes table
-      (tx as any).executeSync(`
+      tx.executeSync(`
         CREATE TABLE IF NOT EXISTS notes (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL,
@@ -205,7 +205,7 @@ export const initDatabase = async (): Promise<void> => {
       `);
 
       // Create chat_sessions table
-      (tx as any).executeSync(`
+      tx.executeSync(`
         CREATE TABLE IF NOT EXISTS chat_sessions (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL,
@@ -217,7 +217,7 @@ export const initDatabase = async (): Promise<void> => {
       `);
 
       // Create messages table
-      (tx as any).executeSync(`
+      tx.executeSync(`
         CREATE TABLE IF NOT EXISTS messages (
           id TEXT PRIMARY KEY,
           session_id TEXT NOT NULL,
@@ -230,7 +230,7 @@ export const initDatabase = async (): Promise<void> => {
       `);
 
       // Create user_behavior_logs table
-      (tx as any).executeSync(`
+      tx.executeSync(`
         CREATE TABLE IF NOT EXISTS user_behavior_logs (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL,
@@ -244,7 +244,7 @@ export const initDatabase = async (): Promise<void> => {
       `);
 
       // Create ml_feature_snapshots table
-      (tx as any).executeSync(`
+      tx.executeSync(`
         CREATE TABLE IF NOT EXISTS ml_feature_snapshots (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL,

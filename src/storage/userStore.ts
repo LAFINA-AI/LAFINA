@@ -1,5 +1,7 @@
+import { generateId } from '../utils';
 import { db } from './database';
 import { hashPassword, verifyPassword } from './authUtils';
+import { GUEST_USER_ID, GUEST_USERNAME } from '../constants';
 
 export interface User {
   id: string;
@@ -27,10 +29,37 @@ try {
 
 export const userStore = {
   /**
+   * Creates a guest session (no DB user row needed).
+   * Guest users can access all offline features.
+   */
+  createGuestUser: (): User => {
+    const guest: User = {
+      id: GUEST_USER_ID,
+      username: GUEST_USERNAME,
+      email: null,
+      role: 'guest',
+      isNewUser: true,
+      timeFormat24h: false,
+      weekStartsMonday: false,
+      darkModeEnabled: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    return guest;
+  },
+
+  /**
+   * Checks if the given userId corresponds to a guest session.
+   */
+  isGuest: (userId: string): boolean => {
+    return userId === GUEST_USER_ID;
+  },
+
+  /**
    * Registers a new user. Hashes the password and sets is_new_user to 1.
    */
   register: async (username: string, email: string, password: string): Promise<string> => {
-    const id = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+    const id = generateId('user');
     const now = new Date().toISOString();
     const hash = await hashPassword(password);
     
@@ -160,8 +189,13 @@ export const userStore = {
 
   /**
    * Fetches a user record by ID.
+   * Returns a virtual guest user if the ID matches the guest constant.
    */
   getUserById: (userId: string): User | null => {
+    // Guest is virtual — not stored in the users table
+    if (userId === GUEST_USER_ID) {
+      return userStore.createGuestUser();
+    }
     try {
       const result = db.executeSync(
         `SELECT * FROM users WHERE id = ?`,
