@@ -7,7 +7,6 @@ import { Task, Event } from '../../../storage/tasksStore';
 
 interface MonthViewProps {
   currentDate: Date;
-  _selectedDate?: Date;
   blocks: TimeBlock[];
   allTasks: Task[];
   allEvents: Event[];
@@ -27,7 +26,6 @@ const getCategoryColor = (cat: string) => {
 
 export const MonthView: React.FC<MonthViewProps> = ({
   currentDate,
-  _selectedDate,
   blocks,
   allTasks,
   allEvents,

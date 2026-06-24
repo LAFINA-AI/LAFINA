@@ -564,7 +564,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
         {viewMode === 'month' && (
           <MonthView
             currentDate={currentDate}
-            selectedDate={selectedDate}
             blocks={blocks}
             allTasks={allTasks}
             allEvents={allEvents}

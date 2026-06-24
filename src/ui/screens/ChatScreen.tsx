@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   FlatList,
   KeyboardAvoidingView,
@@ -11,11 +10,15 @@ import {
   Alert,
   Keyboard,
 } from 'react-native';
-import { Send, Trash2 } from 'lucide-react-native';
-import { Colors, Fonts, Shadows } from '../theme';
+import { Trash2 } from 'lucide-react-native';
+import { Fonts } from '../theme';
 import { chatStore, ChatMessage } from '../../storage/chatStore';
 import { processCommand } from '../../ai/nlu/parser';
 import { useTheme } from '../contexts/ThemeContext';
+
+// Chat sub-components
+import { ChatMessageItem } from '../components/chat/ChatMessageItem';
+import { ChatInput } from '../components/chat/ChatInput';
 
 interface ChatScreenProps {
   userId: string;
@@ -53,7 +56,6 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const loadChatHistory = () => {
     const history = chatStore.getMessages(userId);
     setMessages(history);
-    // Scroll to bottom after loading
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: false });
     }, 100);
@@ -92,7 +94,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
 
     // Simulate AI processing delay
     setTimeout(() => {
-      // 2. Process Command via NLU Parser (modifies tasks/events/notes in SQLite)
+      // 2. Process Command via NLU Parser
       const aiReply = processCommand(userText, userId);
 
       // 3. Insert AI Response
@@ -105,7 +107,6 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       };
       chatStore.insertMessage(aiMsg);
 
-      // Reload chat and trigger parent screen refresh (calendar, tasks updates)
       loadChatHistory();
       onRefresh();
     }, 600);
@@ -129,20 +130,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     );
   };
 
-  const renderMessageItem = ({ item }: { item: ChatMessage }) => {
-    const isUser = item.sender === 'user';
-    return (
-      <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
-        <View style={[styles.bubble, isUser ? styles.userBubble : [styles.assistantBubble, themed.assistantBubble]]}>
-          <Text style={[styles.messageText, isUser ? styles.userText : [styles.assistantText, themed.assistantText]]}>
-            {item.content}
-          </Text>
-          <Text style={[styles.timeText, isUser ? styles.userTime : [styles.assistantTime, themed.assistantTime]]}>
-            {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </Text>
-        </View>
-      </View>
-    );
+  const renderItem = ({ item }: { item: ChatMessage }) => {
+    return <ChatMessageItem item={item} />;
   };
 
   return (
@@ -174,7 +163,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         <FlatList
           ref={flatListRef}
           data={messages}
-          renderItem={renderMessageItem}
+          renderItem={renderItem}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
@@ -182,20 +171,12 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       )}
 
       {/* Input Row */}
-      <View style={[styles.inputContainer, themed.inputContainer, { bottom: isKeyboardVisible ? 0 : 104 }]}>
-        <TextInput
-          style={[styles.input, themed.input]}
-          placeholder="Ask LAFINA..."
-          placeholderTextColor={colors.textSecondary}
-          value={inputText}
-          onChangeText={setInputText}
-          onSubmitEditing={handleSend}
-          returnKeyType="send"
-        />
-        <TouchableOpacity onPress={handleSend} style={[styles.sendBtn, Shadows.micButton]}>
-          <Send size={18} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
+      <ChatInput
+        inputText={inputText}
+        setInputText={setInputText}
+        onSend={handleSend}
+        isKeyboardVisible={isKeyboardVisible}
+      />
       <View style={{ height: isKeyboardVisible ? 0 : 170 }} />
     </KeyboardAvoidingView>
   );
@@ -222,25 +203,6 @@ function useThemedStyles() {
     },
     exampleText: {
       color: colors.textMuted,
-    },
-    assistantBubble: {
-      backgroundColor: colors.cardBg,
-      borderColor: colors.border,
-    },
-    assistantText: {
-      color: colors.textPrimary,
-    },
-    assistantTime: {
-      color: colors.textMuted,
-    },
-    inputContainer: {
-      backgroundColor: colors.cardBg,
-      borderTopColor: colors.border,
-    },
-    input: {
-      borderColor: colors.border,
-      backgroundColor: colors.inputBg,
-      color: colors.textPrimary,
     },
   };
 }
@@ -275,55 +237,6 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 40,
   },
-  messageRow: {
-    flexDirection: 'row',
-    marginVertical: 6,
-    width: '100%',
-  },
-  userRow: {
-    justifyContent: 'flex-end',
-  },
-  assistantRow: {
-    justifyContent: 'flex-start',
-  },
-  bubble: {
-    maxWidth: '80%',
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    ...Shadows.card,
-  },
-  userBubble: {
-    backgroundColor: Colors.blue,
-    borderBottomRightRadius: 2,
-  },
-  assistantBubble: {
-    borderBottomLeftRadius: 2,
-    borderWidth: 1,
-  },
-  messageText: {
-    fontSize: 14,
-    fontFamily: Fonts.body,
-    lineHeight: 20,
-  },
-  userText: {
-    color: '#FFFFFF',
-  },
-  assistantText: {
-    // Handled by themed styles
-  },
-  timeText: {
-    fontSize: 9,
-    fontFamily: Fonts.body,
-    marginTop: 4,
-    alignSelf: 'flex-end',
-  },
-  userTime: {
-    color: 'rgba(255, 255, 255, 0.7)',
-  },
-  assistantTime: {
-    // Handled by themed styles
-  },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
@@ -342,33 +255,5 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     marginTop: 6,
     fontStyle: 'italic',
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    position: 'absolute',
-    left: 0,
-    right: 0,
-  },
-  input: {
-    flex: 1,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    paddingHorizontal: 16,
-    fontSize: 14,
-    fontFamily: Fonts.body,
-    marginRight: 10,
-  },
-  sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.red,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
