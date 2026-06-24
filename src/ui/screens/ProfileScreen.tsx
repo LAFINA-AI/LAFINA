@@ -5,33 +5,27 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Switch,
   Alert,
-  Platform,
-  SafeAreaView,
-  Modal,
 } from 'react-native';
-import { Colors, Fonts, Layout, Shadows } from '../theme';
+import { Colors, Fonts, Layout } from '../theme';
 import { tasksStore } from '../../storage/tasksStore';
 import { notesStore } from '../../storage/notesStore';
 import { userStore, User } from '../../storage/userStore';
 import { useTheme } from '../contexts/ThemeContext';
 
-/**
- * Derives avatar initials from a username string. [Fix #7]
- * Handles: multi-word names, single-word names, snake_case/kebab-case,
- * empty/null/undefined inputs.
- */
+// Profile sub-components
+import { ProfileStats } from '../components/profile/ProfileStats';
+import { SettingItem } from '../components/profile/SettingItem';
+import { PrivacyModal } from '../components/profile/PrivacyModal';
+
 function getInitials(username: string | null | undefined): string {
   if (!username || username.trim().length === 0) {
     return '?';
   }
   const words = username.trim().split(/[\s_-]+/).filter(Boolean);
   if (words.length === 1) {
-    // Single word: take first 2 characters → "juandelacruz" → "JU"
     return words[0].slice(0, 2).toUpperCase();
   }
-  // Multi-word: first letter of first two words → "Juan Dela Cruz" → "JD"
   return (words[0][0] + words[1][0]).toUpperCase();
 }
 
@@ -48,7 +42,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onRefresh,
   onLogout,
 }) => {
-  // Current user info
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // Stats
@@ -66,7 +59,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   // Privacy Modal state
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
 
-  const { colors, isDarkMode, toggleTheme } = useTheme();
+  const { isDarkMode, toggleTheme } = useTheme();
   const themed = useThemedStyles();
 
   useEffect(() => {
@@ -76,7 +69,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   }, [userId, refreshTrigger]);
 
   const loadSettings = () => {
-    // Sync current logged in user
     setCurrentUser(userStore.getUserById(userId));
 
     const is24h = userStore.get24HourFormat(userId);
@@ -99,19 +91,16 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   };
 
   const loadStats = () => {
-    // 1. Tasks completed
     const allTasks = tasksStore.getAllTasks(userId);
     const completed = allTasks.filter((t) => t.isCompleted).length;
     setCompletedTasksCount(completed);
 
-    // 2. Notes count
     const allNotes = notesStore.getAll(userId);
     setNotesCount(allNotes.length);
 
-    // 3. Voice commands used
     const voiceNotes = allNotes.filter((n) => n.isVoiceTranscribed).length;
     const voiceTasks = allTasks.filter((t) => t.notes?.includes('voice') || t.notes?.includes('Voice')).length;
-    setVoiceCommandsCount(voiceNotes + voiceTasks + 3); // Base 3 for onboarding voice checks
+    setVoiceCommandsCount(voiceNotes + voiceTasks + 3);
   };
 
   const handleEditProfile = () => {
@@ -184,125 +173,97 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       </View>
 
       {/* Stats Row */}
-      <View style={styles.statsRow}>
-        <View style={[styles.statCard, Shadows.card, themed.statCard]}>
-          <Text style={[styles.statVal, themed.statVal]}>{completedTasksCount}</Text>
-          <Text style={[styles.statLabel, themed.statLabel]}>Tasks Done</Text>
-        </View>
-        <View style={[styles.statCard, Shadows.card, themed.statCard]}>
-          <Text style={[styles.statVal, themed.statVal]}>{notesCount}</Text>
-          <Text style={[styles.statLabel, themed.statLabel]}>Notes Saved</Text>
-        </View>
-        <View style={[styles.statCard, Shadows.card, themed.statCard]}>
-          <Text style={[styles.statVal, themed.statVal]}>{voiceCommandsCount}</Text>
-          <Text style={[styles.statLabel, themed.statLabel]}>Voice Uses</Text>
-        </View>
-      </View>
+      <ProfileStats
+        completedTasksCount={completedTasksCount}
+        notesCount={notesCount}
+        voiceCommandsCount={voiceCommandsCount}
+      />
 
       {/* Settings Grouped List */}
       <View style={styles.settingsContainer}>
         {/* Preferences Group */}
         <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Preferences</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
-          <View style={styles.settingItem}>
-            <Text style={[styles.settingText, themed.settingText]}>24-Hour Time Format</Text>
-            <Switch
-              value={timeFormat24h}
-              onValueChange={handleToggleTimeFormat}
-              trackColor={{ false: '#767577', true: colors.red }}
-              thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
-            />
-          </View>
+        <View style={[styles.settingsGroupCard, themed.settingsGroupCard]}>
+          <SettingItem
+            text="24-Hour Time Format"
+            type="toggle"
+            value={timeFormat24h}
+            onValueChange={handleToggleTimeFormat}
+          />
           <View style={[styles.settingDivider, themed.settingDivider]} />
-          <View style={styles.settingItem}>
-            <Text style={[styles.settingText, themed.settingText]}>Week Starts on Monday</Text>
-            <Switch
-              value={weekStartsMonday}
-              onValueChange={handleToggleWeekStart}
-              trackColor={{ false: '#767577', true: colors.red }}
-              thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
-            />
-          </View>
+          <SettingItem
+            text="Week Starts on Monday"
+            type="toggle"
+            value={weekStartsMonday}
+            onValueChange={handleToggleWeekStart}
+          />
         </View>
 
         {/* AI & Voice Group */}
         <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>AI & Voice</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
-          <View style={styles.settingItem}>
-            <Text style={[styles.settingText, themed.settingText]}>Wake Word ("Hey LAFINA")</Text>
-            <Switch
-              value={wakeWordEnabled}
-              onValueChange={setWakeWordEnabled}
-              trackColor={{ false: '#767577', true: colors.red }}
-              thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
-            />
-          </View>
+        <View style={[styles.settingsGroupCard, themed.settingsGroupCard]}>
+          <SettingItem
+            text='Wake Word ("Hey LAFINA")'
+            type="toggle"
+            value={wakeWordEnabled}
+            onValueChange={setWakeWordEnabled}
+          />
           <View style={[styles.settingDivider, themed.settingDivider]} />
-          <View style={styles.settingItem}>
-            <Text style={[styles.settingText, themed.settingText]}>Detailed AI Summaries</Text>
-            <Switch
-              value={summaryStyleDetailed}
-              onValueChange={setSummaryStyleDetailed}
-              trackColor={{ false: '#767577', true: colors.red }}
-              thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
-            />
-          </View>
+          <SettingItem
+            text="Detailed AI Summaries"
+            type="toggle"
+            value={summaryStyleDetailed}
+            onValueChange={setSummaryStyleDetailed}
+          />
         </View>
 
         {/* Notifications Group */}
         <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Notifications</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
-          <View style={styles.settingItem}>
-            <Text style={[styles.settingText, themed.settingText]}>Daily Morning Briefing</Text>
-            <Switch
-              value={dailyBriefingEnabled}
-              onValueChange={setDailyBriefingEnabled}
-              trackColor={{ false: '#767577', true: colors.red }}
-              thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
-            />
-          </View>
+        <View style={[styles.settingsGroupCard, themed.settingsGroupCard]}>
+          <SettingItem
+            text="Daily Morning Briefing"
+            type="toggle"
+            value={dailyBriefingEnabled}
+            onValueChange={setDailyBriefingEnabled}
+          />
         </View>
 
         {/* Appearance Group */}
         <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Appearance</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
-          <View style={styles.settingItem}>
-            <Text style={[styles.settingText, themed.settingText]}>Dark Mode</Text>
-            <Switch
-              value={isDarkMode}
-              onValueChange={toggleTheme}
-              trackColor={{ false: '#767577', true: colors.red }}
-              thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
-            />
-          </View>
+        <View style={[styles.settingsGroupCard, themed.settingsGroupCard]}>
+          <SettingItem
+            text="Dark Mode"
+            type="toggle"
+            value={isDarkMode}
+            onValueChange={toggleTheme}
+          />
         </View>
 
         {/* Data Management Group */}
         <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Data Settings</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
-          <TouchableOpacity onPress={handleClearData} style={styles.settingItemClickable}>
-            <Text style={[styles.settingText, { color: colors.error, fontWeight: 'bold' }]}>
-              Clear All Data
-            </Text>
-          </TouchableOpacity>
+        <View style={[styles.settingsGroupCard, themed.settingsGroupCard]}>
+          <SettingItem
+            text="Clear All Data"
+            type="clickable"
+            onPress={handleClearData}
+            isDestructive
+          />
         </View>
 
         {/* About Group */}
         <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>About</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
-          <View style={styles.settingItem}>
-            <Text style={[styles.settingText, themed.settingText]}>App Version</Text>
-            <Text style={[styles.settingValue, themed.settingValue]}>1.0.0 (Beta-Offline)</Text>
-          </View>
+        <View style={[styles.settingsGroupCard, themed.settingsGroupCard]}>
+          <SettingItem
+            text="App Version"
+            type="value"
+            valueText="1.0.0 (Beta-Offline)"
+          />
           <View style={[styles.settingDivider, themed.settingDivider]} />
-          <TouchableOpacity
-            style={styles.settingItem}
+          <SettingItem
+            text="Privacy Policy"
+            type="link"
             onPress={() => setPrivacyModalVisible(true)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.settingText, themed.settingText]}>Privacy Policy</Text>
-            <Text style={[styles.linkArrow, themed.linkArrow]}>➔</Text>
-          </TouchableOpacity>
+          />
         </View>
       </View>
 
@@ -314,51 +275,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       <View style={{ height: 120 }} />
 
       {/* Privacy Policy Modal [Fix #1] */}
-      <Modal
+      <PrivacyModal
         visible={privacyModalVisible}
-        animationType="slide"
-        onRequestClose={() => setPrivacyModalVisible(false)}
-      >
-        <SafeAreaView style={[styles.privacyContainer, themed.privacyContainer]}>
-          <View style={[styles.privacyHeader, themed.privacyHeader]}>
-            <Text style={[styles.privacyHeaderTitle, themed.privacyHeaderTitle]}>Privacy Policy</Text>
-            <TouchableOpacity onPress={() => setPrivacyModalVisible(false)} style={styles.privacyCloseBtn}>
-              <Text style={styles.privacyCloseBtnText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView style={styles.privacyContent} contentContainerStyle={styles.privacyContentContainer}>
-            <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>1. Data Collection</Text>
-            <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
-              LAFINA stores all scheduling data, notes, and tasks locally on your device using SQLite. No data is transmitted to external servers without your explicit action.
-            </Text>
-
-            <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>2. Voice Processing</Text>
-            <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
-              Voice recordings are processed entirely on-device using offline AI models. Audio is never uploaded, shared, or stored beyond the current session.
-            </Text>
-
-            <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>3. Account Information</Text>
-            <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
-              Your email and display name are stored locally for profile display and optional cloud sync.
-            </Text>
-
-            <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>4. No Third-Party Sharing</Text>
-            <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
-              LAFINA does not share, sell, or transmit your personal data to third parties.
-            </Text>
-
-            <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>5. Data Deletion</Text>
-            <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
-              You can delete all personal data at any time using the "Clear All Data" option in Profile Settings.
-            </Text>
-
-            <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>6. Contact</Text>
-            <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
-              For privacy concerns, contact the LAFINA development team at USTP Cagayan de Oro.
-            </Text>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+        onClose={() => setPrivacyModalVisible(false)}
+      />
     </ScrollView>
   );
 };
@@ -378,47 +298,14 @@ function useThemedStyles() {
     userEmail: {
       color: colors.textSecondary,
     },
-    statCard: {
-      backgroundColor: colors.cardBg,
-    },
-    statVal: {
-      color: colors.textPrimary,
-    },
-    statLabel: {
-      color: colors.textSecondary,
-    },
     settingsGroupHeader: {
       color: colors.textSecondary,
     },
     settingsGroupCard: {
       backgroundColor: colors.cardBg,
     },
-    settingText: {
-      color: colors.textPrimary,
-    },
-    settingValue: {
-      color: colors.textSecondary,
-    },
     settingDivider: {
       backgroundColor: colors.divider,
-    },
-    linkArrow: {
-      color: colors.textMuted,
-    },
-    privacyContainer: {
-      backgroundColor: colors.background,
-    },
-    privacyHeader: {
-      borderBottomColor: colors.border,
-    },
-    privacyHeaderTitle: {
-      color: colors.textPrimary,
-    },
-    privacySectionTitle: {
-      color: colors.textPrimary,
-    },
-    privacyBodyText: {
-      color: colors.textSecondary,
     },
   };
 }
@@ -474,31 +361,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textDecorationLine: 'underline',
   },
-  
-  // Stats row
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: Layout.borderRadiusCard,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginHorizontal: 4,
-  },
-  statVal: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  statLabel: {
-    fontSize: 10,
-    marginTop: 4,
-    fontFamily: Fonts.body,
-  },
-
-  // Settings list
   settingsContainer: {
     marginBottom: 24,
   },
@@ -514,27 +376,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 16,
   },
-  settingItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-  },
-  settingItemClickable: {
-    paddingVertical: 14,
-  },
   settingDivider: {
     height: 1,
-  },
-  settingText: {
-    fontSize: 14,
-    fontFamily: Fonts.body,
-  },
-  settingValue: {
-    fontSize: 12,
-  },
-  linkArrow: {
-    fontSize: 12,
   },
   signOutBtn: {
     width: '100%',
@@ -552,49 +395,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: Fonts.body,
   },
-  privacyContainer: {
-    flex: 1,
-  },
-  privacyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-  },
-  privacyHeaderTitle: {
-    fontFamily: Fonts.heading,
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  privacyCloseBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  privacyCloseBtnText: {
-    fontFamily: Fonts.body,
-    color: Colors.red,
-    fontWeight: 'bold',
-  },
-  privacyContent: {
-    flex: 1,
-    padding: 16,
-  },
-  privacyContentContainer: {
-    paddingBottom: 32,
-  },
-  privacySectionTitle: {
-    fontFamily: Fonts.heading,
-    fontSize: 15,
-    fontWeight: 'bold',
-    marginTop: 16,
-    marginBottom: 6,
-  },
-  privacyBodyText: {
-    fontFamily: Fonts.body,
-    fontSize: 13,
-    lineHeight: 18,
-  },
 });
-

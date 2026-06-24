@@ -2,20 +2,22 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StatusBar,
-  ActivityIndicator,
 } from 'react-native';
-import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react-native';
+import { Mail, Lock, User } from 'lucide-react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { userStore } from '../../storage/userStore';
 import { useTheme } from '../contexts/ThemeContext';
+
+// Auth sub-components
+import { AuthHeader } from '../components/auth/AuthHeader';
+import { AuthInput } from '../components/auth/AuthInput';
+import { AuthButton } from '../components/auth/AuthButton';
 
 interface RegisterScreenProps {
   onRegisterSuccess: (userId: string) => void;
@@ -77,13 +79,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         
         {/* Header Section */}
-        <View style={styles.header}>
-          <Image
-            source={require('../../assets/lafina_default_logo.png')}
-            style={styles.logoText}
-            resizeMode="contain"
-          />
-        </View>
+        <AuthHeader />
 
         {/* Card Form */}
         <View style={[styles.card, Shadows.card, themed.card]}>
@@ -93,90 +89,54 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
           {error && <Text style={styles.errorText}>{error}</Text>}
 
           {/* Display Name */}
-          <Text style={[styles.fieldLabel, themed.fieldLabel]}>Display Name</Text>
-          <View style={[styles.inputContainer, themed.inputContainer]}>
-            <User size={20} color={colors.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, themed.input]}
-              placeholder="e.g. Juan dela Cruz"
-              placeholderTextColor={colors.textSecondary}
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="words"
-              autoCorrect={false}
-            />
-          </View>
+          <AuthInput
+            label="Display Name"
+            placeholder="Juan dela Cruz"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="words"
+            icon={<User size={20} color={colors.textSecondary} />}
+          />
 
           {/* Email Field */}
-          <Text style={[styles.fieldLabel, themed.fieldLabel]}>Email Address</Text>
-          <View style={[styles.inputContainer, themed.inputContainer]}>
-            <Mail size={20} color={colors.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, themed.input]}
-              placeholder="student@ustp.edu.ph"
-              placeholderTextColor={colors.textSecondary}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
+          <AuthInput
+            label="Email Address"
+            placeholder="student@ustp.edu.ph"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            icon={<Mail size={20} color={colors.textSecondary} />}
+          />
 
           {/* Password Field */}
-          <Text style={[styles.fieldLabel, themed.fieldLabel]}>Password</Text>
-          <View style={[styles.inputContainer, themed.inputContainer]}>
-            <Lock size={20} color={colors.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, themed.input]}
-              placeholder="••••••••"
-              placeholderTextColor={colors.textSecondary}
-              secureTextEntry={!showPassword}
-              value={password}
-              onChangeText={setPassword}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <TouchableOpacity
-              onPress={() => setShowPassword(!showPassword)}
-              style={styles.eyeIcon}
-            >
-              {showPassword ? (
-                <EyeOff size={20} color={colors.textSecondary} />
-              ) : (
-                <Eye size={20} color={colors.textSecondary} />
-              )}
-            </TouchableOpacity>
-          </View>
+          <AuthInput
+            label="Password"
+            placeholder="••••••••"
+            secureTextEntry={!showPassword}
+            value={password}
+            onChangeText={setPassword}
+            icon={<Lock size={20} color={colors.textSecondary} />}
+            showPasswordToggle
+            showPassword={showPassword}
+            onPasswordToggle={() => setShowPassword(!showPassword)}
+          />
 
           {/* Confirm Password Field */}
-          <Text style={[styles.fieldLabel, themed.fieldLabel]}>Confirm Password</Text>
-          <View style={[styles.inputContainer, themed.inputContainer]}>
-            <Lock size={20} color={colors.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, themed.input]}
-              placeholder="••••••••"
-              placeholderTextColor={colors.textSecondary}
-              secureTextEntry={!showPassword}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
+          <AuthInput
+            label="Confirm Password"
+            placeholder="••••••••"
+            secureTextEntry={!showPassword}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            icon={<Lock size={20} color={colors.textSecondary} />}
+          />
 
           {/* Register Button */}
-          <TouchableOpacity
-            style={[styles.registerButton, loading && styles.disabledButton]}
+          <AuthButton
+            title="Register"
             onPress={handleRegister}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Text style={styles.registerButtonText}>Register</Text>
-            )}
-          </TouchableOpacity>
+            loading={loading}
+          />
         </View>
 
         {/* Footer Navigation */}
@@ -207,16 +167,6 @@ function useThemedStyles() {
     cardSubtitle: {
       color: colors.textSecondary,
     },
-    fieldLabel: {
-      color: colors.textPrimary,
-    },
-    inputContainer: {
-      borderColor: colors.border,
-      backgroundColor: colors.inputBg,
-    },
-    input: {
-      color: colors.textPrimary,
-    },
     footerText: {
       color: colors.textSecondary,
     },
@@ -231,19 +181,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  logoIcon: {
-    width: 60,
-    height: 60,
-    marginBottom: 8,
-  },
-  logoText: {
-    width: 120,
-    height: 80,
   },
   card: {
     borderRadius: Layout.borderRadiusCard,
@@ -268,51 +205,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     fontWeight: '500',
   },
-  fieldLabel: {
-    fontFamily: Fonts.body,
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderRadius: Layout.borderRadiusButton,
-    marginBottom: 16,
-    paddingHorizontal: 12,
-  },
-  inputIcon: {
-    marginRight: 8,
-  },
-  input: {
-    flex: 1,
-    height: 48,
-    fontFamily: Fonts.body,
-    fontSize: 14,
-  },
-  eyeIcon: {
-    padding: 8,
-  },
-  registerButton: {
-    height: 48,
-    backgroundColor: Colors.blue,
-    borderRadius: Layout.borderRadiusButton,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  disabledButton: {
-    backgroundColor: Colors.textMutedLight,
-  },
-  registerButtonText: {
-    fontFamily: Fonts.body,
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 15,
-  },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -330,4 +222,3 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 });
-

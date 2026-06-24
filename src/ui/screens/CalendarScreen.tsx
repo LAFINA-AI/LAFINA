@@ -4,53 +4,21 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
-  Modal,
-  TextInput,
-  Alert,
-  Platform,
-  FlatList,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { Colors, Fonts, Shadows, Layout } from '../theme';
+import { Colors, Fonts, Shadows } from '../theme';
 import { timeBlocksStore, TimeBlock } from '../../storage/timeBlocksStore';
-import { ChevronLeft, ChevronRight, Plus, Check, Users } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react-native';
 import { userStore } from '../../storage/userStore';
 import { tasksStore, Task, Event } from '../../storage/tasksStore';
 import { useTheme } from '../contexts/ThemeContext';
 
-/** Convert an "HH:MM" string into a Date object (today, at that time). */
-const timeStringToDate = (timeStr: string): Date => {
-  const [h, m] = timeStr.split(':').map(Number);
-  const d = new Date();
-  d.setHours(isNaN(h) ? 0 : h, isNaN(m) ? 0 : m, 0, 0);
-  return d;
-};
-
-/** Format a Date object back to "HH:MM" (24-hour). */
-const dateToTimeString = (d: Date): string => {
-  const h = d.getHours().toString().padStart(2, '0');
-  const m = d.getMinutes().toString().padStart(2, '0');
-  return `${h}:${m}`;
-};
-
-/** Format a "HH:MM" 24-hour string for display based on format setting. */
-const formatTimeForDisplay = (timeStr: string, is24Hour: boolean): string => {
-  if (!timeStr) return '';
-  const [hStr, mStr] = timeStr.split(':');
-  const h = parseInt(hStr, 10);
-  const m = parseInt(mStr, 10);
-  if (isNaN(h) || isNaN(m)) return timeStr;
-
-  if (is24Hour) {
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-  } else {
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const displayHour = h % 12 === 0 ? 12 : h % 12;
-    const displayMin = m.toString().padStart(2, '0');
-    return `${displayHour.toString().padStart(2, '0')}:${displayMin} ${ampm}`;
-  }
-};
+// Extracted Sub-Components
+import { MonthView } from '../components/calendar/MonthView';
+import { WeekView } from '../components/calendar/WeekView';
+import { DayView } from '../components/calendar/DayView';
+import { TimeBlockModal } from '../components/calendar/TimeBlockModal';
+import { ScheduleItemModal } from '../components/calendar/ScheduleItemModal';
 
 interface CalendarScreenProps {
   userId: string;
@@ -100,15 +68,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const [priority, setPriority] = useState<'High' | 'Medium' | 'Low'>('Medium');
   const [location, setLocation] = useState('');
 
-  // Native time picker visibility
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [timeFormat24h, setTimeFormat24h] = useState(false);
   const [weekStartsMonday, setWeekStartsMonday] = useState(false);
 
-  const { colors, isDarkMode } = useTheme();
+  const { colors } = useTheme();
   const themed = useThemedStyles();
 
   useEffect(() => {
@@ -118,8 +81,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, selectedDate, refreshTrigger]);
 
-  // Separate effect for user preferences to ensure they always reload
-  // on mount and when refreshTrigger changes (e.g. toggling 24h in Profile)
   useEffect(() => {
     loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -128,7 +89,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const generateWeekDays = () => {
     const days: Date[] = [];
     const base = new Date(selectedDate);
-    // Get past 3 days and next 3 days around selectedDate
     for (let i = -3; i <= 3; i++) {
       const d = new Date(base);
       d.setDate(base.getDate() + i);
@@ -156,8 +116,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
     setAllEvents(eventsData);
 
     const dateStr = selectedDate.toISOString().split('T')[0];
-
-    // Filter for the selected day
     const dayTasks = tasksData.filter((t) => t.dueDate === dateStr);
     const dayEvents = eventsData.filter((e) => e.date === dateStr);
 
@@ -244,15 +202,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
     return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
-  const getDaysInMonth = (date: Date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const rawDay = new Date(year, month, 1).getDay(); // 0=Sunday
-    const firstDayIndex = weekStartsMonday ? (rawDay + 6) % 7 : rawDay;
-    const totalDays = new Date(year, month + 1, 0).getDate();
-    return { firstDayIndex, totalDays };
-  };
-
   const handleDayTap = (dayNum: number) => {
     const targetDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), dayNum);
     setSelectedDate(targetDate);
@@ -282,20 +231,20 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   };
 
   const handleSaveBlock = () => {
+    const AlertRN = require('react-native').Alert;
     if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a title.');
+      AlertRN.alert('Error', 'Please enter a title.');
       return;
     }
 
     if (startTime > endTime) {
-      Alert.alert('Invalid Time Range', 'Start time cannot be after end time, and end time cannot be before start time.');
+      AlertRN.alert('Invalid Time Range', 'Start time cannot be after end time, and end time cannot be before start time.');
       return;
     }
 
     const dateStr = selectedDate.toISOString().split('T')[0];
 
     if (editingBlock) {
-      // Update
       timeBlocksStore.update({
         id: editingBlock.id,
         title,
@@ -307,7 +256,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
         notes,
       });
     } else {
-      // Insert
       timeBlocksStore.insert({
         id: 'block_' + Math.random().toString(36).substr(2, 9),
         userId,
@@ -327,7 +275,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   };
 
   const handleDeleteBlock = (id: string) => {
-    Alert.alert('Delete Block', 'Are you sure you want to delete this time block?', [
+    const AlertRN = require('react-native').Alert;
+    AlertRN.alert('Delete Block', 'Are you sure you want to delete this time block?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -343,7 +292,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   };
 
   const handleFABPress = () => {
-    Alert.alert(
+    const AlertRN = require('react-native').Alert;
+    AlertRN.alert(
       'Quick Create',
       'What would you like to create?',
       [
@@ -387,13 +337,14 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   };
 
   const handleSaveScheduleItem = () => {
+    const AlertRN = require('react-native').Alert;
     if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a title.');
+      AlertRN.alert('Error', 'Please enter a title.');
       return;
     }
 
     if (modalType === 'event' && time > endTime) {
-      Alert.alert('Invalid Time Range', 'Start time cannot be after end time, and end time cannot be before start time.');
+      AlertRN.alert('Invalid Time Range', 'Start time cannot be after end time, and end time cannot be before start time.');
       return;
     }
 
@@ -451,7 +402,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   };
 
   const handleDeleteScheduleItem = (id: string, type: 'task' | 'event') => {
-    Alert.alert(`Delete ${type === 'task' ? 'Task' : 'Event'}`, `Are you sure?`, [
+    const AlertRN = require('react-native').Alert;
+    AlertRN.alert(`Delete ${type === 'task' ? 'Task' : 'Event'}`, `Are you sure?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -530,411 +482,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       });
     });
 
-    // Sort by time string
     return feed.sort((a, b) => a.time.localeCompare(b.time));
-  };
-
-  const getCategoryColor = (cat: string) => {
-    switch (cat?.toLowerCase()) {
-      case 'work': return Colors.blue;
-      case 'personal': return Colors.yellow;
-      case 'health': return Colors.success;
-      case 'learning': return '#9B59B6';
-      default: return '#9E9E9E';
-    }
-  };
-
-  // Render consolidated schedule scroller and list for Week view
-  const renderWeekView = () => {
-    const overdueList = getOverdueTasks();
-    const feedItems = getChronologicalFeed();
-
-    return (
-      <View style={[styles.weekViewContainer, themed.weekViewContainer]}>
-        {/* Date Pill Scroller */}
-        <View style={[styles.scrollerContainer, themed.scrollerContainer]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weekScroller}>
-            {weekDays.map((day, i) => {
-              const isSelected = day.toDateString() === selectedDate.toDateString();
-              const isToday = day.toDateString() === new Date().toDateString();
-              return (
-                <TouchableOpacity
-                  key={i}
-                  style={[
-                    styles.datePill,
-                    themed.datePill,
-                    isSelected && styles.datePillActive,
-                    isToday && !isSelected && styles.datePillToday,
-                  ]}
-                  onPress={() => setSelectedDate(day)}
-                >
-                  <Text style={[styles.pillDayName, themed.pillDayName, isSelected && styles.pillTextActive]}>
-                    {day.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 3)}
-                  </Text>
-                  <Text style={[
-                    styles.pillDayNum, 
-                    themed.pillDayNum, 
-                    isSelected && styles.pillTextActive, 
-                    isToday && !isSelected && styles.pillTodayNum
-                  ]}>
-                    {day.getDate()}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* Overdue Section */}
-        {overdueList.length > 0 && (
-          <View style={[styles.overdueBanner, themed.overdueBanner]}>
-            <View style={styles.overdueBadge}>
-              <Text style={styles.overdueBadgeText}>OVERDUE</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.overdueScroll}>
-              {overdueList.map((ot) => (
-                <TouchableOpacity
-                  key={ot.id}
-                  style={[styles.overdueChip, themed.overdueChip]}
-                  onPress={() => handleEditScheduleItemPress(ot, 'task')}
-                >
-                  <Text style={[styles.overdueChipText, themed.overdueChipText]} numberOfLines={1}>
-                    {ot.title}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Chronological List of Feed Items */}
-        {feedItems.length === 0 ? (
-          <View style={[styles.emptyState, themed.emptyState]}>
-            <Text style={styles.emptyIllustration}>📅</Text>
-            <Text style={[styles.emptyTitle, themed.emptyTitle]}>Your schedule is clear</Text>
-            <Text style={[styles.emptySubtitle, themed.emptySubtitle]}>
-              Tap the float button below to add tasks or time blocks.
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            data={feedItems}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.feedList}
-            renderItem={({ item }) => {
-              if (item.type === 'task') {
-                const t = item.item as Task;
-                return (
-                  <View style={[styles.card, themed.card, Shadows.card]}>
-                    <View style={[styles.categoryBar, { backgroundColor: getCategoryColor(t.category) }]} />
-                    <TouchableOpacity
-                      style={styles.checkboxContainer}
-                      onPress={() => toggleTaskCompletion(t)}
-                    >
-                      <View style={[styles.checkbox, themed.checkbox, t.isCompleted && styles.checkboxChecked, t.isCompleted && themed.checkboxChecked]}>
-                        {t.isCompleted && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
-                      </View>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.cardContent}
-                      onPress={() => handleEditScheduleItemPress(t, 'task')}
-                    >
-                      <Text style={[styles.cardTitle, themed.cardTitle, t.isCompleted && styles.cardTitleCompleted]}>
-                        {t.title}
-                      </Text>
-                      <Text style={[styles.cardTime, themed.cardTime]}>
-                        {t.dueTime ? `Due at ${formatTimeForDisplay(t.dueTime, timeFormat24h)}` : 'All Day'} • {t.priority} Priority
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              } else if (item.type === 'event') {
-                const e = item.item as Event;
-                return (
-                  <View style={[styles.card, themed.card, Shadows.card]}>
-                    <View style={[styles.categoryBar, { backgroundColor: Colors.blue }]} />
-                    <View style={[styles.eventIconContainer, themed.eventIconContainer]}>
-                      <Users size={16} color={Colors.blue} />
-                    </View>
-                    <TouchableOpacity
-                      style={styles.cardContent}
-                      onPress={() => handleEditScheduleItemPress(e, 'event')}
-                    >
-                      <Text style={[styles.cardTitle, themed.cardTitle]}>{e.title}</Text>
-                      <Text style={[styles.cardTime, themed.cardTime]}>
-                        {formatTimeForDisplay(e.startTime, timeFormat24h)} - {formatTimeForDisplay(e.endTime, timeFormat24h)} {e.location ? `• ${e.location}` : ''}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              } else {
-                const b = item.item as TimeBlock;
-                return (
-                  <View style={[styles.blockBandCard, themed.blockBandCard, { backgroundColor: b.color + '15', borderColor: b.color }]}>
-                    <TouchableOpacity 
-                      style={styles.blockBandContent}
-                      onPress={() => handleEditBlockPress(b)}
-                    >
-                      <Text style={[styles.blockBandTitle, themed.blockBandTitle, { color: b.color }]}>
-                        Time Block: {b.title}
-                      </Text>
-                      <Text style={[styles.blockBandTime, themed.blockBandTime]}>
-                        {formatTimeForDisplay(b.startTime, timeFormat24h)} - {formatTimeForDisplay(b.endTime, timeFormat24h)} • {b.category}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              }
-            }}
-          />
-        )}
-      </View>
-    );
-  };
-
-  // Render month grid helper
-  const renderMonthView = () => {
-    const { firstDayIndex, totalDays } = getDaysInMonth(currentDate);
-    const cells: React.ReactNode[] = [];
-
-    // Empty cells for offset
-    for (let i = 0; i < firstDayIndex; i++) {
-      cells.push(<View key={`empty-${i}`} style={styles.calendarCellEmpty} />);
-    }
-
-    // Days cells
-    const today = new Date();
-    const isCurrentMonth = today.getMonth() === currentDate.getMonth() && today.getFullYear() === currentDate.getFullYear();
-
-    for (let day = 1; day <= totalDays; day++) {
-      const isToday = isCurrentMonth && today.getDate() === day;
-      const cellDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      
-      // Get all blocks, tasks, events for this day
-      const cellBlocks = blocks.filter((b) => b.date === cellDateStr);
-      const cellTasks = allTasks.filter((t) => t.dueDate === cellDateStr);
-      const cellEvents = allEvents.filter((e) => e.date === cellDateStr);
-
-      const combined: { title: string; time: string; color: string }[] = [];
-      
-      cellBlocks.forEach((b) => {
-        combined.push({
-          title: b.title,
-          time: b.startTime,
-          color: b.color,
-        });
-      });
-
-      cellTasks.forEach((t) => {
-        combined.push({
-          title: t.title,
-          time: t.dueTime || '00:00',
-          color: getCategoryColor(t.category),
-        });
-      });
-
-      cellEvents.forEach((e) => {
-        combined.push({
-          title: e.title,
-          time: e.startTime,
-          color: Colors.blue,
-        });
-      });
-
-      // Sort by time
-      combined.sort((a, b) => a.time.localeCompare(b.time));
-
-      const displayItems = combined.slice(0, 3);
-      const remainingCount = combined.length - 3;
-
-      cells.push(
-        <TouchableOpacity
-          key={`day-${day}`}
-          style={[styles.calendarCell, themed.calendarCell]}
-          onPress={() => handleDayTap(day)}
-        >
-          <View style={[styles.dayContainer, themed.dayContainer, isToday && styles.todayContainer]}>
-            <Text style={[styles.dayText, themed.dayText, isToday && styles.todayText]}>
-              {day}
-            </Text>
-          </View>
-          <View style={styles.monthItemsWrapper}>
-            {displayItems.map((item, idx) => (
-              <View key={idx} style={[styles.monthItemPreview, themed.monthItemPreview, { borderLeftColor: item.color }]}>
-                <Text style={[styles.monthItemText, themed.monthItemText]} numberOfLines={1}>
-                  {item.title}
-                </Text>
-              </View>
-            ))}
-            {remainingCount > 0 && (
-              <Text style={[styles.monthItemMore, themed.monthItemMore]}>
-                +{remainingCount} more
-              </Text>
-            )}
-          </View>
-        </TouchableOpacity>
-      );
-    }
-
-    const weekdayLabels = weekStartsMonday
-      ? ['M', 'T', 'W', 'T', 'F', 'S', 'S']
-      : ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-
-    return (
-      <View style={[styles.monthGridContainer, themed.monthGridContainer]}>
-        {/* Weekday headers */}
-        <View style={[styles.weekdayHeaderRow, themed.weekdayHeaderRow]}>
-          {weekdayLabels.map((wd, i) => (
-            <Text key={i} style={[styles.weekdayLabel, themed.weekdayLabel]}>
-              {wd}
-            </Text>
-          ))}
-        </View>
-        <View style={styles.monthCellsGrid}>{cells}</View>
-      </View>
-    );
-  };
-
-  // Render hourly schedule block for Week/Day view
-  const renderHourlySchedule = (targetDate: Date) => {
-    const dateStr = targetDate.toISOString().split('T')[0];
-    const dayBlocks = blocks.filter((b) => b.date === dateStr);
-    
-    // Get tasks and events for the day
-    const dayTasks = allTasks.filter((t) => t.dueDate === dateStr);
-    const dayEvents = allEvents.filter((e) => e.date === dateStr);
-
-    const allDayTasks = dayTasks.filter((t) => !t.dueTime);
-    const timedTasks = dayTasks.filter((t) => t.dueTime);
-
-    // 24 hours of the day
-    const hours = Array.from({ length: 24 }).map((_, i) => i);
-
-    return (
-      <ScrollView style={[styles.hourlyContainer, themed.hourlyContainer]}>
-        {allDayTasks.length > 0 && (
-          <View style={[styles.allDayContainer, themed.allDayContainer]}>
-            <Text style={[styles.allDayTitle, themed.allDayTitle]}>All Day Tasks</Text>
-            {allDayTasks.map((t) => (
-              <View key={t.id} style={[styles.card, themed.card, Shadows.card]}>
-                <View style={[styles.categoryBar, { backgroundColor: getCategoryColor(t.category) }]} />
-                <TouchableOpacity
-                  style={styles.checkboxContainer}
-                  onPress={() => toggleTaskCompletion(t)}
-                >
-                  <View style={[styles.checkbox, themed.checkbox, t.isCompleted && styles.checkboxChecked, t.isCompleted && themed.checkboxChecked]}>
-                    {t.isCompleted && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.cardContent}
-                  onPress={() => handleEditScheduleItemPress(t, 'task')}
-                >
-                  <Text style={[styles.cardTitle, themed.cardTitle, t.isCompleted && styles.cardTitleCompleted]}>
-                    {t.title}
-                  </Text>
-                  <Text style={[styles.cardTime, themed.cardTime]}>
-                    All Day • {t.priority} Priority
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {hours.map((hour) => {
-          const hourStr = String(hour).padStart(2, '0');
-          
-          // Match blocks, tasks, and events starting in this hour
-          const slotBlocks = dayBlocks.filter((b) => b.startTime.startsWith(hourStr));
-          const slotTasks = timedTasks.filter((t) => t.dueTime && t.dueTime.startsWith(hourStr));
-          const slotEvents = dayEvents.filter((e) => e.startTime.startsWith(hourStr));
-
-          const hasItems = slotBlocks.length > 0 || slotTasks.length > 0 || slotEvents.length > 0;
-
-          return (
-            <View key={hour} style={[styles.hourRow, themed.hourRow]}>
-              <Text style={[styles.hourLabel, themed.hourLabel]}>
-                {timeFormat24h 
-                  ? `${hourStr}:00` 
-                  : `${hour === 0 ? 12 : hour > 12 ? hour - 12 : hour} ${hour >= 12 ? 'PM' : 'AM'}`}
-              </Text>
-              <View style={[styles.hourTimelineCell, themed.hourTimelineCell]}>
-                {hasItems ? (
-                  <View style={styles.hourlyItemsContainer}>
-                    {/* Render blocks */}
-                    {slotBlocks.map((b) => (
-                      <TouchableOpacity
-                        key={b.id}
-                        style={[styles.hourlyBlockCard, themed.hourlyBlockCard, { borderLeftColor: b.color }]}
-                        onPress={() => handleEditBlockPress(b)}
-                      >
-                        <Text style={[styles.hourlyBlockTitle, themed.hourlyBlockTitle]}>{b.title}</Text>
-                        <Text style={[styles.hourlyBlockTime, themed.hourlyBlockTime]}>
-                          {formatTimeForDisplay(b.startTime, timeFormat24h)} - {formatTimeForDisplay(b.endTime, timeFormat24h)} • {b.category}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-
-                    {/* Render tasks */}
-                    {slotTasks.map((t) => (
-                      <View key={t.id} style={[styles.card, themed.card, Shadows.card, styles.timelineCard]}>
-                        <View style={[styles.categoryBar, { backgroundColor: getCategoryColor(t.category) }]} />
-                        <TouchableOpacity
-                          style={styles.checkboxContainer}
-                          onPress={() => toggleTaskCompletion(t)}
-                        >
-                          <View style={[styles.checkbox, themed.checkbox, t.isCompleted && styles.checkboxChecked, t.isCompleted && themed.checkboxChecked]}>
-                            {t.isCompleted && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
-                          </View>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.cardContent}
-                          onPress={() => handleEditScheduleItemPress(t, 'task')}
-                        >
-                          <Text style={[styles.cardTitle, themed.cardTitle, t.isCompleted && styles.cardTitleCompleted]}>
-                            {t.title}
-                          </Text>
-                          <Text style={[styles.cardTime, themed.cardTime]}>
-                            Due at {formatTimeForDisplay(t.dueTime!, timeFormat24h)} • {t.priority} Priority
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-
-                    {/* Render events */}
-                    {slotEvents.map((e) => (
-                      <View key={e.id} style={[styles.card, themed.card, Shadows.card, styles.timelineCard]}>
-                        <View style={[styles.categoryBar, { backgroundColor: Colors.blue }]} />
-                        <View style={[styles.eventIconContainer, themed.eventIconContainer]}>
-                          <Users size={16} color={Colors.blue} />
-                        </View>
-                        <TouchableOpacity
-                          style={styles.cardContent}
-                          onPress={() => handleEditScheduleItemPress(e, 'event')}
-                        >
-                          <Text style={[styles.cardTitle, themed.cardTitle]}>{e.title}</Text>
-                          <Text style={[styles.cardTime, themed.cardTime]}>
-                            {formatTimeForDisplay(e.startTime, timeFormat24h)} - {formatTimeForDisplay(e.endTime, timeFormat24h)} {e.location ? `• ${e.location}` : ''}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={[styles.emptyHourSlot, themed.emptyHourSlot]}
-                    onLongPress={handleAddBlockPress}
-                    onPress={handleAddBlockPress}
-                  />
-                )}
-              </View>
-            </View>
-          );
-        })}
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
-    );
   };
 
   return (
@@ -991,10 +539,20 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
         {(['month', 'week', 'day'] as ViewMode[]).map((mode) => (
           <TouchableOpacity
             key={mode}
-            style={[styles.toggleBtn, themed.toggleBtn, viewMode === mode && styles.toggleBtnActive, viewMode === mode && themed.toggleBtnActive]}
+            style={[
+              styles.toggleBtn,
+              themed.toggleBtn,
+              viewMode === mode && styles.toggleBtnActive,
+              viewMode === mode && themed.toggleBtnActive,
+            ]}
             onPress={() => setViewMode(mode)}
           >
-            <Text style={[styles.toggleText, themed.toggleText, viewMode === mode && styles.toggleTextActive, viewMode === mode && themed.toggleTextActive]}>
+            <Text style={[
+              styles.toggleText,
+              themed.toggleText,
+              viewMode === mode && styles.toggleTextActive,
+              viewMode === mode && themed.toggleTextActive,
+            ]}>
               {mode.charAt(0).toUpperCase() + mode.slice(1)}
             </Text>
           </TouchableOpacity>
@@ -1003,9 +561,42 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
 
       {/* Screen body depending on view mode */}
       <View style={styles.body}>
-        {viewMode === 'month' && renderMonthView()}
-        {viewMode === 'day' && renderHourlySchedule(selectedDate)}
-        {viewMode === 'week' && renderWeekView()}
+        {viewMode === 'month' && (
+          <MonthView
+            currentDate={currentDate}
+            blocks={blocks}
+            allTasks={allTasks}
+            allEvents={allEvents}
+            weekStartsMonday={weekStartsMonday}
+            onDayTap={handleDayTap}
+          />
+        )}
+        {viewMode === 'day' && (
+          <DayView
+            targetDate={selectedDate}
+            blocks={blocks}
+            allTasks={allTasks}
+            allEvents={allEvents}
+            timeFormat24h={timeFormat24h}
+            onToggleTaskCompletion={toggleTaskCompletion}
+            onEditScheduleItem={handleEditScheduleItemPress}
+            onEditBlock={handleEditBlockPress}
+            onAddBlock={handleAddBlockPress}
+          />
+        )}
+        {viewMode === 'week' && (
+          <WeekView
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
+            weekDays={weekDays}
+            overdueList={getOverdueTasks()}
+            feedItems={getChronologicalFeed()}
+            timeFormat24h={timeFormat24h}
+            onEditScheduleItem={handleEditScheduleItemPress}
+            onToggleTaskCompletion={toggleTaskCompletion}
+            onEditBlock={handleEditBlockPress}
+          />
+        )}
       </View>
 
       {/* Add FAB */}
@@ -1017,298 +608,51 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       </TouchableOpacity>
 
       {/* Create / Edit TimeBlock Modal */}
-      <Modal visible={modalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, themed.modalContent]}>
-            <Text style={[styles.modalHeaderTitle, themed.modalHeaderTitle]}>
-              {editingBlock ? 'Edit Time Block' : 'Create Time Block'}
-            </Text>
-            
-            <TextInput
-              style={[styles.modalInput, themed.modalInput]}
-              placeholder="Deep Work, Study, Lunch..."
-              placeholderTextColor={isDarkMode ? '#666' : '#888'}
-              value={title}
-              onChangeText={setTitle}
-            />
-
-            <View style={styles.modalTimeRow}>
-              <View style={styles.timeInputCol}>
-                <Text style={[styles.timeInputLabel, themed.timeInputLabel]}>Start Time</Text>
-                <TouchableOpacity
-                  style={[styles.timePickerBtn, themed.timePickerBtn]}
-                  onPress={() => setShowStartPicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.timePickerBtnText, themed.timePickerBtnText]}>{formatTimeForDisplay(startTime, timeFormat24h)}</Text>
-                </TouchableOpacity>
-                {showStartPicker && (
-                  <DateTimePicker
-                    value={timeStringToDate(startTime)}
-                    mode="time"
-                    is24Hour={timeFormat24h}
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(_event: DateTimePickerEvent, date?: Date) => {
-                      setShowStartPicker(false);
-                      if (date) setStartTime(dateToTimeString(date));
-                    }}
-                  />
-                )}
-              </View>
-              <View style={styles.timeInputCol}>
-                <Text style={[styles.timeInputLabel, themed.timeInputLabel]}>End Time</Text>
-                <TouchableOpacity
-                  style={[styles.timePickerBtn, themed.timePickerBtn]}
-                  onPress={() => setShowEndPicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.timePickerBtnText, themed.timePickerBtnText]}>{formatTimeForDisplay(endTime, timeFormat24h)}</Text>
-                </TouchableOpacity>
-                {showEndPicker && (
-                  <DateTimePicker
-                    value={timeStringToDate(endTime)}
-                    mode="time"
-                    is24Hour={timeFormat24h}
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(_event: DateTimePickerEvent, date?: Date) => {
-                      setShowEndPicker(false);
-                      if (date) setEndTime(dateToTimeString(date));
-                    }}
-                  />
-                )}
-              </View>
-            </View>
-
-            <View style={styles.categoryRow}>
-              {['Work', 'Personal', 'Health', 'Learning'].map((cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  style={[
-                    styles.categoryChip,
-                    themed.categoryChip,
-                    category === cat && styles.categoryChipActive,
-                    category === cat && themed.categoryChipActive,
-                  ]}
-                  onPress={() => setCategory(cat)}
-                >
-                  <Text style={[
-                    styles.categoryChipText,
-                    themed.categoryChipText,
-                    category === cat && styles.categoryChipTextActive,
-                    category === cat && themed.categoryChipTextActive,
-                  ]}>
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.colorRow}>
-              {[Colors.blue, Colors.red, Colors.yellow, Colors.success, '#9B59B6'].map((c) => (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.colorBubble, themed.colorBubble, { backgroundColor: c }, color === c && styles.colorBubbleActive, color === c && themed.colorBubbleActive]}
-                  onPress={() => setColor(c)}
-                />
-              ))}
-            </View>
-
-            <TextInput
-              style={[styles.modalInput, themed.modalInput, styles.textArea]}
-              placeholder="Add optional notes..."
-              placeholderTextColor={isDarkMode ? '#666' : '#888'}
-              multiline
-              numberOfLines={3}
-              value={notes}
-              onChangeText={setNotes}
-            />
-
-            <View style={styles.actionRow}>
-              {editingBlock && (
-                <TouchableOpacity
-                  style={[styles.modalBtn, styles.deleteBtn]}
-                  onPress={() => handleDeleteBlock(editingBlock.id)}
-                >
-                  <Text style={styles.modalBtnText}>Delete</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={[styles.modalBtn, themed.modalBtn, styles.cancelBtn, themed.cancelBtn]}
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={[styles.modalBtnTextDark, themed.modalBtnTextDark]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.saveBtn]}
-                onPress={handleSaveBlock}
-              >
-                <Text style={styles.modalBtnText}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <TimeBlockModal
+        visible={modalVisible}
+        editingBlock={editingBlock}
+        title={title}
+        setTitle={setTitle}
+        startTime={startTime}
+        setStartTime={setStartTime}
+        endTime={endTime}
+        setEndTime={setEndTime}
+        category={category}
+        setCategory={setCategory}
+        color={color}
+        setColor={setColor}
+        notes={notes}
+        setNotes={setNotes}
+        onSave={handleSaveBlock}
+        onDelete={handleDeleteBlock}
+        onCancel={() => setModalVisible(false)}
+        timeFormat24h={timeFormat24h}
+      />
 
       {/* Quick Add / Edit Task/Event Modal */}
-      <Modal visible={scheduleModalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, themed.modalContent]}>
-            <Text style={[styles.modalHeaderTitle, themed.modalHeaderTitle]}>
-              {editingItem ? `Edit ${modalType}` : `Create ${modalType}`}
-            </Text>
-            
-            <TextInput
-              style={[styles.modalInput, themed.modalInput]}
-              placeholder={modalType === 'task' ? 'Buy groceries, Finish report...' : 'Consultation, Lecture...'}
-              placeholderTextColor={isDarkMode ? '#666' : '#888'}
-              value={title}
-              onChangeText={setTitle}
-            />
-
-            <View style={styles.modalRow}>
-              <View style={styles.modalCol}>
-                <Text style={[styles.modalColLabel, themed.modalColLabel]}>{modalType === 'task' ? 'Due Time' : 'Start Time'}</Text>
-                <TouchableOpacity
-                  style={[styles.timePickerBtn, themed.timePickerBtn]}
-                  onPress={() => setShowTimePicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.timePickerBtnText, themed.timePickerBtnText]}>{formatTimeForDisplay(time, timeFormat24h)}</Text>
-                </TouchableOpacity>
-                {showTimePicker && (
-                  <DateTimePicker
-                    value={timeStringToDate(time)}
-                    mode="time"
-                    is24Hour={timeFormat24h}
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(_event: DateTimePickerEvent, date?: Date) => {
-                      setShowTimePicker(false);
-                      if (date) setTime(dateToTimeString(date));
-                    }}
-                  />
-                )}
-              </View>
-              {modalType === 'event' && (
-                <View style={styles.modalCol}>
-                  <Text style={[styles.modalColLabel, themed.modalColLabel]}>End Time</Text>
-                  <TouchableOpacity
-                    style={[styles.timePickerBtn, themed.timePickerBtn]}
-                    onPress={() => setShowEndTimePicker(true)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.timePickerBtnText, themed.timePickerBtnText]}>{formatTimeForDisplay(endTime, timeFormat24h)}</Text>
-                  </TouchableOpacity>
-                  {showEndTimePicker && (
-                    <DateTimePicker
-                      value={timeStringToDate(endTime)}
-                      mode="time"
-                      is24Hour={timeFormat24h}
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={(_event: DateTimePickerEvent, date?: Date) => {
-                        setShowEndTimePicker(false);
-                        if (date) setEndTime(dateToTimeString(date));
-                      }}
-                    />
-                  )}
-                </View>
-              )}
-            </View>
-
-            {modalType === 'task' && (
-              <View style={[styles.segmentedRow, themed.segmentedRow]}>
-                {['High', 'Medium', 'Low'].map((pr) => (
-                  <TouchableOpacity
-                    key={pr}
-                    style={[
-                      styles.segmentBtn,
-                      themed.segmentBtn,
-                      priority === pr && styles.segmentBtnActive,
-                      priority === pr && themed.segmentBtnActive,
-                    ]}
-                    onPress={() => setPriority(pr as any)}
-                  >
-                    <Text style={[
-                      styles.segmentBtnText,
-                      themed.segmentBtnText,
-                      priority === pr && styles.segmentBtnTextActive,
-                      priority === pr && themed.segmentBtnTextActive,
-                    ]}>
-                      {pr}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            <View style={styles.categoryRow}>
-              {['Work', 'Personal', 'Health', 'Learning'].map((cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  style={[
-                    styles.categoryChip,
-                    themed.categoryChip,
-                    category === cat && styles.categoryChipActive,
-                    category === cat && themed.categoryChipActive,
-                  ]}
-                  onPress={() => setCategory(cat)}
-                >
-                  <Text style={[
-                    styles.categoryChipText,
-                    themed.categoryChipText,
-                    category === cat && styles.categoryChipTextActive,
-                    category === cat && themed.categoryChipTextActive,
-                  ]}>
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {modalType === 'event' && (
-              <TextInput
-                style={[styles.modalInput, themed.modalInput]}
-                placeholder="Location (optional)"
-                placeholderTextColor={isDarkMode ? '#666' : '#888'}
-                value={location}
-                onChangeText={setLocation}
-              />
-            )}
-
-            <TextInput
-              style={[styles.modalInput, themed.modalInput, styles.textArea]}
-              placeholder="Add notes..."
-              placeholderTextColor={isDarkMode ? '#666' : '#888'}
-              multiline
-              numberOfLines={3}
-              value={notes}
-              onChangeText={setNotes}
-            />
-
-            <View style={styles.actionRow}>
-              {editingItem && (
-                <TouchableOpacity
-                  style={[styles.modalBtn, styles.deleteBtn]}
-                  onPress={() => handleDeleteScheduleItem(editingItem.id, modalType)}
-                >
-                  <Text style={styles.modalBtnText}>Delete</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={[styles.modalBtn, themed.modalBtn, styles.cancelBtn, themed.cancelBtn]}
-                onPress={() => setScheduleModalVisible(false)}
-              >
-                <Text style={[styles.modalBtnTextDark, themed.modalBtnTextDark]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.saveBtn]}
-                onPress={handleSaveScheduleItem}
-              >
-                <Text style={styles.modalBtnText}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <ScheduleItemModal
+        visible={scheduleModalVisible}
+        editingItem={editingItem}
+        modalType={modalType}
+        title={title}
+        setTitle={setTitle}
+        time={time}
+        setTime={setTime}
+        endTime={endTime}
+        setEndTime={setEndTime}
+        priority={priority}
+        setPriority={setPriority}
+        category={category}
+        setCategory={setCategory}
+        location={location}
+        setLocation={setLocation}
+        notes={notes}
+        setNotes={setNotes}
+        onSave={handleSaveScheduleItem}
+        onDelete={handleDeleteScheduleItem}
+        onCancel={() => setScheduleModalVisible(false)}
+        timeFormat24h={timeFormat24h}
+      />
     </View>
   );
 };
@@ -1357,9 +701,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     borderRadius: 8,
   },
-  chevronText: {
-    fontSize: 12,
-  },
   toggleRow: {
     flexDirection: 'row',
     borderRadius: 8,
@@ -1385,176 +726,6 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
   },
-
-  // Month grid
-  monthGridContainer: {
-    flex: 1,
-  },
-  weekdayHeaderRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-  },
-  weekdayLabel: {
-    flex: 1,
-    textAlign: 'center',
-    fontFamily: Fonts.body,
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  monthCellsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  calendarCell: {
-    width: '14.28%',
-    minHeight: 85,
-    padding: 2,
-    borderWidth: 0.5,
-    borderColor: '#E0E0E0',
-    alignItems: 'stretch',
-  },
-  calendarCellEmpty: {
-    width: '14.28%',
-    minHeight: 85,
-    borderWidth: 0.5,
-    borderColor: 'transparent',
-  },
-  dayContainer: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: 2,
-  },
-  todayContainer: {
-    backgroundColor: Colors.red,
-  },
-  dayText: {
-    fontFamily: Fonts.body,
-    fontSize: 11,
-  },
-  todayText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-  },
-  monthItemsWrapper: {
-    flex: 1,
-    width: '100%',
-  },
-  monthItemPreview: {
-    borderLeftWidth: 2,
-    paddingLeft: 3,
-    marginVertical: 1,
-    marginHorizontal: 1,
-    borderRadius: 2,
-    backgroundColor: 'rgba(0,0,0,0.03)',
-  },
-  monthItemText: {
-    fontSize: 8,
-    fontFamily: Fonts.body,
-    lineHeight: 10,
-  },
-  monthItemMore: {
-    fontSize: 8,
-    fontFamily: Fonts.body,
-    color: Colors.red,
-    textAlign: 'center',
-    marginTop: 1,
-  },
-  dotContainer: {
-    height: 6,
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  blockDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Colors.red,
-  },
-
-  // Hourly list
-  hourlyContainer: {
-    flex: 1,
-  },
-  hourRow: {
-    flexDirection: 'row',
-    minHeight: 70,
-  },
-  hourLabel: {
-    width: 50,
-    fontSize: 11,
-    fontFamily: Fonts.body,
-    paddingTop: 4,
-    textAlign: 'right',
-    paddingRight: 8,
-  },
-  hourTimelineCell: {
-    flex: 1,
-    borderTopWidth: 1,
-    paddingLeft: 8,
-    justifyContent: 'center',
-  },
-  hourlyBlockCard: {
-    flex: 1,
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    padding: 8,
-    marginVertical: 4,
-    justifyContent: 'center',
-    ...Shadows.card,
-  },
-  hourlyBlockTitle: {
-    fontSize: 13,
-    fontFamily: Fonts.body,
-    fontWeight: 'bold',
-  },
-  hourlyBlockTime: {
-    fontSize: 10,
-    fontFamily: Fonts.body,
-    marginTop: 2,
-  },
-  emptyHourSlot: {
-    flex: 1,
-    height: '100%',
-    minHeight: 40,
-  },
-  bottomSpacer: {
-    height: 100,
-  },
-  timelineCard: {
-    marginVertical: 4,
-    marginBottom: 4,
-  },
-  allDayContainer: {
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  allDayTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    fontFamily: Fonts.heading,
-    marginBottom: 8,
-  },
-  hourlyItemsContainer: {
-    flex: 1,
-    width: '100%',
-    paddingVertical: 4,
-  },
-  weekViewContainer: {
-    flex: 1,
-  },
-  weekSubheader: {
-    fontSize: 14,
-    fontFamily: Fonts.body,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-
-  // FAB
   fab: {
     position: 'absolute',
     bottom: 96,
@@ -1566,376 +737,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fabText: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    lineHeight: 30,
-    fontWeight: '300',
-  },
-
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-    ...Shadows.card,
-  },
-  modalHeaderTitle: {
-    fontFamily: Fonts.heading,
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 16,
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    marginBottom: 12,
-  },
-  modalTimeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  timeInputCol: {
-    width: '48%',
-  },
-  timeInputLabel: {
-    fontSize: 11,
-    marginBottom: 4,
-  },
-  modalInputSmall: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  timePickerBtn: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-  },
-  timePickerBtnText: {
-    fontSize: 16,
-    fontWeight: '600',
-    fontFamily: Fonts.body,
-    letterSpacing: 1,
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 12,
-  },
-  categoryChip: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginRight: 6,
-    marginBottom: 6,
-  },
-  categoryChipActive: {
-    backgroundColor: Colors.red,
-    borderColor: Colors.red,
-  },
-  categoryChipText: {
-    fontSize: 12,
-  },
-  categoryChipTextActive: {
-    color: '#FFF',
-    fontWeight: 'bold',
-  },
-  colorRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  colorBubble: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  colorBubbleActive: {},
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  modalBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    marginLeft: 8,
-  },
-  saveBtn: {
-    backgroundColor: Colors.red,
-  },
-  cancelBtn: {},
-  deleteBtn: {
-    backgroundColor: Colors.error,
-    marginRight: 'auto',
-    marginLeft: 0,
-  },
-  modalBtnText: {
-    color: '#FFF',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  modalBtnTextDark: {
-    fontSize: 14,
-  },
-
-  // Week scroller styles
-  scrollerContainer: {
-    marginBottom: 16,
-  },
-  weekScroller: {
-    paddingVertical: 4,
-  },
-  datePill: {
-    width: 50,
-    height: 68,
-    borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-    ...Shadows.card,
-  },
-  datePillActive: {
-    backgroundColor: Colors.red,
-  },
-  datePillToday: {
-    borderColor: Colors.red,
-    borderWidth: 1.5,
-  },
-  pillDayName: {
-    fontSize: 10,
-    fontFamily: Fonts.body,
-  },
-  pillDayNum: {
-    fontSize: 16,
-    fontFamily: Fonts.body,
-    fontWeight: 'bold',
-    marginTop: 4,
-  },
-  pillTextActive: {
-    color: '#FFFFFF',
-  },
-  pillTodayNum: {
-    color: Colors.red,
-  },
-
-  // Overdue banner styles
-  overdueBanner: {
-    borderRadius: 12,
-    padding: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  overdueBadge: {
-    backgroundColor: Colors.error,
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginRight: 8,
-  },
-  overdueBadgeText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  overdueScroll: {
-    flex: 1,
-  },
-  overdueChip: {
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginRight: 6,
-    maxWidth: 120,
-  },
-  overdueChipText: {
-    fontSize: 11,
-  },
-
-  // Feed list styles
-  feedList: {
-    paddingBottom: 120,
-  },
-  card: {
-    flexDirection: 'row',
-    borderRadius: Layout.borderRadiusCard,
-    marginBottom: 12,
-    overflow: 'hidden',
-    alignItems: 'center',
-    paddingRight: 16,
-  },
-  categoryBar: {
-    width: 6,
-    height: '100%',
-  },
-  checkboxContainer: {
-    paddingHorizontal: 12,
-    paddingVertical: 16,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: Colors.success,
-    borderColor: Colors.success,
-  },
-  eventIconContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-  cardContent: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingLeft: 8,
-  },
-  cardTitle: {
-    fontFamily: Fonts.body,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  cardTitleCompleted: {
-    textDecorationLine: 'line-through',
-    color: '#888',
-  },
-  cardTime: {
-    fontFamily: Fonts.body,
-    fontSize: 11,
-    marginTop: 2,
-  },
-
-  // Block band styles
-  blockBandCard: {
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    padding: 10,
-    marginBottom: 12,
-  },
-  blockBandContent: {
-    paddingLeft: 4,
-  },
-  blockBandTitle: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    fontFamily: Fonts.body,
-  },
-  blockBandTime: {
-    fontSize: 10,
-    marginTop: 2,
-    fontFamily: Fonts.body,
-  },
-
-  // Empty state styles
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingTop: 80,
-  },
-  emptyIllustration: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontFamily: Fonts.heading,
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontFamily: Fonts.body,
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-
-  // Modal grid column styles
-  modalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  modalCol: {
-    width: '48%',
-  },
-  modalColLabel: {
-    fontSize: 11,
-    marginBottom: 4,
-  },
-  segmentedRow: {
-    flexDirection: 'row',
-    borderRadius: 8,
-    padding: 2,
-    marginBottom: 12,
-  },
-  segmentBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 6,
-  },
-  segmentBtnActive: {
-    backgroundColor: Colors.red,
-  },
-  segmentBtnText: {
-    fontSize: 12,
-  },
-  segmentBtnTextActive: {
-    color: '#FFF',
-    fontWeight: 'bold',
-  },
 });
 
 function useThemedStyles() {
-  const { colors, isDarkMode } = useTheme();
+  const { colors } = useTheme();
   return {
     container: {
       backgroundColor: colors.background,
     },
-    monthGridContainer: {},
-    weekdayHeaderRow: {},
-    hourlyContainer: {},
-    modalBtn: {},
     headerTitle: {
+      color: colors.textPrimary,
+    },
+    todayButton: {
+      borderColor: colors.border,
+      backgroundColor: colors.inputBg,
+    },
+    todayButtonText: {
       color: colors.textPrimary,
     },
     chevronButton: {
       backgroundColor: colors.inputBg,
     },
     toggleRow: {
-      backgroundColor: colors.divider,
+      backgroundColor: colors.inputBg,
     },
     toggleBtn: {
       backgroundColor: 'transparent',
@@ -1948,194 +772,6 @@ function useThemedStyles() {
     },
     toggleTextActive: {
       color: colors.textPrimary,
-    },
-    weekdayRow: {},
-    weekdayLabel: {
-      color: colors.textSecondary,
-    },
-    calendarCell: {
-      borderColor: colors.border,
-    },
-    dayContainer: {},
-    dayText: {
-      color: colors.textPrimary,
-    },
-    monthItemPreview: {
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-    },
-    monthItemText: {
-      color: colors.textPrimary,
-    },
-    monthItemMore: {
-      color: colors.red,
-    },
-    todayButton: {
-      borderColor: colors.border,
-      backgroundColor: colors.inputBg,
-    },
-    todayButtonText: {
-      color: colors.textPrimary,
-    },
-    allDayContainer: {
-      backgroundColor: colors.inputBg,
-    },
-    allDayTitle: {
-      color: colors.textPrimary,
-    },
-    hourRow: {},
-    hourLabel: {
-      color: colors.textSecondary,
-    },
-    hourTimelineCell: {
-      borderTopColor: colors.border,
-    },
-    hourlyBlockCard: {
-      backgroundColor: colors.cardBg,
-    },
-    hourlyBlockTitle: {
-      color: colors.textPrimary,
-    },
-    hourlyBlockTime: {
-      color: colors.textSecondary,
-    },
-    emptyHourSlot: {},
-    weekViewContainer: {},
-    weekSubheader: {
-      color: colors.textSecondary,
-    },
-    modalOverlay: {},
-    modalContent: {
-      backgroundColor: colors.cardBg,
-    },
-    modalHeaderTitle: {
-      color: colors.textPrimary,
-    },
-    modalInput: {
-      borderColor: colors.border,
-      color: colors.textPrimary,
-      backgroundColor: colors.inputBg,
-    },
-    timeInputLabel: {
-      color: colors.textSecondary,
-    },
-    timePickerBtn: {
-      borderColor: colors.border,
-      backgroundColor: colors.inputBg,
-    },
-    timePickerBtnText: {
-      color: colors.textPrimary,
-    },
-    categoryChip: {
-      borderColor: colors.border,
-      backgroundColor: 'transparent',
-    },
-    categoryChipActive: {
-      backgroundColor: colors.red,
-      borderColor: colors.red,
-    },
-    categoryChipText: {
-      color: colors.textSecondary,
-    },
-    categoryChipTextActive: {
-      color: '#FFFFFF',
-    },
-    colorBubble: {},
-    colorBubbleActive: {
-      borderColor: colors.textPrimary,
-    },
-    cancelBtn: {
-      backgroundColor: colors.divider,
-    },
-    modalBtnTextDark: {
-      color: colors.textPrimary,
-    },
-    scrollerContainer: {},
-    datePill: {
-      backgroundColor: colors.cardBg,
-    },
-    datePillActive: {
-      backgroundColor: colors.red,
-    },
-    datePillToday: {
-      borderColor: colors.red,
-    },
-    pillDayName: {
-      color: colors.textSecondary,
-    },
-    pillDayNum: {
-      color: colors.textPrimary,
-    },
-    pillTextActive: {
-      color: '#FFFFFF',
-    },
-    pillTodayNum: {
-      color: colors.red,
-    },
-    overdueBanner: {
-      backgroundColor: isDarkMode ? '#2C1B18' : '#FCE4D6',
-    },
-    overdueChip: {
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.7)',
-    },
-    overdueChipText: {
-      color: colors.textPrimary,
-    },
-    card: {
-      backgroundColor: colors.cardBg,
-    },
-    checkboxContainer: {},
-    checkbox: {
-      borderColor: colors.border,
-    },
-    checkboxChecked: {
-      backgroundColor: colors.success,
-      borderColor: colors.success,
-    },
-    eventIconContainer: {
-      backgroundColor: isDarkMode ? '#1E1E3F' : '#F0F0FF',
-    },
-    cardTitle: {
-      color: colors.textPrimary,
-    },
-    cardTitleCompleted: {
-      color: colors.textMuted,
-    },
-    cardTime: {
-      color: colors.textSecondary,
-    },
-    blockBandCard: {
-      backgroundColor: colors.cardBg,
-    },
-    blockBandTitle: {
-      color: colors.textPrimary,
-    },
-    blockBandTime: {
-      color: colors.textSecondary,
-    },
-    emptyState: {},
-    emptyTitle: {
-      color: colors.textPrimary,
-    },
-    emptySubtitle: {
-      color: colors.textSecondary,
-    },
-    modalColLabel: {
-      color: colors.textSecondary,
-    },
-    segmentedRow: {
-      backgroundColor: colors.divider,
-    },
-    segmentBtn: {
-      backgroundColor: 'transparent',
-    },
-    segmentBtnActive: {
-      backgroundColor: colors.red,
-    },
-    segmentBtnText: {
-      color: colors.textSecondary,
-    },
-    segmentBtnTextActive: {
-      color: '#FFFFFF',
     },
   };
 }
