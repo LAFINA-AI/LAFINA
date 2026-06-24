@@ -82,3 +82,13 @@ android/local.properties
 .env
 coverage/
 .nyc_output/
+
+# Graphify knowledge graph output
+graphify-out/
+
+# Python cache (Graphify is Python-based)
+__pycache__/
+*.pyc
+
+# Editor config — we don't use Cursor
+.cursorrules
