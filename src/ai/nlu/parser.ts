@@ -1,7 +1,20 @@
-import { tasksStore } from '../../storage/tasksStore';
-import { timeBlocksStore } from '../../storage/timeBlocksStore';
-import { notesStore } from '../../storage/notesStore';
-import { Colors } from '../../ui/theme';
+import { generateId } from '../../utils';
+import { tasksStore, timeBlocksStore, notesStore } from '../../storage';
+import {
+  DEFAULT_TASK_DUE_TIME,
+  DEFAULT_BLOCK_START_TIME,
+  DEFAULT_BLOCK_END_TIME,
+  DEFAULT_BLOCK_TITLE,
+  DEFAULT_TASK_PRIORITY,
+  DEFAULT_TASK_CATEGORY,
+  DEFAULT_BLOCK_CATEGORY,
+  DEFAULT_NOTE_TITLE,
+  DEFAULT_NOTE_CATEGORY,
+} from '../../constants';
+// Default brand colors — AI layer must not import from UI layer
+const AI_COLORS = {
+  blue: '#E6003A',
+} as const;
 
 /**
  * Parses user command string, performs scheduling database writes,
@@ -24,8 +37,8 @@ export const processCommand = (command: string, userId: string): string => {
     // 1. Parse Task: "add task [Title] by [Time]" or "remind me to [Title]"
     if (lowercaseCommand.startsWith('add task') || lowercaseCommand.includes('remind me to')) {
       let taskTitle = trimmedCommand.replace(/(add task|remind me to)/gi, '').trim();
-      let dueTime = '17:00';
-      
+      let dueTime = DEFAULT_TASK_DUE_TIME;
+
       if (taskTitle.toLowerCase().includes('by')) {
         const parts = taskTitle.split(/by/i);
         taskTitle = parts[0].trim();
@@ -33,14 +46,14 @@ export const processCommand = (command: string, userId: string): string => {
       }
 
       tasksStore.insertTask({
-        id: 'task_' + Math.random().toString(36).substr(2, 9),
+        id: generateId('task'),
         userId,
         title: taskTitle || 'Voice Scheduled Task',
         dueDate: new Date().toISOString().split('T')[0],
         dueTime: dueTime,
         isCompleted: false,
-        priority: 'Medium',
-        category: 'Work',
+        priority: DEFAULT_TASK_PRIORITY,
+        category: DEFAULT_TASK_CATEGORY,
         notes: 'Created via scheduling command',
       });
       
@@ -49,9 +62,9 @@ export const processCommand = (command: string, userId: string): string => {
     
     // 2. Parse Time Block: "block [Start]-[End] for [Activity]"
     else if (lowercaseCommand.startsWith('block') || lowercaseCommand.includes('work') || lowercaseCommand.includes('study')) {
-      let blockTitle = 'Deep Work';
-      let startTime = '14:00';
-      let endTime = '16:00';
+      let blockTitle = DEFAULT_BLOCK_TITLE;
+      let startTime = DEFAULT_BLOCK_START_TIME;
+      let endTime = DEFAULT_BLOCK_END_TIME;
       
       if (lowercaseCommand.includes('for')) {
         const parts = trimmedCommand.split(/for/i);
@@ -64,14 +77,14 @@ export const processCommand = (command: string, userId: string): string => {
       }
 
       timeBlocksStore.insert({
-        id: 'block_' + Math.random().toString(36).substr(2, 9),
+        id: generateId('block'),
         userId,
         title: blockTitle,
         date: new Date().toISOString().split('T')[0],
         startTime: startTime,
         endTime: endTime,
-        color: Colors.blue,
-        category: 'Work',
+        color: AI_COLORS.blue,
+        category: DEFAULT_BLOCK_CATEGORY,
         notes: 'Time block scheduled via command',
       });
       
@@ -82,13 +95,13 @@ export const processCommand = (command: string, userId: string): string => {
     else if (lowercaseCommand.startsWith('note:') || lowercaseCommand.startsWith('note ')) {
       const noteBody = trimmedCommand.replace(/(note:|note)/gi, '').trim();
       notesStore.insert({
-        id: 'note_' + Math.random().toString(36).substr(2, 9),
+        id: generateId('note'),
         userId,
-        title: 'Quick Note',
+        title: DEFAULT_NOTE_TITLE,
         body: noteBody || 'Empty note contents.',
         isPinned: false,
         tags: ['AI Transcribed'],
-        category: 'Personal',
+        category: DEFAULT_NOTE_CATEGORY,
         isVoiceTranscribed: true,
       });
       
