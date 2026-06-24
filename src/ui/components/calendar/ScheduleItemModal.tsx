@@ -23,7 +23,7 @@ interface ScheduleItemModalProps {
   setLocation: (val: string) => void;
   notes: string;
   setNotes: (val: string) => void;
-  onSave: () => void;
+  onSave: (recurrenceRule: string | null) => void;
   onDelete: (id: string, type: 'task' | 'event') => void;
   onCancel: () => void;
   timeFormat24h: boolean;
@@ -59,6 +59,8 @@ const formatTimeForDisplay = (timeStr: string, is24Hour: boolean): string => {
   }
 };
 
+import { parseRrule } from '../../../storage/rruleHelper';
+
 export const ScheduleItemModal: React.FC<ScheduleItemModalProps> = ({
   visible,
   editingItem,
@@ -88,6 +90,71 @@ export const ScheduleItemModal: React.FC<ScheduleItemModalProps> = ({
   // Local state for native time pickers
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+
+  // Local recurrence form states
+  const [repeatFreq, setRepeatFreq] = useState<'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'>('NONE');
+  const [repeatInterval, setRepeatInterval] = useState('1');
+  const [repeatWeekDays, setRepeatWeekDays] = useState<string[]>([]);
+  const [repeatEndType, setRepeatEndType] = useState<'NEVER' | 'UNTIL' | 'COUNT'>('NEVER');
+  const [repeatUntil, setRepeatUntil] = useState(''); // YYYY-MM-DD
+  const [repeatCount, setRepeatCount] = useState('10');
+  const [showUntilDatePicker, setShowUntilDatePicker] = useState(false);
+
+  // Sync parent item values to local state
+  React.useEffect(() => {
+    if (visible) {
+      if (editingItem && editingItem.recurrenceRule) {
+        const rule = parseRrule(editingItem.recurrenceRule);
+        if (rule) {
+          setRepeatFreq(rule.freq);
+          setRepeatInterval(String(rule.interval || 1));
+          setRepeatWeekDays(rule.byday || []);
+          if (rule.until) {
+            setRepeatEndType('UNTIL');
+            setRepeatUntil(rule.until);
+          } else if (rule.count) {
+            setRepeatEndType('COUNT');
+            setRepeatCount(String(rule.count));
+          } else {
+            setRepeatEndType('NEVER');
+          }
+          return;
+        }
+      }
+      // Reset
+      setRepeatFreq('NONE');
+      setRepeatInterval('1');
+      setRepeatWeekDays([]);
+      setRepeatEndType('NEVER');
+      setRepeatUntil('');
+      setRepeatCount('10');
+    }
+  }, [visible, editingItem]);
+
+  const handleSaveLocal = () => {
+    let ruleStr: string | null = null;
+    if (repeatFreq !== 'NONE') {
+      const parts = [`FREQ=${repeatFreq}`];
+      const parsedInterval = parseInt(repeatInterval, 10);
+      if (!isNaN(parsedInterval) && parsedInterval > 0) {
+        parts.push(`INTERVAL=${parsedInterval}`);
+      }
+      if (repeatFreq === 'WEEKLY' && repeatWeekDays.length > 0) {
+        parts.push(`BYDAY=${repeatWeekDays.join(',')}`);
+      }
+      if (repeatEndType === 'UNTIL' && repeatUntil) {
+        const cleanUntil = repeatUntil.replace(/-/g, '');
+        parts.push(`UNTIL=${cleanUntil}T235959Z`);
+      } else if (repeatEndType === 'COUNT' && repeatCount) {
+        const parsedCount = parseInt(repeatCount, 10);
+        if (!isNaN(parsedCount) && parsedCount > 0) {
+          parts.push(`COUNT=${parsedCount}`);
+        }
+      }
+      ruleStr = parts.join(';');
+    }
+    onSave(ruleStr);
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -220,6 +287,157 @@ export const ScheduleItemModal: React.FC<ScheduleItemModalProps> = ({
             />
           )}
 
+          {/* Recurrence Section */}
+          <Text style={[styles.sectionLabel, themed.sectionLabel]}>Recurrence</Text>
+          <View style={styles.recurrenceContainer}>
+            <View style={styles.freqRow}>
+              {(['NONE', 'DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as const).map((freq) => (
+                <TouchableOpacity
+                  key={freq}
+                  style={[
+                    styles.freqBtn,
+                    themed.freqBtn,
+                    repeatFreq === freq && styles.freqBtnActive,
+                    repeatFreq === freq && themed.freqBtnActive,
+                  ]}
+                  onPress={() => setRepeatFreq(freq)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.freqBtnText,
+                    themed.freqBtnText,
+                    repeatFreq === freq && styles.freqBtnTextActive,
+                    repeatFreq === freq && themed.freqBtnTextActive,
+                  ]}>
+                    {freq === 'NONE' ? 'None' : freq.charAt(0) + freq.slice(1).toLowerCase()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {repeatFreq !== 'NONE' && (
+              <View style={[styles.recurrenceDetails, themed.recurrenceDetails]}>
+                {/* Interval */}
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, themed.detailLabel]}>Repeat every</Text>
+                  <TextInput
+                    style={[styles.detailNumberInput, themed.detailInput]}
+                    keyboardType="numeric"
+                    value={repeatInterval}
+                    onChangeText={setRepeatInterval}
+                  />
+                  <Text style={[styles.detailLabel, themed.detailLabel]}>
+                    {repeatFreq === 'DAILY' ? 'days' : repeatFreq === 'WEEKLY' ? 'weeks' : repeatFreq === 'MONTHLY' ? 'months' : 'years'}
+                  </Text>
+                </View>
+
+                {/* Weekly Days */}
+                {repeatFreq === 'WEEKLY' && (
+                  <View style={styles.detailRow}>
+                    <Text style={[styles.detailLabel, themed.detailLabel]}>On days</Text>
+                    <View style={styles.weekDaysGrid}>
+                      {(['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] as const).map((day) => {
+                        const active = repeatWeekDays.includes(day);
+                        return (
+                          <TouchableOpacity
+                            key={day}
+                            style={[
+                              styles.dayBubble,
+                              themed.dayBubble,
+                              active && styles.dayBubbleActive,
+                            ]}
+                            onPress={() => {
+                              if (active) {
+                                setRepeatWeekDays(repeatWeekDays.filter(d => d !== day));
+                              } else {
+                                setRepeatWeekDays([...repeatWeekDays, day]);
+                              }
+                            }}
+                          >
+                            <Text style={[
+                              styles.dayBubbleText,
+                              themed.dayBubbleText,
+                              active && styles.dayBubbleTextActive,
+                            ]}>
+                              {day[0]}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+
+                {/* End Condition */}
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, themed.detailLabel]}>Ends</Text>
+                  <View style={styles.endTypeRow}>
+                    {(['NEVER', 'UNTIL', 'COUNT'] as const).map((type) => (
+                      <TouchableOpacity
+                        key={type}
+                        style={[
+                          styles.endTypeBtn,
+                          themed.endTypeBtn,
+                          repeatEndType === type && styles.endTypeBtnActive,
+                        ]}
+                        onPress={() => setRepeatEndType(type)}
+                      >
+                        <Text style={[
+                          styles.endTypeBtnText,
+                          themed.endTypeBtnText,
+                          repeatEndType === type && styles.endTypeBtnTextActive,
+                        ]}>
+                          {type === 'NEVER' ? 'Never' : type === 'UNTIL' ? 'On Date' : 'After'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* End Details */}
+                {repeatEndType === 'UNTIL' && (
+                  <View style={styles.detailRow}>
+                    <Text style={[styles.detailLabel, themed.detailLabel]}>Until date</Text>
+                    <TouchableOpacity
+                      style={[styles.dateSelectorBtn, themed.detailInput]}
+                      onPress={() => setShowUntilDatePicker(true)}
+                    >
+                      <Text style={[styles.dateSelectorBtnText, themed.dateSelectorBtnText]}>
+                        {repeatUntil || 'Select Date'}
+                      </Text>
+                    </TouchableOpacity>
+                    {showUntilDatePicker && (
+                      <DateTimePicker
+                        value={repeatUntil ? new Date(repeatUntil) : new Date()}
+                        mode="date"
+                        display="default"
+                        onChange={(_event, date) => {
+                          setShowUntilDatePicker(false);
+                          if (date) {
+                            setRepeatUntil(date.toISOString().split('T')[0]);
+                          }
+                        }}
+                      />
+                    )}
+                  </View>
+                )}
+
+                {repeatEndType === 'COUNT' && (
+                  <View style={styles.detailRow}>
+                    <Text style={[styles.detailLabel, themed.detailLabel]}>End after</Text>
+                    <TextInput
+                      style={[styles.detailNumberInput, themed.detailInput]}
+                      keyboardType="numeric"
+                      value={repeatCount}
+                      onChangeText={setRepeatCount}
+                    />
+                    <Text style={[styles.detailLabel, themed.detailLabel]}>occurrences</Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+
           <TextInput
             style={[styles.modalInput, themed.modalInput, styles.textArea]}
             placeholder="Add notes..."
@@ -247,7 +465,7 @@ export const ScheduleItemModal: React.FC<ScheduleItemModalProps> = ({
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modalBtn, styles.saveBtn]}
-              onPress={onSave}
+              onPress={handleSaveLocal}
             >
               <Text style={styles.modalBtnText}>Save</Text>
             </TouchableOpacity>
@@ -357,8 +575,130 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   textArea: {
-    height: 80,
+    height: 60,
     textAlignVertical: 'top',
+  },
+  sectionLabel: {
+    fontFamily: Fonts.heading,
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  recurrenceContainer: {
+    marginBottom: 16,
+  },
+  freqRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  freqBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: 'center',
+    marginHorizontal: 1,
+  },
+  freqBtnActive: {
+    backgroundColor: Colors.red,
+    borderColor: Colors.red,
+  },
+  freqBtnText: {
+    fontSize: 10,
+    fontFamily: Fonts.body,
+  },
+  freqBtnTextActive: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  recurrenceDetails: {
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 12,
+    marginTop: 4,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 6,
+  },
+  detailLabel: {
+    fontSize: 12,
+    fontFamily: Fonts.body,
+    marginRight: 8,
+  },
+  detailNumberInput: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    width: 50,
+    textAlign: 'center',
+    marginRight: 8,
+    fontSize: 12,
+  },
+  weekDaysGrid: {
+    flexDirection: 'row',
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  dayBubble: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayBubbleActive: {
+    backgroundColor: Colors.red,
+    borderColor: Colors.red,
+  },
+  dayBubbleText: {
+    fontSize: 9,
+    fontFamily: Fonts.body,
+    fontWeight: '600',
+  },
+  dayBubbleTextActive: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  endTypeRow: {
+    flexDirection: 'row',
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  endTypeBtn: {
+    flex: 1,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: 'center',
+    marginHorizontal: 2,
+  },
+  endTypeBtnActive: {
+    backgroundColor: Colors.red,
+    borderColor: Colors.red,
+  },
+  endTypeBtnText: {
+    fontSize: 10,
+    fontFamily: Fonts.body,
+  },
+  endTypeBtnTextActive: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  dateSelectorBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  dateSelectorBtnText: {
+    fontSize: 12,
+    fontFamily: Fonts.body,
   },
   actionRow: {
     flexDirection: 'row',
@@ -456,6 +796,58 @@ function useThemedStyles() {
       backgroundColor: 'transparent',
     },
     modalBtnTextDark: {
+      color: colors.textPrimary,
+    },
+    sectionLabel: {
+      color: colors.textSecondary,
+    },
+    freqBtn: {
+      borderColor: colors.border,
+      backgroundColor: colors.inputBg,
+    },
+    freqBtnActive: {
+      backgroundColor: Colors.red,
+      borderColor: Colors.red,
+    },
+    freqBtnText: {
+      color: colors.textSecondary,
+    },
+    freqBtnTextActive: {
+      color: '#FFFFFF',
+    },
+    recurrenceDetails: {
+      borderColor: colors.border,
+      backgroundColor: colors.cardBg,
+    },
+    detailLabel: {
+      color: colors.textPrimary,
+    },
+    detailInput: {
+      borderColor: colors.border,
+      color: colors.textPrimary,
+      backgroundColor: colors.inputBg,
+    },
+    dayBubble: {
+      borderColor: colors.border,
+      backgroundColor: colors.inputBg,
+    },
+    dayBubbleText: {
+      color: colors.textSecondary,
+    },
+    dayBubbleTextActive: {
+      color: '#FFFFFF',
+    },
+    endTypeBtn: {
+      borderColor: colors.border,
+      backgroundColor: colors.inputBg,
+    },
+    endTypeBtnText: {
+      color: colors.textSecondary,
+    },
+    endTypeBtnTextActive: {
+      color: '#FFFFFF',
+    },
+    dateSelectorBtnText: {
       color: colors.textPrimary,
     },
   };

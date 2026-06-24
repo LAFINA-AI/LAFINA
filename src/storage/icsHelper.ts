@@ -147,6 +147,9 @@ export const generateIcsString = (
     if (event.location) {
       lines.push(foldLine(`LOCATION:${escapeText(event.location)}`));
     }
+    if (event.recurrenceRule) {
+      lines.push(`RRULE:${event.recurrenceRule}`);
+    }
     lines.push('X-LAFINA-TYPE:event');
     lines.push('END:VEVENT');
   });
@@ -164,6 +167,9 @@ export const generateIcsString = (
     }
     lines.push(foldLine(`CATEGORIES:${escapeText(block.category)}`));
     lines.push(`X-LAFINA-COLOR:${block.color}`);
+    if (block.recurrenceRule) {
+      lines.push(`RRULE:${block.recurrenceRule}`);
+    }
     lines.push('X-LAFINA-TYPE:time_block');
     lines.push('END:VEVENT');
   });
@@ -191,6 +197,9 @@ export const generateIcsString = (
     // Priority mapping: High -> 1, Medium -> 5, Low -> 9
     const priorityNum = task.priority === 'High' ? 1 : task.priority === 'Medium' ? 5 : 9;
     lines.push(`PRIORITY:${priorityNum}`);
+    if (task.recurrenceRule) {
+      lines.push(`RRULE:${task.recurrenceRule}`);
+    }
     lines.push('X-LAFINA-TYPE:task');
     lines.push('END:VTODO');
   });
@@ -262,6 +271,7 @@ export const parseIcsString = (
         const summary = unescapeText(componentData['SUMMARY'] || 'Untitled Event');
         const dtstart = componentData['DTSTART'] || '';
         const dtend = componentData['DTEND'] || '';
+        const rrule = componentData['RRULE'] || null;
 
         const startParsed = parseIcsDateTime(dtstart);
         const endParsed = parseIcsDateTime(dtend);
@@ -276,6 +286,7 @@ export const parseIcsString = (
             color: componentData['X-LAFINA-COLOR'] || '#2196F3',
             category: unescapeText(componentData['CATEGORIES'] || 'Work'),
             notes: componentData['DESCRIPTION'] ? unescapeText(componentData['DESCRIPTION']) : undefined,
+            recurrenceRule: rrule,
           });
         } else {
           events.push({
@@ -285,6 +296,7 @@ export const parseIcsString = (
             startTime: startParsed.time || '12:00',
             endTime: endParsed.time || '13:00',
             location: componentData['LOCATION'] ? unescapeText(componentData['LOCATION']) : null,
+            recurrenceRule: rrule,
           });
         }
         currentComponent = null;
@@ -296,6 +308,7 @@ export const parseIcsString = (
         const status = componentData['STATUS'] || 'NEEDS-ACTION';
         const priorityVal = parseInt(componentData['PRIORITY'] || '5', 10);
         const dueVal = componentData['DUE'] || '';
+        const rrule = componentData['RRULE'] || null;
 
         let priority: 'High' | 'Medium' | 'Low' = 'Medium';
         if (priorityVal > 0 && priorityVal <= 4) priority = 'High';
@@ -319,6 +332,7 @@ export const parseIcsString = (
           priority,
           category: categories,
           notes: description,
+          recurrenceRule: rrule,
         });
         currentComponent = null;
       }

@@ -221,4 +221,40 @@ describe('icsHelper', () => {
     const todayStr = new Date().toISOString().split('T')[0];
     expect(parsed.events[0].date).toBe(todayStr);
   });
+
+  test('should generate and parse RRULE correctly', () => {
+    const recurringEvent: Event = {
+      id: 'recurring_event_1',
+      userId: 'user_abc',
+      title: 'Weekly Lecture',
+      date: '2026-06-25',
+      startTime: '09:00',
+      endTime: '10:30',
+      location: 'Room 304',
+      recurrenceRule: 'FREQ=WEEKLY;BYDAY=MO,WE,FR;INTERVAL=1',
+      createdAt: '2026-06-24T12:00:00Z',
+      updatedAt: '2026-06-24T12:00:00Z',
+    };
+    const recurringBlock: TimeBlock = {
+      id: 'recurring_block_1',
+      userId: 'user_abc',
+      title: 'Daily Sleep',
+      date: '2026-06-25',
+      startTime: '22:00',
+      endTime: '23:00',
+      color: '#FF5722',
+      category: 'Health',
+      recurrenceRule: 'FREQ=DAILY;INTERVAL=1;COUNT=10',
+      createdAt: '2026-06-24T12:00:00Z',
+      updatedAt: '2026-06-24T12:00:00Z',
+    };
+
+    const icsString = generateIcsString([recurringEvent], [recurringBlock], []);
+    expect(icsString).toContain('RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR;INTERVAL=1');
+    expect(icsString).toContain('RRULE:FREQ=DAILY;INTERVAL=1;COUNT=10');
+
+    const parsed = parseIcsString(icsString);
+    expect(parsed.events[0].recurrenceRule).toBe('FREQ=WEEKLY;BYDAY=MO,WE,FR;INTERVAL=1');
+    expect(parsed.blocks[0].recurrenceRule).toBe('FREQ=DAILY;INTERVAL=1;COUNT=10');
+  });
 });

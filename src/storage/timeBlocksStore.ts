@@ -10,6 +10,7 @@ export interface TimeBlock {
   color: string;
   category: string;
   notes?: string;
+  recurrenceRule?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -25,6 +26,7 @@ const mapRowToBlock = (row: any): TimeBlock => ({
   color: row.color,
   category: row.category,
   notes: row.notes,
+  recurrenceRule: row.recurrence_rule,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   deletedAt: row.deleted_at,
@@ -54,8 +56,8 @@ export const timeBlocksStore = {
     const now = new Date().toISOString();
     try {
       db.executeSync(
-        `INSERT INTO time_blocks (id, user_id, title, date, start_time, end_time, color, category, notes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO time_blocks (id, user_id, title, date, start_time, end_time, color, category, notes, recurrence_rule, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           block.id,
           block.userId,
@@ -66,6 +68,7 @@ export const timeBlocksStore = {
           block.color,
           block.category,
           block.notes || null,
+          block.recurrenceRule || null,
           now,
           now,
         ]
@@ -92,6 +95,7 @@ export const timeBlocksStore = {
       { key: 'color', col: 'color' },
       { key: 'category', col: 'category' },
       { key: 'notes', col: 'notes' },
+      { key: 'recurrenceRule', col: 'recurrence_rule' },
     ];
 
     fields.forEach(({ key, col }) => {

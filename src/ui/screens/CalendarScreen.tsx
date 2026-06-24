@@ -19,6 +19,7 @@ import { generateIcsString, parseIcsString } from '../../storage/icsHelper';
 import { importedBatchesStore, ImportBatch } from '../../storage/importedBatchesStore';
 import { calendarVisibilityStore } from '../../storage/calendarVisibilityStore';
 import { CalendarLayersModal } from '../components/calendar/CalendarLayersModal';
+import { getOccurrences } from '../../storage/rruleHelper';
 
 // Extracted Sub-Components
 import { MonthView } from '../components/calendar/MonthView';
@@ -108,7 +109,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
     loadScheduleData();
     generateWeekDays();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, selectedDate, refreshTrigger, batches, visibilityMap]);
+  }, [userId, selectedDate, currentDate, viewMode, refreshTrigger, batches, visibilityMap]);
 
   useEffect(() => {
     loadSettings();
@@ -133,8 +134,31 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
     setWeekStartsMonday(mondayStart);
   };
 
+  const getViewRange = (): { start: Date; end: Date } => {
+    if (viewMode === 'day') {
+      const start = new Date(selectedDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(selectedDate);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    } else if (viewMode === 'week') {
+      const days = weekDays.length > 0 ? weekDays : [selectedDate];
+      const start = new Date(days[0]);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(days[days.length - 1]);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    } else {
+      const start = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 15);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 2, 15);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+  };
+
   const loadBlocks = () => {
-    let data = timeBlocksStore.getAll(userId);
+    let rawData = timeBlocksStore.getAll(userId);
 
     const importedBlockIds = new Set<string>();
     const hiddenBlockIds = new Set<string>();
@@ -150,7 +174,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       });
     });
 
-    data = data.filter((block) => {
+    rawData = rawData.filter((block) => {
       const isImported = importedBlockIds.has(block.id);
       if (isImported) {
         return !hiddenBlockIds.has(block.id);
@@ -159,12 +183,32 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       }
     });
 
-    setBlocks(data);
+    // Expand recurrence
+    const expandedBlocks: TimeBlock[] = [];
+    const { start: rangeStart, end: rangeEnd } = getViewRange();
+
+    rawData.forEach((block) => {
+      if (block.recurrenceRule) {
+        const dates = getOccurrences(block.date, block.recurrenceRule, rangeStart, rangeEnd);
+        dates.forEach((dateStr) => {
+          const isBase = dateStr === block.date;
+          expandedBlocks.push({
+            ...block,
+            id: isBase ? block.id : `${block.id}_occur_${dateStr}`,
+            date: dateStr,
+          });
+        });
+      } else {
+        expandedBlocks.push(block);
+      }
+    });
+
+    setBlocks(expandedBlocks);
   };
 
   const loadScheduleData = () => {
-    let tasksData = tasksStore.getAllTasks(userId);
-    let eventsData = tasksStore.getAllEvents(userId);
+    let rawTasks = tasksStore.getAllTasks(userId);
+    let rawEvents = tasksStore.getAllEvents(userId);
 
     const importedTaskIds = new Set<string>();
     const hiddenTaskIds = new Set<string>();
@@ -188,7 +232,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       });
     });
 
-    tasksData = tasksData.filter((t) => {
+    rawTasks = rawTasks.filter((t) => {
       const isImported = importedTaskIds.has(t.id);
       if (isImported) {
         return !hiddenTaskIds.has(t.id);
@@ -197,7 +241,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       }
     });
 
-    eventsData = eventsData.filter((e) => {
+    rawEvents = rawEvents.filter((e) => {
       const isImported = importedEventIds.has(e.id);
       if (isImported) {
         return !hiddenEventIds.has(e.id);
@@ -206,12 +250,49 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       }
     });
 
-    setAllTasks(tasksData);
-    setAllEvents(eventsData);
+    // Expand recurrence
+    const expandedTasks: Task[] = [];
+    const expandedEvents: Event[] = [];
+    const { start: rangeStart, end: rangeEnd } = getViewRange();
+
+    rawTasks.forEach((t) => {
+      if (t.recurrenceRule && t.dueDate) {
+        const dates = getOccurrences(t.dueDate, t.recurrenceRule, rangeStart, rangeEnd);
+        dates.forEach((dateStr) => {
+          const isBase = dateStr === t.dueDate;
+          expandedTasks.push({
+            ...t,
+            id: isBase ? t.id : `${t.id}_occur_${dateStr}`,
+            dueDate: dateStr,
+          });
+        });
+      } else {
+        expandedTasks.push(t);
+      }
+    });
+
+    rawEvents.forEach((e) => {
+      if (e.recurrenceRule && e.date) {
+        const dates = getOccurrences(e.date, e.recurrenceRule, rangeStart, rangeEnd);
+        dates.forEach((dateStr) => {
+          const isBase = dateStr === e.date;
+          expandedEvents.push({
+            ...e,
+            id: isBase ? e.id : `${e.id}_occur_${dateStr}`,
+            date: dateStr,
+          });
+        });
+      } else {
+        expandedEvents.push(e);
+      }
+    });
+
+    setAllTasks(expandedTasks);
+    setAllEvents(expandedEvents);
 
     const dateStr = selectedDate.toISOString().split('T')[0];
-    const dayTasks = tasksData.filter((t) => t.dueDate === dateStr);
-    const dayEvents = eventsData.filter((e) => e.date === dateStr);
+    const dayTasks = expandedTasks.filter((t) => t.dueDate === dateStr);
+    const dayEvents = expandedEvents.filter((e) => e.date === dateStr);
 
     setTasks(dayTasks);
     setEvents(dayEvents);
@@ -314,17 +395,19 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   };
 
   const handleEditBlockPress = (block: TimeBlock) => {
-    setEditingBlock(block);
-    setTitle(block.title);
-    setStartTime(block.startTime);
-    setEndTime(block.endTime);
-    setCategory(block.category);
-    setColor(block.color);
-    setNotes(block.notes || '');
+    const parentId = block.id.split('_occur_')[0];
+    const originalBlock = timeBlocksStore.getAll(userId).find((b) => b.id === parentId) || block;
+    setEditingBlock(originalBlock);
+    setTitle(originalBlock.title);
+    setStartTime(originalBlock.startTime);
+    setEndTime(originalBlock.endTime);
+    setCategory(originalBlock.category);
+    setColor(originalBlock.color);
+    setNotes(originalBlock.notes || '');
     setModalVisible(true);
   };
 
-  const handleSaveBlock = () => {
+  const handleSaveBlock = (rule: string | null) => {
     const AlertRN = require('react-native').Alert;
     if (!title.trim()) {
       AlertRN.alert('Error', 'Please enter a title.');
@@ -348,6 +431,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
         color,
         category,
         notes,
+        recurrenceRule: rule,
       });
     } else {
       timeBlocksStore.insert({
@@ -360,6 +444,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
         color,
         category,
         notes,
+        recurrenceRule: rule,
       });
     }
 
@@ -413,24 +498,29 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
 
   const handleEditScheduleItemPress = (item: Task | Event, type: 'task' | 'event') => {
     setModalType(type);
-    setEditingItem(item);
-    setTitle(item.title);
+    const parentId = item.id.split('_occur_')[0];
     if (type === 'task') {
       const t = item as Task;
-      setCategory(t.category || 'Work');
-      setNotes(t.notes || '');
-      setTime(t.dueTime || '12:00');
-      setPriority(t.priority || 'Medium');
+      const originalTask = tasksStore.getAllTasks(userId).find((taskItem) => taskItem.id === parentId) || t;
+      setEditingItem(originalTask);
+      setTitle(originalTask.title);
+      setCategory(originalTask.category || 'Work');
+      setNotes(originalTask.notes || '');
+      setTime(originalTask.dueTime || '12:00');
+      setPriority(originalTask.priority || 'Medium');
     } else {
       const e = item as Event;
-      setTime(e.startTime);
-      setEndTime(e.endTime);
-      setLocation(e.location || '');
+      const originalEvent = tasksStore.getAllEvents(userId).find((eventItem) => eventItem.id === parentId) || e;
+      setEditingItem(originalEvent);
+      setTitle(originalEvent.title);
+      setTime(originalEvent.startTime);
+      setEndTime(originalEvent.endTime);
+      setLocation(originalEvent.location || '');
     }
     setScheduleModalVisible(true);
   };
 
-  const handleSaveScheduleItem = () => {
+  const handleSaveScheduleItem = (rule: string | null) => {
     const AlertRN = require('react-native').Alert;
     if (!title.trim()) {
       AlertRN.alert('Error', 'Please enter a title.');
@@ -453,6 +543,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
           priority,
           category,
           notes,
+          recurrenceRule: rule,
         });
       } else {
         tasksStore.insertTask({
@@ -465,6 +556,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
           priority,
           category,
           notes,
+          recurrenceRule: rule,
         });
       }
     } else {
@@ -476,6 +568,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
           startTime: time,
           endTime: endTime,
           location,
+          recurrenceRule: rule,
         });
       } else {
         tasksStore.insertEvent({
@@ -486,6 +579,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
           startTime: time,
           endTime: endTime,
           location,
+          recurrenceRule: rule,
         });
       }
     }
@@ -517,8 +611,9 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   };
 
   const toggleTaskCompletion = (task: Task) => {
+    const parentId = task.id.split('_occur_')[0];
     tasksStore.updateTask({
-      id: task.id,
+      id: parentId,
       isCompleted: !task.isCompleted,
     });
     loadScheduleData();
