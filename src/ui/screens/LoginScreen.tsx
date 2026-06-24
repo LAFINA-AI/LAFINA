@@ -2,21 +2,23 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
-  Image,
   KeyboardAvoidingView,
   ScrollView,
   StatusBar,
-  ActivityIndicator,
 } from 'react-native';
-import { Eye, EyeOff, Mail, Lock, Check } from 'lucide-react-native';
+import { Mail, Lock, Check } from 'lucide-react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { userStore } from '../../storage';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import type { ThemeColors } from '../contexts/ThemeContext';
+
+// Auth sub-components
+import { AuthHeader } from '../components/auth/AuthHeader';
+import { AuthInput } from '../components/auth/AuthInput';
+import { AuthButton } from '../components/auth/AuthButton';
 
 interface LoginScreenProps {
   onLoginSuccess: (userId: string) => void;
@@ -74,7 +76,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setError(null);
 
     try {
-      // Small simulated delay for native feel
       await new Promise<void>(resolve => setTimeout(resolve, 800));
       
       const user = await userStore.login(email.trim(), password);
@@ -103,13 +104,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         
         {/* Header Section */}
-        <View style={styles.header}>
-          <Image
-            source={require('../../assets/lafina_default_logo.png')}
-            style={styles.logoText}
-            resizeMode="contain"
-          />
-        </View>
+        <AuthHeader />
 
         {/* Card Form */}
         <View style={[styles.card, Shadows.card, themed.card]}>
@@ -119,46 +114,27 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           {error && <Text style={styles.errorText}>{error}</Text>}
 
           {/* Email Field */}
-          <Text style={[styles.fieldLabel, themed.fieldLabel]}>Email Address</Text>
-          <View style={[styles.inputContainer, themed.inputContainer]}>
-            <Mail size={20} color={colors.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, themed.input]}
-              placeholder="student@ustp.edu.ph"
-              placeholderTextColor={colors.textSecondary}
-              value={email}
-              onChangeText={handleEmailChange}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
+          <AuthInput
+            label="Email Address"
+            placeholder="student@ustp.edu.ph"
+            value={email}
+            onChangeText={handleEmailChange}
+            keyboardType="email-address"
+            icon={<Mail size={20} color={colors.textSecondary} />}
+          />
 
           {/* Password Field */}
-          <Text style={[styles.fieldLabel, themed.fieldLabel]}>Password</Text>
-          <View style={[styles.inputContainer, themed.inputContainer]}>
-            <Lock size={20} color={colors.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, themed.input]}
-              placeholder="••••••••"
-              placeholderTextColor={colors.textSecondary}
-              secureTextEntry={!showPassword}
-              value={password}
-              onChangeText={setPassword}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <TouchableOpacity
-              onPress={() => setShowPassword(!showPassword)}
-              style={styles.eyeIcon}
-            >
-              {showPassword ? (
-                <EyeOff size={20} color={colors.textSecondary} />
-              ) : (
-                <Eye size={20} color={colors.textSecondary} />
-              )}
-            </TouchableOpacity>
-          </View>
+          <AuthInput
+            label="Password"
+            placeholder="••••••••"
+            secureTextEntry={!showPassword}
+            value={password}
+            onChangeText={setPassword}
+            icon={<Lock size={20} color={colors.textSecondary} />}
+            showPasswordToggle
+            showPassword={showPassword}
+            onPasswordToggle={() => setShowPassword(!showPassword)}
+          />
 
           {/* Remember Me Checkbox [Fix #9] */}
           <TouchableOpacity
@@ -180,17 +156,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           </TouchableOpacity>
 
           {/* Log In Button */}
-          <TouchableOpacity
-            style={[styles.loginButton, loading && styles.disabledButton]}
+          <AuthButton
+            title="Sign In"
             onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color={colors.white} size="small" />
-            ) : (
-              <Text style={styles.loginButtonText}>Sign In</Text>
-            )}
-          </TouchableOpacity>
+            loading={loading}
+          />
         </View>
 
         {/* Footer Navigation */}
@@ -211,9 +181,6 @@ const getLoginThemedStyles = (colors: ThemeColors) => ({
   card: { backgroundColor: colors.cardBg },
   cardTitle: { color: colors.textPrimary },
   cardSubtitle: { color: colors.textSecondary },
-  fieldLabel: { color: colors.textPrimary },
-  inputContainer: { borderColor: colors.border, backgroundColor: colors.inputBg },
-  input: { color: colors.textPrimary },
   rememberMeText: { color: colors.textSecondary },
   checkbox: { borderColor: colors.border, backgroundColor: colors.cardBg },
   checkboxChecked: { backgroundColor: colors.blue, borderColor: colors.blue },
@@ -228,25 +195,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  logoIcon: {
-    width: 72,
-    height: 72,
-    marginBottom: 12,
-  },
-  logoText: {
-    width: 140,
-    height: 80,
-  },
-  subtitle: {
-    fontFamily: Fonts.body,
-    fontSize: 12,
-    marginTop: 4,
-    letterSpacing: 0.5,
   },
   card: {
     borderRadius: Layout.borderRadiusCard,
@@ -271,34 +219,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     fontWeight: '500',
   },
-  fieldLabel: {
-    fontFamily: Fonts.body,
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderRadius: Layout.borderRadiusButton,
-    marginBottom: 16,
-    paddingHorizontal: 12,
-  },
-  inputIcon: {
-    marginRight: 8,
-  },
-  input: {
-    flex: 1,
-    height: 48,
-    fontFamily: Fonts.body,
-    fontSize: 14,
-  },
-  eyeIcon: {
-    padding: 8,
-  },
   rememberMeRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -321,23 +241,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     fontSize: 14,
   },
-  loginButton: {
-    height: 48,
-    backgroundColor: Colors.blue,
-    borderRadius: Layout.borderRadiusButton,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  disabledButton: {
-    backgroundColor: Colors.textMutedLight,
-  },
-  loginButtonText: {
-    fontFamily: Fonts.body,
-    color: Colors.textLight,
-    fontWeight: 'bold',
-    fontSize: 15,
-  },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -355,4 +258,3 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 });
-

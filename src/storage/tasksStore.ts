@@ -10,6 +10,7 @@ export interface Task {
   priority: 'High' | 'Medium' | 'Low';
   category: string;
   notes?: string | null;
+  recurrenceRule?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -24,6 +25,7 @@ export interface Event {
   endTime: string; // HH:MM
   location?: string | null;
   linkedCalendarBlock?: string | null;
+  recurrenceRule?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -39,6 +41,7 @@ const mapRowToTask = (row: any): Task => ({
   priority: row.priority as Task['priority'],
   category: row.category,
   notes: row.notes,
+  recurrenceRule: row.recurrence_rule,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   deletedAt: row.deleted_at,
@@ -53,6 +56,7 @@ const mapRowToEvent = (row: any): Event => ({
   endTime: row.end_time,
   location: row.location,
   linkedCalendarBlock: row.linked_calendar_block,
+  recurrenceRule: row.recurrence_rule,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   deletedAt: row.deleted_at,
@@ -78,8 +82,8 @@ export const tasksStore = {
     const now = new Date().toISOString();
     try {
       db.executeSync(
-        `INSERT INTO tasks (id, user_id, title, due_date, due_time, is_completed, priority, category, notes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tasks (id, user_id, title, due_date, due_time, is_completed, priority, category, notes, recurrence_rule, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           task.id,
           task.userId,
@@ -90,6 +94,7 @@ export const tasksStore = {
           task.priority,
           task.category,
           task.notes || null,
+          task.recurrenceRule || null,
           now,
           now,
         ]
@@ -113,6 +118,7 @@ export const tasksStore = {
       { key: 'priority', col: 'priority' },
       { key: 'category', col: 'category' },
       { key: 'notes', col: 'notes' },
+      { key: 'recurrenceRule', col: 'recurrence_rule' },
     ];
 
     fields.forEach(({ key, col, type }) => {
@@ -176,8 +182,8 @@ export const tasksStore = {
     const now = new Date().toISOString();
     try {
       db.executeSync(
-        `INSERT INTO events (id, user_id, title, date, start_time, end_time, location, linked_calendar_block, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO events (id, user_id, title, date, start_time, end_time, location, linked_calendar_block, recurrence_rule, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           event.id,
           event.userId,
@@ -187,6 +193,7 @@ export const tasksStore = {
           event.endTime,
           event.location || null,
           event.linkedCalendarBlock || null,
+          event.recurrenceRule || null,
           now,
           now,
         ]
@@ -209,6 +216,7 @@ export const tasksStore = {
       { key: 'endTime', col: 'end_time' },
       { key: 'location', col: 'location' },
       { key: 'linkedCalendarBlock', col: 'linked_calendar_block' },
+      { key: 'recurrenceRule', col: 'recurrence_rule' },
     ];
 
     fields.forEach(({ key, col }) => {

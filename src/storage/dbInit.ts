@@ -57,7 +57,7 @@ export const initDatabase = async (): Promise<void> => {
       // Schema versioning and migration
       const versionResult = tx.executeSync('PRAGMA user_version');
       const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;
-      const TARGET_VERSION = 2;
+      const TARGET_VERSION = 3; // Increment for each migration batch
 
       if (currentVersion < TARGET_VERSION) {
         if (currentVersion < 1) {
@@ -87,6 +87,49 @@ export const initDatabase = async (): Promise<void> => {
             const msg = e instanceof Error ? e.message : String(e);
             if (!msg.toLowerCase().includes('duplicate column')) {
               throw e;
+            }
+          }
+        }
+
+        if (currentVersion < 3) {
+          const tableExists = (tableName: string): boolean => {
+            const exists = tx.executeSync(
+              `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
+              [tableName]
+            );
+            return exists.rows && exists.rows.length > 0;
+          };
+
+          if (tableExists('time_blocks')) {
+            try {
+              tx.executeSync('ALTER TABLE time_blocks ADD COLUMN recurrence_rule TEXT');
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              if (!msg.toLowerCase().includes('duplicate column')) {
+                throw e;
+              }
+            }
+          }
+
+          if (tableExists('tasks')) {
+            try {
+              tx.executeSync('ALTER TABLE tasks ADD COLUMN recurrence_rule TEXT');
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              if (!msg.toLowerCase().includes('duplicate column')) {
+                throw e;
+              }
+            }
+          }
+
+          if (tableExists('events')) {
+            try {
+              tx.executeSync('ALTER TABLE events ADD COLUMN recurrence_rule TEXT');
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              if (!msg.toLowerCase().includes('duplicate column')) {
+                throw e;
+              }
             }
           }
         }
@@ -140,6 +183,7 @@ export const initDatabase = async (): Promise<void> => {
           color TEXT NOT NULL,
           category TEXT NOT NULL,
           notes TEXT,
+          recurrence_rule TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           deleted_at TEXT,
@@ -159,6 +203,7 @@ export const initDatabase = async (): Promise<void> => {
           priority TEXT NOT NULL,
           category TEXT NOT NULL,
           notes TEXT,
+          recurrence_rule TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           deleted_at TEXT,
@@ -177,6 +222,7 @@ export const initDatabase = async (): Promise<void> => {
           end_time TEXT NOT NULL,
           location TEXT,
           linked_calendar_block TEXT,
+          recurrence_rule TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           deleted_at TEXT,
