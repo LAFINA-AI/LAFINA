@@ -6,12 +6,19 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { pick, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
+import RNFS from 'react-native-fs';
+import Share from 'react-native-share';
 import { Colors, Fonts, Shadows } from '../theme';
 import { timeBlocksStore, TimeBlock } from '../../storage/timeBlocksStore';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Plus, Download, Upload, Layers } from 'lucide-react-native';
 import { userStore } from '../../storage/userStore';
 import { tasksStore, Task, Event } from '../../storage/tasksStore';
 import { useTheme } from '../contexts/ThemeContext';
+import { generateIcsString, parseIcsString } from '../../storage/icsHelper';
+import { importedBatchesStore, ImportBatch } from '../../storage/importedBatchesStore';
+import { calendarVisibilityStore } from '../../storage/calendarVisibilityStore';
+import { CalendarLayersModal } from '../components/calendar/CalendarLayersModal';
 
 // Extracted Sub-Components
 import { MonthView } from '../components/calendar/MonthView';
@@ -48,6 +55,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const [events, setEvents] = useState<Event[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [allEvents, setAllEvents] = useState<Event[]>([]);
+  const [batches, setBatches] = useState<ImportBatch[]>([]);
+  const [visibilityMap, setVisibilityMap] = useState<Record<string, boolean>>({ main: true });
+  const [layersModalVisible, setLayersModalVisible] = useState(false);
+  const [username, setUsername] = useState('Main Calendar');
   const [showDatePicker, setShowDatePicker] = useState(false);
   
   // TimeBlock Modal state
@@ -75,11 +86,29 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const themed = useThemedStyles();
 
   useEffect(() => {
+    const loadImportsAndVisibility = async () => {
+      try {
+        const fetchedBatches = await importedBatchesStore.getImportedBatches();
+        const fetchedVisibility = await calendarVisibilityStore.getVisibilityMap();
+        setBatches(fetchedBatches);
+        setVisibilityMap(fetchedVisibility);
+        const user = userStore.getUserById(userId);
+        if (user) {
+          setUsername(user.username);
+        }
+      } catch (error) {
+        console.error('Failed to load visibility or batches:', error);
+      }
+    };
+    loadImportsAndVisibility();
+  }, [userId, refreshTrigger]);
+
+  useEffect(() => {
     loadBlocks();
     loadScheduleData();
     generateWeekDays();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, selectedDate, refreshTrigger]);
+  }, [userId, selectedDate, refreshTrigger, batches, visibilityMap]);
 
   useEffect(() => {
     loadSettings();
@@ -105,13 +134,78 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   };
 
   const loadBlocks = () => {
-    const data = timeBlocksStore.getAll(userId);
+    let data = timeBlocksStore.getAll(userId);
+
+    const importedBlockIds = new Set<string>();
+    const hiddenBlockIds = new Set<string>();
+    const hideMain = visibilityMap.main === false;
+
+    batches.forEach((batch) => {
+      const isVisible = visibilityMap[batch.id] !== false;
+      batch.blocks.forEach((id) => {
+        importedBlockIds.add(id);
+        if (!isVisible) {
+          hiddenBlockIds.add(id);
+        }
+      });
+    });
+
+    data = data.filter((block) => {
+      const isImported = importedBlockIds.has(block.id);
+      if (isImported) {
+        return !hiddenBlockIds.has(block.id);
+      } else {
+        return !hideMain;
+      }
+    });
+
     setBlocks(data);
   };
 
   const loadScheduleData = () => {
-    const tasksData = tasksStore.getAllTasks(userId);
-    const eventsData = tasksStore.getAllEvents(userId);
+    let tasksData = tasksStore.getAllTasks(userId);
+    let eventsData = tasksStore.getAllEvents(userId);
+
+    const importedTaskIds = new Set<string>();
+    const hiddenTaskIds = new Set<string>();
+    const importedEventIds = new Set<string>();
+    const hiddenEventIds = new Set<string>();
+    const hideMain = visibilityMap.main === false;
+
+    batches.forEach((batch) => {
+      const isVisible = visibilityMap[batch.id] !== false;
+      batch.tasks.forEach((id) => {
+        importedTaskIds.add(id);
+        if (!isVisible) {
+          hiddenTaskIds.add(id);
+        }
+      });
+      batch.events.forEach((id) => {
+        importedEventIds.add(id);
+        if (!isVisible) {
+          hiddenEventIds.add(id);
+        }
+      });
+    });
+
+    tasksData = tasksData.filter((t) => {
+      const isImported = importedTaskIds.has(t.id);
+      if (isImported) {
+        return !hiddenTaskIds.has(t.id);
+      } else {
+        return !hideMain;
+      }
+    });
+
+    eventsData = eventsData.filter((e) => {
+      const isImported = importedEventIds.has(e.id);
+      if (isImported) {
+        return !hiddenEventIds.has(e.id);
+      } else {
+        return !hideMain;
+      }
+    });
+
     setAllTasks(tasksData);
     setAllEvents(eventsData);
 
@@ -437,6 +531,247 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
     return tasksData.filter((t) => t.dueDate && t.dueDate < todayStr && !t.isCompleted);
   };
 
+  const handleImportCalendar = () => {
+    const AlertRN = require('react-native').Alert;
+    AlertRN.alert(
+      'Manage Calendar Imports',
+      'What would you like to do?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Import Calendar File', onPress: startImportFlow },
+        { text: 'Remove Imported Calendar', onPress: startRemoveFlow },
+      ]
+    );
+  };
+
+  const startImportFlow = async () => {
+    const AlertRN = require('react-native').Alert;
+    try {
+      const [res] = await pick({
+        mode: 'import',
+      });
+      if (!res || !res.uri) return;
+      const fileName = res.name || 'imported_calendar.ics';
+      const fileContent = await RNFS.readFile(res.uri, 'utf8');
+      const { events: importedEvents, blocks: importedBlocks, tasks: importedTasks } = parseIcsString(fileContent);
+      const totalCount = importedEvents.length + importedBlocks.length + importedTasks.length;
+      if (totalCount === 0) {
+        AlertRN.alert('Import Calendar', 'No valid events, time blocks, or tasks were found in this file.');
+        return;
+      }
+      AlertRN.alert(
+        'Import Calendar',
+        `We found ${importedEvents.length} events, ${importedBlocks.length} time blocks, and ${importedTasks.length} tasks. Do you want to import them into your calendar?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Import',
+            onPress: async () => {
+              try {
+                const eventIds: string[] = [];
+                const blockIds: string[] = [];
+                const taskIds: string[] = [];
+
+                importedEvents.forEach((ev) => {
+                  const id = 'event_' + Math.random().toString(36).substring(2, 9);
+                  tasksStore.insertEvent({
+                    id,
+                    userId,
+                    title: ev.title,
+                    date: ev.date,
+                    startTime: ev.startTime,
+                    endTime: ev.endTime,
+                    location: ev.location,
+                  });
+                  eventIds.push(id);
+                });
+                importedBlocks.forEach((tb) => {
+                  const id = 'block_' + Math.random().toString(36).substring(2, 9);
+                  timeBlocksStore.insert({
+                    id,
+                    userId,
+                    title: tb.title,
+                    date: tb.date,
+                    startTime: tb.startTime,
+                    endTime: tb.endTime,
+                    color: tb.color,
+                    category: tb.category,
+                    notes: tb.notes,
+                  });
+                  blockIds.push(id);
+                });
+                importedTasks.forEach((tk) => {
+                  const id = 'task_' + Math.random().toString(36).substring(2, 9);
+                  tasksStore.insertTask({
+                    id,
+                    userId,
+                    title: tk.title,
+                    dueDate: tk.dueDate,
+                    dueTime: tk.dueTime,
+                    isCompleted: tk.isCompleted,
+                    priority: tk.priority,
+                    category: tk.category,
+                    notes: tk.notes,
+                  });
+                  taskIds.push(id);
+                });
+
+                await importedBatchesStore.saveImportedBatch(fileName, eventIds, blockIds, taskIds);
+
+                AlertRN.alert('Success', `Successfully imported ${totalCount} items.`);
+                loadBlocks();
+                loadScheduleData();
+                onRefresh();
+              } catch (err) {
+                console.error('Failed to save imported items:', err);
+                AlertRN.alert('Error', 'Failed to save imported calendar items.');
+              }
+            },
+          },
+        ]
+      );
+    } catch (err) {
+      if (isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED) {
+        // User cancelled the picker, do nothing
+      } else {
+        console.error('Failed to import file:', err);
+        AlertRN.alert('Error', 'Failed to read or parse the calendar file.');
+      }
+    }
+  };
+
+  const startRemoveFlow = async () => {
+    const AlertRN = require('react-native').Alert;
+    try {
+      const fetchedBatches = await importedBatchesStore.getImportedBatches();
+      if (fetchedBatches.length === 0) {
+        AlertRN.alert('Remove Imported Calendar', 'No previously imported calendars were found.');
+        return;
+      }
+
+      const buttons = fetchedBatches.map((batch) => {
+        const dateFormatted = new Date(batch.timestamp).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+
+        return {
+          text: `${batch.fileName} (${dateFormatted})`,
+          onPress: () => confirmBatchRemoval(batch),
+        };
+      });
+
+      buttons.push({
+        text: 'Cancel',
+        style: 'cancel',
+      } as any);
+
+      AlertRN.alert(
+        'Remove Imported Calendar',
+        'Select the calendar import batch you wish to remove:',
+        buttons
+      );
+    } catch (err) {
+      console.error('Failed to load import batches:', err);
+      AlertRN.alert('Error', 'Failed to load import history.');
+    }
+  };
+
+  const confirmBatchRemoval = (batch: any) => {
+    const AlertRN = require('react-native').Alert;
+    const totalCount = batch.events.length + batch.blocks.length + batch.tasks.length;
+
+    AlertRN.alert(
+      'Confirm Removal',
+      `Are you sure you want to delete all ${totalCount} items imported from "${batch.fileName}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              batch.events.forEach((id: string) => {
+                try {
+                  tasksStore.deleteEvent(id);
+                } catch (e) {
+                  console.warn(`Failed to delete event ${id}:`, e);
+                }
+              });
+
+              batch.blocks.forEach((id: string) => {
+                try {
+                  timeBlocksStore.delete(id);
+                } catch (e) {
+                  console.warn(`Failed to delete block ${id}:`, e);
+                }
+              });
+
+              batch.tasks.forEach((id: string) => {
+                try {
+                  tasksStore.deleteTask(id);
+                } catch (e) {
+                  console.warn(`Failed to delete task ${id}:`, e);
+                }
+              });
+
+              await importedBatchesStore.deleteImportedBatch(batch.id);
+
+              AlertRN.alert('Success', `Successfully removed ${totalCount} items.`);
+              loadBlocks();
+              loadScheduleData();
+              onRefresh();
+            } catch (err) {
+              console.error('Failed to remove imported calendar batch:', err);
+              AlertRN.alert('Error', 'Failed to remove calendar items.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleToggleVisibility = async (calendarId: string, isVisible: boolean) => {
+    try {
+      await calendarVisibilityStore.setVisibility(calendarId, isVisible);
+      const updatedMap = await calendarVisibilityStore.getVisibilityMap();
+      setVisibilityMap(updatedMap);
+    } catch (error) {
+      console.error('Failed to toggle visibility:', error);
+    }
+  };
+
+  const handleExportCalendar = async () => {
+    const AlertRN = require('react-native').Alert;
+    try {
+      const allTasksData = tasksStore.getAllTasks(userId);
+      const allEventsData = tasksStore.getAllEvents(userId);
+      const allBlocksData = timeBlocksStore.getAll(userId);
+      if (allTasksData.length === 0 && allEventsData.length === 0 && allBlocksData.length === 0) {
+        AlertRN.alert('Export Calendar', 'Your calendar is empty. Nothing to export.');
+        return;
+      }
+      const icsString = generateIcsString(allEventsData, allBlocksData, allTasksData);
+      const tempPath = `${RNFS.TemporaryDirectoryPath}/lafina_calendar_export.ics`;
+      await RNFS.writeFile(tempPath, icsString, 'utf8');
+      await Share.open({
+        url: `file://${tempPath}`,
+        type: 'text/calendar',
+        filename: 'lafina_calendar_export',
+        title: 'Export LAFINA Calendar',
+      });
+      await RNFS.unlink(tempPath).catch((err: any) => console.warn('Clean temp file failed:', err));
+    } catch (err) {
+      if (err && (err as any).message && (err as any).message.includes('User did not share')) {
+        return;
+      }
+      console.error('Failed to export calendar:', err);
+      AlertRN.alert('Error', 'Failed to generate or share calendar file.');
+    }
+  };
+
   const getChronologicalFeed = () => {
     const feed: {
       type: 'task' | 'event' | 'block';
@@ -506,6 +841,33 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             activeOpacity={0.7}
           >
             <Text style={[styles.todayButtonText, themed.todayButtonText]}>Today</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleImportCalendar}
+            style={[styles.iconButton, themed.iconButton]}
+            activeOpacity={0.7}
+            accessibilityLabel="Import Calendar"
+          >
+            <Upload size={16} color={colors.textPrimary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleExportCalendar}
+            style={[styles.iconButton, themed.iconButton]}
+            activeOpacity={0.7}
+            accessibilityLabel="Export Calendar"
+          >
+            <Download size={16} color={colors.textPrimary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setLayersModalVisible(true)}
+            style={[styles.iconButton, themed.iconButton]}
+            activeOpacity={0.7}
+            accessibilityLabel="Calendar Layers"
+          >
+            <Layers size={16} color={colors.textPrimary} />
           </TouchableOpacity>
           
           <View style={styles.chevronContainer}>
@@ -653,6 +1015,15 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
         onCancel={() => setScheduleModalVisible(false)}
         timeFormat24h={timeFormat24h}
       />
+
+      <CalendarLayersModal
+        visible={layersModalVisible}
+        onClose={() => setLayersModalVisible(false)}
+        username={username}
+        batches={batches}
+        visibilityMap={visibilityMap}
+        onToggleVisibility={handleToggleVisibility}
+      />
     </View>
   );
 };
@@ -700,6 +1071,12 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: 12,
     borderRadius: 8,
+  },
+  iconButton: {
+    padding: 8,
+    marginLeft: 12,
+    borderRadius: 8,
+    borderWidth: 1,
   },
   toggleRow: {
     flexDirection: 'row',
@@ -756,6 +1133,10 @@ function useThemedStyles() {
       color: colors.textPrimary,
     },
     chevronButton: {
+      backgroundColor: colors.inputBg,
+    },
+    iconButton: {
+      borderColor: colors.border,
       backgroundColor: colors.inputBg,
     },
     toggleRow: {
