@@ -7,20 +7,32 @@ import {
   StyleSheet,
   Image,
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StatusBar,
   ActivityIndicator,
 } from 'react-native';
 import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
-import { userStore } from '../../storage/userStore';
+import { userStore } from '../../storage';
 import { useTheme } from '../contexts/ThemeContext';
+import { useThemedStyles } from '../theme/createThemedStyles';
+import type { ThemeColors } from '../contexts/ThemeContext';
 
 interface RegisterScreenProps {
   onRegisterSuccess: (userId: string) => void;
   onNavigateToLogin: () => void;
 }
+
+const getThemedStyles = (colors: ThemeColors) => ({
+  container: { backgroundColor: colors.background },
+  card: { backgroundColor: colors.cardBg },
+  cardTitle: { color: colors.textPrimary },
+  cardSubtitle: { color: colors.textSecondary },
+  fieldLabel: { color: colors.textPrimary },
+  inputContainer: { borderColor: colors.border, backgroundColor: colors.inputBg },
+  input: { color: colors.textPrimary },
+  footerText: { color: colors.textSecondary },
+});
 
 export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   onRegisterSuccess,
@@ -35,7 +47,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const { colors } = useTheme();
-  const themed = useThemedStyles();
+  const themed = useThemedStyles((c) => getThemedStyles(c));
 
   const handleRegister = async () => {
     if (!username.trim() || !email.trim() || !password || !confirmPassword) {
@@ -61,8 +73,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
       const userId = await userStore.register(username.trim(), email.trim(), password);
       userStore.setCurrentUser(userId);
       onRegisterSuccess(userId);
-    } catch (err: any) {
-      setError(err.message || 'Registration failed');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -70,12 +82,12 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={'height'}
       style={[styles.container, themed.container]}
     >
       <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
-        
+
         {/* Header Section */}
         <View style={styles.header}>
           <Image
@@ -172,7 +184,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
+              <ActivityIndicator color={colors.white} size="small" />
             ) : (
               <Text style={styles.registerButtonText}>Register</Text>
             )}
@@ -191,37 +203,6 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
     </KeyboardAvoidingView>
   );
 };
-
-function useThemedStyles() {
-  const { colors } = useTheme();
-  return {
-    container: {
-      backgroundColor: colors.background,
-    },
-    card: {
-      backgroundColor: colors.cardBg,
-    },
-    cardTitle: {
-      color: colors.textPrimary,
-    },
-    cardSubtitle: {
-      color: colors.textSecondary,
-    },
-    fieldLabel: {
-      color: colors.textPrimary,
-    },
-    inputContainer: {
-      borderColor: colors.border,
-      backgroundColor: colors.inputBg,
-    },
-    input: {
-      color: colors.textPrimary,
-    },
-    footerText: {
-      color: colors.textSecondary,
-    },
-  };
-}
 
 const styles = StyleSheet.create({
   container: {
@@ -309,7 +290,7 @@ const styles = StyleSheet.create({
   },
   registerButtonText: {
     fontFamily: Fonts.body,
-    color: '#FFFFFF',
+    color: Colors.textLight,
     fontWeight: 'bold',
     fontSize: 15,
   },
@@ -330,4 +311,3 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 });
-

@@ -9,10 +9,11 @@ import {
   StatusBar,
 } from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
-import { userStore } from '../../storage/userStore';
-import { behaviorStore } from '../../storage/behaviorStore';
+import { userStore, behaviorStore } from '../../storage';
 import { BookOpen, Clock, Activity, Award } from 'lucide-react-native';
 import { useTheme } from '../contexts/ThemeContext';
+import { useThemedStyles } from '../theme/createThemedStyles';
+import type { ThemeColors } from '../contexts/ThemeContext';
 
 interface OnboardingScreenProps {
   userId: string;
@@ -73,7 +74,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
   const sleepTimeOptions = ['21:00', '22:00', '23:00', '00:00', '01:00'];
 
   const { colors } = useTheme();
-  const themed = useThemedStyles();
+  const themed = useThemedStyles((c, d) => getOnboardThemedStyles(c, d));
 
   const toggleStudyPeak = (value: string) => {
     if (studyPeak.includes(value)) {
@@ -396,58 +397,23 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
   );
 };
 
-function useThemedStyles() {
-  const { colors, isDarkMode } = useTheme();
-  return {
-    container: {
-      backgroundColor: colors.background,
-    },
-    progressBarBg: {
-      backgroundColor: colors.border,
-    },
-    progressText: {
-      color: colors.textMuted,
-    },
-    card: {
-      backgroundColor: colors.cardBg,
-    },
-    stepTitle: {
-      color: colors.textPrimary,
-    },
-    stepDesc: {
-      color: colors.textSecondary,
-    },
-    inputLabel: {
-      color: colors.textPrimary,
-    },
-    chip: {
-      backgroundColor: colors.inputBg,
-      borderColor: colors.border,
-    },
-    chipText: {
-      color: colors.textPrimary,
-    },
-    navigation: {
-      borderTopColor: colors.border,
-    },
-    backButtonText: {
-      color: colors.textSecondary,
-    },
-    iconCircle: {
-      backgroundColor: isDarkMode ? 'rgba(46, 204, 113, 0.15)' : '#E8F8F0',
-    },
-    summaryCard: {
-      backgroundColor: colors.inputBg,
-      borderColor: colors.border,
-    },
-    summaryTitle: {
-      color: colors.textPrimary,
-    },
-    summaryItem: {
-      color: colors.textPrimary,
-    },
-  };
-}
+const getOnboardThemedStyles = (colors: ThemeColors, isDarkMode: boolean) => ({
+  container: { backgroundColor: colors.background },
+  progressBarBg: { backgroundColor: colors.border },
+  progressText: { color: colors.textMuted },
+  card: { backgroundColor: colors.cardBg },
+  stepTitle: { color: colors.textPrimary },
+  stepDesc: { color: colors.textSecondary },
+  inputLabel: { color: colors.textPrimary },
+  chip: { backgroundColor: colors.inputBg, borderColor: colors.border },
+  chipText: { color: colors.textPrimary },
+  navigation: { borderTopColor: colors.border },
+  backButtonText: { color: colors.textSecondary },
+  iconCircle: { backgroundColor: isDarkMode ? 'rgba(46, 204, 113, 0.15)' : 'rgba(46, 204, 113, 0.08)' },
+  summaryCard: { backgroundColor: colors.inputBg, borderColor: colors.border },
+  summaryTitle: { color: colors.textPrimary },
+  summaryItem: { color: colors.textPrimary },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -532,7 +498,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   activeChipText: {
-    color: '#FFFFFF',
+    color: Colors.textLight,
     fontWeight: 'bold',
   },
   navigation: {
@@ -565,7 +531,7 @@ const styles = StyleSheet.create({
   },
   nextButtonText: {
     fontFamily: Fonts.body,
-    color: '#FFFFFF',
+    color: Colors.textLight,
     fontSize: 15,
     fontWeight: 'bold',
   },

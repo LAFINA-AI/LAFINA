@@ -7,15 +7,16 @@ import {
   StyleSheet,
   Image,
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StatusBar,
   ActivityIndicator,
 } from 'react-native';
 import { Eye, EyeOff, Mail, Lock, Check } from 'lucide-react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
-import { userStore } from '../../storage/userStore';
+import { userStore } from '../../storage';
 import { useTheme } from '../contexts/ThemeContext';
+import { useThemedStyles } from '../theme/createThemedStyles';
+import type { ThemeColors } from '../contexts/ThemeContext';
 
 interface LoginScreenProps {
   onLoginSuccess: (userId: string) => void;
@@ -34,7 +35,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [rememberMe, setRememberMe] = useState(false);
 
   const { colors } = useTheme();
-  const themed = useThemedStyles();
+  const themed = useThemedStyles((c) => getLoginThemedStyles(c));
 
   // Load saved credentials on mount [Fix #9]
   useEffect(() => {
@@ -86,8 +87,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       } else {
         setError('Invalid email or password');
       }
-    } catch (err: any) {
-      setError(err.message || 'An error occurred during login');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An error occurred during login');
     } finally {
       setLoading(false);
     }
@@ -95,7 +96,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={'height'}
       style={[styles.container, themed.container]}
     >
       <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
@@ -171,7 +172,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               rememberMe && styles.checkboxChecked,
               rememberMe && themed.checkboxChecked,
             ]}>
-              {rememberMe && <Check size={14} color="#FFFFFF" />}
+              {rememberMe && <Check size={14} color={colors.white} />}
             </View>
             <Text style={[styles.rememberMeText, themed.rememberMeText]}>
               Remember me
@@ -185,7 +186,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
+              <ActivityIndicator color={colors.white} size="small" />
             ) : (
               <Text style={styles.loginButtonText}>Sign In</Text>
             )}
@@ -205,47 +206,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   );
 };
 
-function useThemedStyles() {
-  const { colors } = useTheme();
-  return {
-    container: {
-      backgroundColor: colors.background,
-    },
-    card: {
-      backgroundColor: colors.cardBg,
-    },
-    cardTitle: {
-      color: colors.textPrimary,
-    },
-    cardSubtitle: {
-      color: colors.textSecondary,
-    },
-    fieldLabel: {
-      color: colors.textPrimary,
-    },
-    inputContainer: {
-      borderColor: colors.border,
-      backgroundColor: colors.inputBg,
-    },
-    input: {
-      color: colors.textPrimary,
-    },
-    rememberMeText: {
-      color: colors.textSecondary,
-    },
-    checkbox: {
-      borderColor: colors.border,
-      backgroundColor: colors.cardBg,
-    },
-    checkboxChecked: {
-      backgroundColor: colors.blue,
-      borderColor: colors.blue,
-    },
-    footerText: {
-      color: colors.textSecondary,
-    },
-  };
-}
+const getLoginThemedStyles = (colors: ThemeColors) => ({
+  container: { backgroundColor: colors.background },
+  card: { backgroundColor: colors.cardBg },
+  cardTitle: { color: colors.textPrimary },
+  cardSubtitle: { color: colors.textSecondary },
+  fieldLabel: { color: colors.textPrimary },
+  inputContainer: { borderColor: colors.border, backgroundColor: colors.inputBg },
+  input: { color: colors.textPrimary },
+  rememberMeText: { color: colors.textSecondary },
+  checkbox: { borderColor: colors.border, backgroundColor: colors.cardBg },
+  checkboxChecked: { backgroundColor: colors.blue, borderColor: colors.blue },
+  footerText: { color: colors.textSecondary },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -361,7 +334,7 @@ const styles = StyleSheet.create({
   },
   loginButtonText: {
     fontFamily: Fonts.body,
-    color: '#FFFFFF',
+    color: Colors.textLight,
     fontWeight: 'bold',
     fontSize: 15,
   },

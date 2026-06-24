@@ -12,10 +12,12 @@ import {
   Modal,
 } from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
-import { tasksStore } from '../../storage/tasksStore';
-import { notesStore } from '../../storage/notesStore';
-import { userStore, User } from '../../storage/userStore';
+import { tasksStore, notesStore, userStore } from '../../storage';
+import type { User } from '../../storage';
 import { useTheme } from '../contexts/ThemeContext';
+import { useThemedStyles } from '../theme/createThemedStyles';
+import type { ThemeColors } from '../contexts/ThemeContext';
+import { GUEST_USER_ID } from '../../constants';
 
 /**
  * Derives avatar initials from a username string. [Fix #7]
@@ -39,7 +41,8 @@ interface ProfileScreenProps {
   userId: string;
   refreshTrigger: number;
   onRefresh: () => void;
-  onLogout?: () => void;
+  onLogout?: (isGuest?: boolean) => void;
+  onNavigateToRegister?: () => void;
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({
@@ -47,6 +50,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   refreshTrigger,
   onRefresh,
   onLogout,
+  onNavigateToRegister,
 }) => {
   // Current user info
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -67,7 +71,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
 
   const { colors, isDarkMode, toggleTheme } = useTheme();
-  const themed = useThemedStyles();
+  const themed = useThemedStyles((c) => getProfileThemedStyles(c));
+
+  const isGuest = userId === GUEST_USER_ID;
 
   useEffect(() => {
     loadStats();
@@ -142,16 +148,28 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     );
   };
 
+  const handleCreateAccount = () => {
+    if (onNavigateToRegister) {
+      onNavigateToRegister();
+    } else {
+      Alert.alert('Create Account', 'Navigate to Register from the Welcome screen to create an account.');
+    }
+  };
+
   const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+    const title = isGuest ? 'Dismiss Guest Session' : 'Sign Out';
+    const message = isGuest
+      ? 'Your temporary data will be cleared when you sign out. Create an account to keep it.'
+      : 'Are you sure you want to sign out?';
+    Alert.alert(title, message, [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Sign Out',
+        text: title,
         style: 'destructive',
         onPress: () => {
           userStore.logout();
           if (onLogout) {
-            onLogout();
+            onLogout(isGuest);
           } else {
             Alert.alert('Signed Out', 'You have been signed out. Sync pipeline suspended.');
           }
@@ -167,8 +185,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
       {/* Avatar Section */}
       <View style={styles.avatarSection}>
-        <View style={styles.avatarCircle}>
-          <Text style={styles.avatarInitials}>
+        <View style={[styles.avatarCircle, { backgroundColor: colors.blue }]}>
+          <Text style={[styles.avatarInitials, { color: colors.white }]}>
             {getInitials(currentUser?.username)}
           </Text>
         </View>
@@ -209,8 +227,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <Switch
               value={timeFormat24h}
               onValueChange={handleToggleTimeFormat}
-              trackColor={{ false: '#767577', true: colors.red }}
-              thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
+              trackColor={{ false: colors.switchTrackOff, true: colors.red }}
+              thumbColor={Platform.OS === 'android' ? colors.switchThumb : undefined}
             />
           </View>
           <View style={[styles.settingDivider, themed.settingDivider]} />
@@ -219,8 +237,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <Switch
               value={weekStartsMonday}
               onValueChange={handleToggleWeekStart}
-              trackColor={{ false: '#767577', true: colors.red }}
-              thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
+              trackColor={{ false: colors.switchTrackOff, true: colors.red }}
+              thumbColor={Platform.OS === 'android' ? colors.switchThumb : undefined}
             />
           </View>
         </View>
@@ -233,8 +251,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <Switch
               value={wakeWordEnabled}
               onValueChange={setWakeWordEnabled}
-              trackColor={{ false: '#767577', true: colors.red }}
-              thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
+              trackColor={{ false: colors.switchTrackOff, true: colors.red }}
+              thumbColor={Platform.OS === 'android' ? colors.switchThumb : undefined}
             />
           </View>
           <View style={[styles.settingDivider, themed.settingDivider]} />
@@ -243,8 +261,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <Switch
               value={summaryStyleDetailed}
               onValueChange={setSummaryStyleDetailed}
-              trackColor={{ false: '#767577', true: colors.red }}
-              thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
+              trackColor={{ false: colors.switchTrackOff, true: colors.red }}
+              thumbColor={Platform.OS === 'android' ? colors.switchThumb : undefined}
             />
           </View>
         </View>
@@ -257,8 +275,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <Switch
               value={dailyBriefingEnabled}
               onValueChange={setDailyBriefingEnabled}
-              trackColor={{ false: '#767577', true: colors.red }}
-              thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
+              trackColor={{ false: colors.switchTrackOff, true: colors.red }}
+              thumbColor={Platform.OS === 'android' ? colors.switchThumb : undefined}
             />
           </View>
         </View>
@@ -271,8 +289,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <Switch
               value={isDarkMode}
               onValueChange={toggleTheme}
-              trackColor={{ false: '#767577', true: colors.red }}
-              thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
+              trackColor={{ false: colors.switchTrackOff, true: colors.red }}
+              thumbColor={Platform.OS === 'android' ? colors.switchThumb : undefined}
             />
           </View>
         </View>
@@ -306,11 +324,26 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         </View>
       </View>
 
-      {/* Sign Out Button */}
-      <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn}>
-        <Text style={styles.signOutText}>Sign Out</Text>
-      </TouchableOpacity>
-      
+      {/* Guest Call-to-Action / Sign Out */}
+      {isGuest ? (
+        <View style={[styles.guestPromptCard, Shadows.card, themed.settingsGroupCard]}>
+          <Text style={[styles.guestPromptTitle, themed.settingText]}>Go Full Access</Text>
+          <Text style={[styles.guestPromptBody, themed.settingValue]}>
+            Create an account to save your data across devices and unlock all features.
+          </Text>
+          <TouchableOpacity onPress={handleCreateAccount} style={styles.createAccountBtn}>
+            <Text style={styles.createAccountBtnText}>Create Account</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleSignOut} style={styles.signOutLink}>
+            <Text style={styles.signOutLinkText}>Dismiss Guest & Sign Out</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn}>
+          <Text style={styles.signOutText}>Sign Out</Text>
+        </TouchableOpacity>
+      )}
+
       <View style={{ height: 120 }} />
 
       {/* Privacy Policy Modal [Fix #1] */}
@@ -363,65 +396,26 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   );
 };
 
-function useThemedStyles() {
-  const { colors } = useTheme();
-  return {
-    container: {
-      backgroundColor: colors.background,
-    },
-    headerTitle: {
-      color: colors.textPrimary,
-    },
-    userName: {
-      color: colors.textPrimary,
-    },
-    userEmail: {
-      color: colors.textSecondary,
-    },
-    statCard: {
-      backgroundColor: colors.cardBg,
-    },
-    statVal: {
-      color: colors.textPrimary,
-    },
-    statLabel: {
-      color: colors.textSecondary,
-    },
-    settingsGroupHeader: {
-      color: colors.textSecondary,
-    },
-    settingsGroupCard: {
-      backgroundColor: colors.cardBg,
-    },
-    settingText: {
-      color: colors.textPrimary,
-    },
-    settingValue: {
-      color: colors.textSecondary,
-    },
-    settingDivider: {
-      backgroundColor: colors.divider,
-    },
-    linkArrow: {
-      color: colors.textMuted,
-    },
-    privacyContainer: {
-      backgroundColor: colors.background,
-    },
-    privacyHeader: {
-      borderBottomColor: colors.border,
-    },
-    privacyHeaderTitle: {
-      color: colors.textPrimary,
-    },
-    privacySectionTitle: {
-      color: colors.textPrimary,
-    },
-    privacyBodyText: {
-      color: colors.textSecondary,
-    },
-  };
-}
+const getProfileThemedStyles = (colors: ThemeColors) => ({
+  container: { backgroundColor: colors.background },
+  headerTitle: { color: colors.textPrimary },
+  userName: { color: colors.textPrimary },
+  userEmail: { color: colors.textSecondary },
+  statCard: { backgroundColor: colors.cardBg },
+  statVal: { color: colors.textPrimary },
+  statLabel: { color: colors.textSecondary },
+  settingsGroupHeader: { color: colors.textSecondary },
+  settingsGroupCard: { backgroundColor: colors.cardBg },
+  settingText: { color: colors.textPrimary },
+  settingValue: { color: colors.textSecondary },
+  settingDivider: { backgroundColor: colors.divider },
+  linkArrow: { color: colors.textMuted },
+  privacyContainer: { backgroundColor: colors.background },
+  privacyHeader: { borderBottomColor: colors.border },
+  privacyHeaderTitle: { color: colors.textPrimary },
+  privacySectionTitle: { color: colors.textPrimary },
+  privacyBodyText: { color: colors.textSecondary },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -444,13 +438,11 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: Colors.blue,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
   avatarInitials: {
-    color: '#FFF',
     fontSize: 28,
     fontFamily: Fonts.heading,
     fontWeight: 'bold',
@@ -535,6 +527,49 @@ const styles = StyleSheet.create({
   },
   linkArrow: {
     fontSize: 12,
+  },
+  guestPromptCard: {
+    borderRadius: Layout.borderRadiusCard,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  guestPromptTitle: {
+    fontFamily: Fonts.heading,
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  guestPromptBody: {
+    fontFamily: Fonts.body,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  createAccountBtn: {
+    width: '100%',
+    height: 44,
+    backgroundColor: Colors.blue,
+    borderRadius: Layout.borderRadiusButton,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  createAccountBtnText: {
+    fontFamily: Fonts.body,
+    color: Colors.textLight,
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  signOutLink: {
+    paddingVertical: 8,
+  },
+  signOutLinkText: {
+    fontFamily: Fonts.body,
+    color: Colors.textMuted,
+    fontSize: 12,
+    textDecorationLine: 'underline',
   },
   signOutBtn: {
     width: '100%',

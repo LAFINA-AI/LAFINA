@@ -7,15 +7,19 @@ import {
   TouchableOpacity,
   FlatList,
   KeyboardAvoidingView,
-  Platform,
   Alert,
   Keyboard,
 } from 'react-native';
 import { Send, Trash2 } from 'lucide-react-native';
 import { Colors, Fonts, Shadows } from '../theme';
-import { chatStore, ChatMessage } from '../../storage/chatStore';
-import { processCommand } from '../../ai/nlu/parser';
+import { chatStore } from '../../storage';
+import type { ChatMessage } from '../../storage';
+import { processCommand } from '../../ai';
 import { useTheme } from '../contexts/ThemeContext';
+import { useThemedStyles } from '../theme/createThemedStyles';
+import { AI_PROCESSING_DELAY_MS } from '../../constants';
+import type { ThemeColors } from '../contexts/ThemeContext';
+import { generateId } from '../../utils';
 
 interface ChatScreenProps {
   userId: string;
@@ -34,7 +38,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const flatListRef = useRef<FlatList>(null);
 
   const { colors } = useTheme();
-  const themed = useThemedStyles();
+  const themed = useThemedStyles((c) => getChatThemedStyles(c));
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
@@ -69,7 +73,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     const sessionId = chatStore.ensureDefaultSession(userId);
 
     // 1. Insert User Message
-    const userMsgId = 'msg_' + Math.random().toString(36).substr(2, 9);
+    const userMsgId = generateId('msg');
     const userMsg = {
       id: userMsgId,
       sessionId,
@@ -96,7 +100,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       const aiReply = processCommand(userText, userId);
 
       // 3. Insert AI Response
-      const aiMsgId = 'msg_' + Math.random().toString(36).substr(2, 9);
+      const aiMsgId = generateId('msg');
       const aiMsg = {
         id: aiMsgId,
         sessionId,
@@ -108,7 +112,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       // Reload chat and trigger parent screen refresh (calendar, tasks updates)
       loadChatHistory();
       onRefresh();
-    }, 600);
+    }, AI_PROCESSING_DELAY_MS);
   };
 
   const handleClearChat = () => {
@@ -148,8 +152,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   return (
     <KeyboardAvoidingView
       style={[styles.container, themed.container]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      behavior={undefined}
+      keyboardVerticalOffset={0}
     >
       {/* Header */}
       <View style={[styles.header, themed.header]}>
@@ -193,7 +197,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           returnKeyType="send"
         />
         <TouchableOpacity onPress={handleSend} style={[styles.sendBtn, Shadows.micButton]}>
-          <Send size={18} color="#FFFFFF" />
+          <Send size={18} color={colors.white} />
         </TouchableOpacity>
       </View>
       <View style={{ height: isKeyboardVisible ? 0 : 170 }} />
@@ -201,49 +205,19 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   );
 };
 
-function useThemedStyles() {
-  const { colors } = useTheme();
-  return {
-    container: {
-      backgroundColor: colors.background,
-    },
-    header: {
-      backgroundColor: colors.cardBg,
-      borderBottomColor: colors.border,
-    },
-    headerTitle: {
-      color: colors.textPrimary,
-    },
-    headerSubtitle: {
-      color: colors.textSecondary,
-    },
-    emptyText: {
-      color: colors.textSecondary,
-    },
-    exampleText: {
-      color: colors.textMuted,
-    },
-    assistantBubble: {
-      backgroundColor: colors.cardBg,
-      borderColor: colors.border,
-    },
-    assistantText: {
-      color: colors.textPrimary,
-    },
-    assistantTime: {
-      color: colors.textMuted,
-    },
-    inputContainer: {
-      backgroundColor: colors.cardBg,
-      borderTopColor: colors.border,
-    },
-    input: {
-      borderColor: colors.border,
-      backgroundColor: colors.inputBg,
-      color: colors.textPrimary,
-    },
-  };
-}
+const getChatThemedStyles = (colors: ThemeColors) => ({
+  container: { backgroundColor: colors.background },
+  header: { backgroundColor: colors.cardBg, borderBottomColor: colors.border },
+  headerTitle: { color: colors.textPrimary },
+  headerSubtitle: { color: colors.textSecondary },
+  emptyText: { color: colors.textSecondary },
+  exampleText: { color: colors.textMuted },
+  assistantBubble: { backgroundColor: colors.cardBg, borderColor: colors.border },
+  assistantText: { color: colors.textPrimary },
+  assistantTime: { color: colors.textMuted },
+  inputContainer: { backgroundColor: colors.cardBg, borderTopColor: colors.border },
+  input: { borderColor: colors.border, backgroundColor: colors.inputBg, color: colors.textPrimary },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -254,7 +228,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 50 : 20,
+    paddingTop: 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
   },
@@ -307,7 +281,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   userText: {
-    color: '#FFFFFF',
+    color: Colors.textLight,
   },
   assistantText: {
     // Handled by themed styles
