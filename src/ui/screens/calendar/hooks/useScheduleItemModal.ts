@@ -1,0 +1,160 @@
+import { useState, useCallback } from 'react';
+import { Alert } from 'react-native';
+import type { Task, Event } from '../../../../storage';
+import { tasksStore } from '../../../../storage';
+import { ScheduleItemForm, ScheduleItemModalState } from '../types';
+import { generateId } from '../../../../utils';
+
+interface UseScheduleItemModalOptions {
+  userId: string;
+  selectedDate: Date;
+  onSaved: () => void;
+  onRefresh: () => void;
+}
+
+const defaultForm = (): ScheduleItemForm => ({
+  title: '',
+  time: '12:00',
+  endTime: '13:00',
+  priority: 'Medium',
+  category: 'Work',
+  location: '',
+  notes: '',
+});
+
+type Priority = 'High' | 'Medium' | 'Low';
+
+export const useScheduleItemModal = (options: UseScheduleItemModalOptions): ScheduleItemModalState => {
+  const { userId, selectedDate, onSaved, onRefresh } = options;
+  const [visible, setVisible] = useState(false);
+  const [modalType, setModalType] = useState<'task' | 'event'>('task');
+  const [editingItem, setEditingItem] = useState<Task | Event | null>(null);
+  const [form, setForm] = useState<ScheduleItemForm>(defaultForm());
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+
+  const updateField = useCallback(<K extends keyof ScheduleItemForm>(key: K, value: ScheduleItemForm[K]) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const openNew = useCallback((type: 'task' | 'event') => {
+    setModalType(type);
+    setEditingItem(null);
+    setForm(defaultForm());
+    setVisible(true);
+  }, []);
+
+  const openEdit = useCallback((item: Task | Event, type: 'task' | 'event') => {
+    setModalType(type);
+    setEditingItem(item);
+    setForm({
+      title: item.title,
+      time: type === 'task' ? (item as Task).dueTime || '12:00' : (item as Event).startTime,
+      endTime: type === 'event' ? (item as Event).endTime : '13:00',
+      priority: type === 'task' ? (item as Task).priority || 'Medium' : 'Medium',
+      category: type === 'task' ? (item as Task).category || 'Work' : 'Work',
+      location: type === 'event' ? (item as Event).location || '' : '',
+      notes: type === 'task' ? (item as Task).notes || '' : '',
+    });
+    setVisible(true);
+  }, []);
+
+  const close = useCallback(() => setVisible(false), []);
+
+  const save = useCallback(() => {
+    if (!form.title.trim()) {
+      Alert.alert('Error', 'Please enter a title.');
+      return;
+    }
+    if (modalType === 'event' && form.time > form.endTime) {
+      Alert.alert('Invalid Time Range', 'Start time cannot be after end time.');
+      return;
+    }
+
+    const dateStr = selectedDate.toISOString().split('T')[0];
+
+    if (modalType === 'task') {
+      if (editingItem) {
+        tasksStore.updateTask({
+          id: editingItem.id,
+          title: form.title,
+          dueTime: form.time,
+          priority: form.priority as Priority,
+          category: form.category,
+          notes: form.notes,
+        });
+      } else {
+        tasksStore.insertTask({
+          id: generateId('task'),
+          userId,
+          title: form.title,
+          dueDate: dateStr,
+          dueTime: form.time,
+          isCompleted: false,
+          priority: form.priority as Priority,
+          category: form.category,
+          notes: form.notes,
+        });
+      }
+    } else {
+      if (editingItem) {
+        tasksStore.updateEvent({
+          id: editingItem.id,
+          title: form.title,
+          date: dateStr,
+          startTime: form.time,
+          endTime: form.endTime,
+          location: form.location,
+        });
+      } else {
+        tasksStore.insertEvent({
+          id: generateId('event'),
+          userId,
+          title: form.title,
+          date: dateStr,
+          startTime: form.time,
+          endTime: form.endTime,
+          location: form.location,
+        });
+      }
+    }
+
+    setVisible(false);
+    onSaved();
+    onRefresh();
+  }, [form, modalType, editingItem, selectedDate, userId, onSaved, onRefresh]);
+
+  const handleDelete = useCallback((id: string, type: 'task' | 'event') => {
+    Alert.alert(`Delete ${type === 'task' ? 'Task' : 'Event'}`, `Are you sure?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          if (type === 'task') tasksStore.deleteTask(id);
+          else tasksStore.deleteEvent(id);
+          setVisible(false);
+          onSaved();
+          onRefresh();
+        },
+      },
+    ]);
+  }, [onSaved, onRefresh]);
+
+  return {
+    visible,
+    modalType,
+    editingItem,
+    form,
+    showTimePicker,
+    showEndTimePicker,
+    openNew,
+    openEdit,
+    close,
+    updateField,
+    save,
+    delete: handleDelete,
+    setShowTimePicker,
+    setShowEndTimePicker,
+  };
+};
