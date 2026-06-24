@@ -11,21 +11,21 @@ import {
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Colors } from './src/ui/theme';
-import { initDatabase } from './src/storage/dbInit';
-import { db } from './src/storage/database';
+import { initDatabase, db, userStore } from './src/storage';
 import { CustomTabBar, TabType } from './src/ui/components/CustomTabBar';
 import { VoiceModal } from './src/ui/components/VoiceModal';
 import { ThemeProvider, useTheme } from './src/ui/contexts/ThemeContext';
+import { SPLASH_DELAY_MS, DEFAULT_USER_ID } from './src/constants';
 
 // Screens
 import { ChatScreen } from './src/ui/screens/ChatScreen';
-import { CalendarScreen, ViewMode } from './src/ui/screens/CalendarScreen';
-import { NotesScreen } from './src/ui/screens/NotesScreen';
+import { CalendarScreen, ViewMode } from './src/ui/screens/calendar';
+import { NotesScreen } from './src/ui/screens/notes';
 import { ProfileScreen } from './src/ui/screens/ProfileScreen';
+import { WelcomeScreen } from './src/ui/screens/WelcomeScreen';
 import { LoginScreen } from './src/ui/screens/LoginScreen';
 import { RegisterScreen } from './src/ui/screens/RegisterScreen';
 import { OnboardingScreen } from './src/ui/screens/OnboardingScreen';
-import { userStore } from './src/storage/userStore';
 
 // Assets
 const lafinaDefaultLogo = require('./src/assets/lafina_default_logo.png');
@@ -39,7 +39,7 @@ function AppContent({
   setUserId: React.Dispatch<React.SetStateAction<string | null>>;
 }) {
   const [isLoading, setIsLoading] = useState(true);
-  const [authScreen, setAuthScreen] = useState<'login' | 'register'>('login');
+  const [authScreen, setAuthScreen] = useState<'welcome' | 'login' | 'register'>('welcome');
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('calendar');
   const [voiceVisible, setVoiceVisible] = useState(false);
@@ -75,7 +75,7 @@ function AppContent({
         // Simulate a minor visual delay for the premium splash screen display
         setTimeout(() => {
           setIsLoading(false);
-        }, 2200);
+        }, SPLASH_DELAY_MS);
       } catch (error) {
         console.error('Failed application startup setup:', error);
         setIsLoading(false);
@@ -95,6 +95,19 @@ function AppContent({
     }
   };
 
+  const handleGetStarted = (uid: string) => {
+    setUserId(uid);
+    const user = userStore.getUserById(uid);
+    setIsOnboarding(user ? user.isNewUser : false);
+  };
+
+  const handleGuestCreateAccount = () => {
+    // Clear guest session and show register screen
+    userStore.logout();
+    setUserId(null);
+    setAuthScreen('register');
+  };
+
   const handleLoginSuccess = (uid: string) => {
     setUserId(uid);
     const user = userStore.getUserById(uid);
@@ -110,9 +123,9 @@ function AppContent({
     setIsOnboarding(false);
   };
 
-  const handleLogout = () => {
+  const handleLogout = (isGuestParam?: boolean) => {
     setUserId(null);
-    setAuthScreen('login');
+    setAuthScreen(isGuestParam ? 'welcome' : 'login');
     setIsOnboarding(false);
   };
 
@@ -153,6 +166,7 @@ function AppContent({
             refreshTrigger={refreshTrigger}
             onRefresh={triggerRefresh}
             onLogout={handleLogout}
+            onNavigateToRegister={handleGuestCreateAccount}
           />
         );
       default:
@@ -174,22 +188,33 @@ function AppContent({
     );
   }
 
-  // Render Auth Flow
+  // Render Welcome / Auth Flow
   if (!userId) {
-    if (authScreen === 'login') {
-      return (
-        <LoginScreen
-          onLoginSuccess={handleLoginSuccess}
-          onNavigateToRegister={() => setAuthScreen('register')}
-        />
-      );
-    } else {
-      return (
-        <RegisterScreen
-          onRegisterSuccess={handleRegisterSuccess}
-          onNavigateToLogin={() => setAuthScreen('login')}
-        />
-      );
+    switch (authScreen) {
+      case 'welcome':
+        return (
+          <WelcomeScreen
+            onGetStarted={handleGetStarted}
+            onNavigateToLogin={() => setAuthScreen('login')}
+            onNavigateToRegister={() => setAuthScreen('register')}
+          />
+        );
+      case 'login':
+        return (
+          <LoginScreen
+            onLoginSuccess={handleLoginSuccess}
+            onNavigateToRegister={() => setAuthScreen('register')}
+          />
+        );
+      case 'register':
+        return (
+          <RegisterScreen
+            onRegisterSuccess={handleRegisterSuccess}
+            onNavigateToLogin={() => setAuthScreen('login')}
+          />
+        );
+      default:
+        return null;
     }
   }
 
