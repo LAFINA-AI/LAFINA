@@ -2,6 +2,8 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { useTheme } from '../contexts/ThemeContext';
+import { useThemedStyles } from '../theme/createThemedStyles';
+import type { ThemeColors } from '../contexts/ThemeContext';
 
 import { Calendar, MessageSquare, FileText, User, Mic } from 'lucide-react-native';
 
@@ -19,7 +21,7 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
   onMicPress,
 }) => {
   const { colors } = useTheme();
-  const themed = useThemedStyles();
+  const themed = useThemedStyles((c) => getTabThemedStyles(c));
 
   return (
     <View style={styles.outerContainer}>
@@ -57,7 +59,7 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
           >
             {/* Glossy gradient highlight overlay */}
             <View style={styles.micHighlight} />
-            <Mic size={28} color="#FFFFFF" />
+            <Mic size={28} color={colors.white} />
           </TouchableOpacity>
         </View>
 
@@ -89,21 +91,11 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
   );
 };
 
-function useThemedStyles() {
-  const { colors } = useTheme();
-  return {
-    container: {
-      backgroundColor: colors.cardBg,
-      borderColor: colors.border,
-    },
-    label: {
-      color: colors.textMuted,
-    },
-    activeLabel: {
-      color: colors.red,
-    },
-  };
-}
+const getTabThemedStyles = (colors: ThemeColors) => ({
+  container: { backgroundColor: colors.cardBg, borderColor: colors.border },
+  label: { color: colors.textMuted },
+  activeLabel: { color: colors.red },
+});
 
 // --- Stylesheet ---
 

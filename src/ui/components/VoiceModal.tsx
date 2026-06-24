@@ -13,8 +13,11 @@ import {
 } from 'react-native';
 import { Colors, Fonts, Shadows } from '../theme';
 import { X, Check, ArrowRight } from 'lucide-react-native';
-import { processCommand } from '../../ai/nlu/parser';
+import { processCommand } from '../../ai';
 import { useTheme } from '../contexts/ThemeContext';
+import { useThemedStyles } from '../theme/createThemedStyles';
+import { VOICE_SUCCESS_DELAY_MS, DEFAULT_USER_ID } from '../../constants';
+import type { ThemeColors } from '../contexts/ThemeContext';
 
 interface VoiceModalProps {
   visible: boolean;
@@ -43,8 +46,8 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
   const waveBars = useRef(Array.from({ length: 9 }, () => new Animated.Value(8))).current;
   const waveIntervalRef = useRef<any>(null);
 
-  const { colors } = useTheme();
-  const themed = useThemedStyles();
+  const { colors, isDarkMode } = useTheme();
+  const themed = useThemedStyles((c, d) => getVoiceThemedStyles(c, d));
 
   useEffect(() => {
     let animation: Animated.CompositeAnimation | null = null;
@@ -129,7 +132,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
 
     setTimeout(() => {
       try {
-        const reply = processCommand(command, 'user1');
+        const reply = processCommand(command, DEFAULT_USER_ID);
         setAiReply(reply);
         setVoiceState('success');
         
@@ -137,7 +140,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
           onClose(true); // Close modal and request parent refresh
           setVoiceState('listening');
           setInputText('');
-        }, 2000);
+        }, VOICE_SUCCESS_DELAY_MS);
 
       } catch (err) {
         console.error(err);
@@ -197,11 +200,11 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
               ]}
             >
               {voiceState === 'processing' ? (
-                <ActivityIndicator size="large" color="#FFFFFF" />
+                <ActivityIndicator size="large" color={colors.white} />
               ) : voiceState === 'success' ? (
-                <Check size={32} color="#FFFFFF" strokeWidth={3} />
+                <Check size={32} color={colors.white} strokeWidth={3} />
               ) : voiceState === 'error' ? (
-                <X size={32} color="#FFFFFF" strokeWidth={3} />
+                <X size={32} color={colors.white} strokeWidth={3} />
               ) : (
                 <View style={styles.micCapsule} />
               )}
@@ -273,7 +276,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
                 style={styles.sendButton}
                 onPress={() => handleCommandProcess(inputText)}
               >
-                <ArrowRight size={18} color="#FFFFFF" />
+                <ArrowRight size={18} color={colors.white} />
               </TouchableOpacity>
             </View>
           )}
@@ -283,38 +286,17 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
   );
 };
 
-function useThemedStyles() {
-  const { colors, isDarkMode } = useTheme();
-  return {
-    modalContent: {
-      backgroundColor: colors.cardBg,
-    },
-    closeButton: {
-      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-    },
-    modalTitle: {
-      color: colors.textPrimary,
-    },
-    transcriptionText: {
-      color: colors.textPrimary,
-    },
-    presetsTitle: {
-      color: colors.textSecondary,
-    },
-    presetChip: {
-      backgroundColor: colors.inputBg,
-    },
-    presetChipText: {
-      color: colors.textPrimary,
-    },
-    inputRow: {
-      backgroundColor: colors.inputBg,
-    },
-    textInput: {
-      color: colors.textPrimary,
-    },
-  };
-}
+const getVoiceThemedStyles = (colors: ThemeColors, isDarkMode: boolean) => ({
+  modalContent: { backgroundColor: colors.cardBg },
+  closeButton: { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' },
+  modalTitle: { color: colors.textPrimary },
+  transcriptionText: { color: colors.textPrimary },
+  presetsTitle: { color: colors.textSecondary },
+  presetChip: { backgroundColor: colors.inputBg },
+  presetChipText: { color: colors.textPrimary },
+  inputRow: { backgroundColor: colors.inputBg },
+  textInput: { color: colors.textPrimary },
+});
 
 const styles = StyleSheet.create({
   overlay: {
@@ -341,7 +323,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closeText: {
-    color: '#FFFFFF',
+    color: Colors.textLight,
     fontSize: 14,
     fontWeight: 'bold',
   },
@@ -378,11 +360,11 @@ const styles = StyleSheet.create({
     width: 16,
     height: 24,
     borderRadius: 8,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.cardBg,
   },
   statusCheckmark: {
     fontSize: 32,
-    color: '#FFFFFF',
+    color: Colors.textLight,
     fontWeight: 'bold',
   },
   transcriptionText: {
@@ -471,7 +453,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendButtonText: {
-    color: '#FFFFFF',
+    color: Colors.textLight,
     fontSize: 16,
     fontWeight: 'bold',
   },
