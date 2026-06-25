@@ -48,7 +48,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
   visible, editingNote, noteTitle, noteBody, noteCategory,
   isPinned, imageUri, selection, aiLoading, aiActionType,
   onTitleChange, onBodyChange, onCategoryChange, onPinToggle,
-  onSelectionChange, onClose, onSave, onDelete,
+  onSelectionChange, onClose: _onClose, onSave, onDelete,
   onFormatting, onAttachImage, onRemoveImage, onAiAction,
 }) => {
   const { colors } = useTheme();

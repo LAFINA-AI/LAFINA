@@ -120,7 +120,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
           data={feedItems}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.feedList}
-          renderItem={({ item }) => <FeedItemCard item={item} timeFormat24h={timeFormat24h} onEditTask={onEditTask} onEditEvent={onEditEvent} onEditBlock={onEditBlock} onToggleTask={onToggleTask} colors={colors} isDarkMode={isDarkMode} />}
+          renderItem={({ item }) => <FeedItemCard item={item} timeFormat24h={timeFormat24h} onEditTask={onEditTask} onEditEvent={onEditEvent} onEditBlock={onEditBlock} onToggleTask={onToggleTask} colors={colors} />}
         />
       )}
     </View>
@@ -135,8 +135,7 @@ const FeedItemCard: React.FC<{
   onEditBlock: (block: TimeBlock) => void;
   onToggleTask: (task: Task) => void;
   colors: ThemeColors;
-  isDarkMode: boolean;
-}> = ({ item, timeFormat24h, onEditTask, onEditEvent, onEditBlock, onToggleTask, colors, isDarkMode }) => {
+}> = ({ item, timeFormat24h, onEditTask, onEditEvent, onEditBlock, onToggleTask, colors }) => {
   if (item.type === 'task') {
     const t = item.item as Task;
     const catColor = mapCategoryColor(t.category);

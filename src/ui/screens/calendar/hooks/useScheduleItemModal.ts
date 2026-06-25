@@ -20,6 +20,7 @@ const defaultForm = (): ScheduleItemForm => ({
   category: 'Work',
   location: '',
   notes: '',
+  recurrenceRule: null,
 });
 
 type Priority = 'High' | 'Medium' | 'Low';
@@ -55,13 +56,14 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
       category: type === 'task' ? (item as Task).category || 'Work' : 'Work',
       location: type === 'event' ? (item as Event).location || '' : '',
       notes: type === 'task' ? (item as Task).notes || '' : '',
+      recurrenceRule: item.recurrenceRule || null,
     });
     setVisible(true);
   }, []);
 
   const close = useCallback(() => setVisible(false), []);
 
-  const save = useCallback(() => {
+  const save = useCallback((recurrenceRule?: string | null) => {
     if (!form.title.trim()) {
       Alert.alert('Error', 'Please enter a title.');
       return;
@@ -72,6 +74,7 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
     }
 
     const dateStr = selectedDate.toISOString().split('T')[0];
+    const rule = recurrenceRule !== undefined ? recurrenceRule : (form.recurrenceRule || null);
 
     if (modalType === 'task') {
       if (editingItem) {
@@ -82,6 +85,7 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
           priority: form.priority as Priority,
           category: form.category,
           notes: form.notes,
+          recurrenceRule: rule,
         });
       } else {
         tasksStore.insertTask({
@@ -94,6 +98,7 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
           priority: form.priority as Priority,
           category: form.category,
           notes: form.notes,
+          recurrenceRule: rule,
         });
       }
     } else {
@@ -105,6 +110,7 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
           startTime: form.time,
           endTime: form.endTime,
           location: form.location,
+          recurrenceRule: rule,
         });
       } else {
         tasksStore.insertEvent({
@@ -115,6 +121,7 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
           startTime: form.time,
           endTime: form.endTime,
           location: form.location,
+          recurrenceRule: rule,
         });
       }
     }

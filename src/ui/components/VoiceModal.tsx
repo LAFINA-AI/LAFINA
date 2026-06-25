@@ -46,7 +46,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, onClose }) => {
   const waveBars = useRef(Array.from({ length: 9 }, () => new Animated.Value(8))).current;
   const waveIntervalRef = useRef<any>(null);
 
-  const { colors, isDarkMode } = useTheme();
+  const { colors } = useTheme();
   const themed = useThemedStyles((c, d) => getVoiceThemedStyles(c, d));
 
   useEffect(() => {

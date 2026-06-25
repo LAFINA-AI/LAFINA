@@ -39,7 +39,7 @@ export const DayView: React.FC<DayViewProps> = ({
   onAddBlock,
   getCategoryColor,
 }) => {
-  const { colors, isDarkMode } = useTheme();
+  const { colors } = useTheme();
   const dateStr = targetDate.toISOString().split('T')[0];
   const dayBlocks = blocks.filter((b) => b.date === dateStr);
   const dayTasks = allTasks.filter((t) => t.dueDate === dateStr);

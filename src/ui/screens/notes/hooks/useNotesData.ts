@@ -68,14 +68,14 @@ export const useNotesData = (options: UseNotesDataOptions) => {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiActionType, setAiActionType] = useState('');
 
-  useEffect(() => {
-    loadNotes();
-  }, [userId, refreshTrigger]);
-
   const loadNotes = useCallback(() => {
     const data = notesStore.getAll(userId);
     setNotes(data);
   }, [userId]);
+
+  useEffect(() => {
+    loadNotes();
+  }, [userId, refreshTrigger, loadNotes]);
 
   // ── Drag lifecycle ──
 

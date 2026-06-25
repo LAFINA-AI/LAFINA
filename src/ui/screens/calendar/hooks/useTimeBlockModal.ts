@@ -21,6 +21,7 @@ const defaultForm = (): TimeBlockForm => ({
   category: 'Work',
   color: Colors.blue,
   notes: '',
+  recurrenceRule: null,
 });
 
 export const useTimeBlockModal = (options: UseTimeBlockModalOptions): TimeBlockModalState => {
@@ -50,13 +51,14 @@ export const useTimeBlockModal = (options: UseTimeBlockModalOptions): TimeBlockM
       category: block.category,
       color: block.color,
       notes: block.notes || '',
+      recurrenceRule: block.recurrenceRule || null,
     });
     setVisible(true);
   }, []);
 
   const close = useCallback(() => setVisible(false), []);
 
-  const save = useCallback(() => {
+  const save = useCallback((recurrenceRule?: string | null) => {
     if (!form.title.trim()) {
       Alert.alert('Error', 'Please enter a title.');
       return;
@@ -67,6 +69,7 @@ export const useTimeBlockModal = (options: UseTimeBlockModalOptions): TimeBlockM
     }
 
     const dateStr = selectedDate.toISOString().split('T')[0];
+    const rule = recurrenceRule !== undefined ? recurrenceRule : (form.recurrenceRule || null);
 
     if (editingBlock) {
       timeBlocksStore.update({
@@ -78,6 +81,7 @@ export const useTimeBlockModal = (options: UseTimeBlockModalOptions): TimeBlockM
         color: form.color,
         category: form.category,
         notes: form.notes,
+        recurrenceRule: rule,
       });
     } else {
       timeBlocksStore.insert({
@@ -90,6 +94,7 @@ export const useTimeBlockModal = (options: UseTimeBlockModalOptions): TimeBlockM
         color: form.color,
         category: form.category,
         notes: form.notes,
+        recurrenceRule: rule,
       });
     }
 

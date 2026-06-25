@@ -6,7 +6,7 @@ import {
   SafeAreaView,
   StatusBar,
 } from 'react-native';
-import { Colors, Fonts, Layout } from '../theme';
+import { Layout } from '../theme';
 import { userStore, behaviorStore } from '../../storage';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';

@@ -10,7 +10,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { Trash2 } from 'lucide-react-native';
-import { Colors, Fonts } from '../theme';
+import { Fonts } from '../theme';
 import { chatStore } from '../../storage';
 import type { ChatMessage } from '../../storage';
 import { processCommand } from '../../ai';

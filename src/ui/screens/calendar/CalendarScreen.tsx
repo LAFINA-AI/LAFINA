@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Plus, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { Plus, ChevronLeft, ChevronRight, Upload, Download, Layers } from 'lucide-react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Colors, Shadows } from '../../theme';
 import { getCategoryColor } from '../../theme/categoryColors';
@@ -18,6 +18,7 @@ import { getHeaderTitle } from './utils/calendarHelpers';
 import { CalendarScreenProps, ViewMode } from './types';
 import { tasksStore } from '../../../storage';
 import type { Task } from '../../../storage';
+import { CalendarLayersModal } from '../../components/calendar/CalendarLayersModal';
 
 export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   userId,
@@ -51,7 +52,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   });
 
   const handleFABPress = () => {
-    // Quick create alert — can be enhanced later
     blockModal.openNewBlock();
   };
 
@@ -82,6 +82,34 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             activeOpacity={0.7}
           >
             <Text style={[styles.todayButtonText, { color: colors.textPrimary }]}>Today</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={calendar.handleImportCalendar}
+            onLongPress={calendar.startRemoveFlow}
+            style={[styles.iconButton, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
+            activeOpacity={0.7}
+            accessibilityLabel="Import Calendar"
+          >
+            <Upload size={16} color={colors.textPrimary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={calendar.handleExportCalendar}
+            style={[styles.iconButton, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
+            activeOpacity={0.7}
+            accessibilityLabel="Export Calendar"
+          >
+            <Download size={16} color={colors.textPrimary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => calendar.setLayersModalVisible(true)}
+            style={[styles.iconButton, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
+            activeOpacity={0.7}
+            accessibilityLabel="Calendar Layers"
+          >
+            <Layers size={16} color={colors.textPrimary} />
           </TouchableOpacity>
 
           <View style={styles.chevronContainer}>
@@ -159,7 +187,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             onEditBlock={(block) => blockModal.openEditBlock(block)}
             onToggleTask={toggleTaskCompletion}
             onAddBlock={blockModal.openNewBlock}
-            getCategoryColor={calendar.getCategoryColor}
+            getCategoryColor={getCategoryColor}
           />
         )}
         {calendar.viewMode === 'week' && (
@@ -188,6 +216,15 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       {/* Modals */}
       <AddBlockModal state={blockModal} timeFormat24h={calendar.timeFormat24h} />
       <AddTaskEventModal state={scheduleModal} timeFormat24h={calendar.timeFormat24h} />
+      
+      <CalendarLayersModal
+        visible={calendar.layersModalVisible}
+        onClose={() => calendar.setLayersModalVisible(false)}
+        username={calendar.username}
+        batches={calendar.batches}
+        visibilityMap={calendar.visibilityMap}
+        onToggleVisibility={calendar.handleToggleVisibility}
+      />
     </View>
   );
 };
@@ -235,6 +272,14 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: 12,
     borderRadius: 8,
+  },
+  iconButton: {
+    padding: 8,
+    marginLeft: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   toggleRow: {
     flexDirection: 'row',

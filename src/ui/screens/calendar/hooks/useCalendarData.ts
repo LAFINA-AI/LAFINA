@@ -2,7 +2,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { ViewMode, CalendarData, FeedItem } from '../types';
 import type { TimeBlock, Task, Event } from '../../../../storage';
 import { timeBlocksStore, tasksStore, userStore } from '../../../../storage';
-import { getCategoryColor } from '../../../theme/categoryColors';
+import { Colors } from '../../../theme';
+
+import { importedBatchesStore, ImportBatch } from '../../../../storage/importedBatchesStore';
+import { calendarVisibilityStore } from '../../../../storage/calendarVisibilityStore';
+import { getOccurrences } from '../../../../storage/rruleHelper';
+import { generateIcsString, parseIcsString } from '../../../../storage/icsHelper';
+import { pick, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
+import RNFS from 'react-native-fs';
+import Share from 'react-native-share';
+import { generateId } from '../../../../utils';
+import { Alert } from 'react-native';
 
 interface UseCalendarDataOptions {
   userId: string;
@@ -33,6 +43,12 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
   const [timeFormat24h, setTimeFormat24h] = useState(false);
   const [weekStartsMonday, setWeekStartsMonday] = useState(false);
 
+  // Visibility and imports state
+  const [batches, setBatches] = useState<ImportBatch[]>([]);
+  const [visibilityMap, setVisibilityMap] = useState<Record<string, boolean>>({ main: true });
+  const [username, setUsername] = useState('Main Calendar');
+  const [layersModalVisible, setLayersModalVisible] = useState(false);
+
   const generateWeekDays = useCallback(() => {
     const days: Date[] = [];
     const base = new Date(selectedDate);
@@ -51,23 +67,185 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
     setWeekStartsMonday(mondayStart);
   }, [userId]);
 
-  const loadBlocks = useCallback(() => {
-    const data = timeBlocksStore.getAll(userId);
-    setBlocks(data);
+  const loadImportsAndVisibility = useCallback(async () => {
+    try {
+      const fetchedBatches = await importedBatchesStore.getImportedBatches();
+      const fetchedVisibility = await calendarVisibilityStore.getVisibilityMap();
+      setBatches(fetchedBatches);
+      setVisibilityMap(fetchedVisibility);
+      const user = userStore.getUserById(userId);
+      if (user) {
+        setUsername(user.username);
+      }
+    } catch (error) {
+      console.error('Failed to load visibility or batches:', error);
+    }
   }, [userId]);
 
+  const getViewRange = useCallback((): { start: Date; end: Date } => {
+    if (viewMode === 'day') {
+      const start = new Date(selectedDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(selectedDate);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    } else if (viewMode === 'week') {
+      const start = new Date(selectedDate);
+      start.setDate(selectedDate.getDate() - 3);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(selectedDate);
+      end.setDate(selectedDate.getDate() + 3);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    } else {
+      const start = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 15);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 2, 15);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+  }, [viewMode, selectedDate, currentDate]);
+
+  const loadBlocks = useCallback(() => {
+    let rawData = timeBlocksStore.getAll(userId);
+
+    const importedBlockIds = new Set<string>();
+    const hiddenBlockIds = new Set<string>();
+    const hideMain = visibilityMap.main === false;
+
+    batches.forEach((batch) => {
+      const isVisible = visibilityMap[batch.id] !== false;
+      batch.blocks.forEach((id) => {
+        importedBlockIds.add(id);
+        if (!isVisible) {
+          hiddenBlockIds.add(id);
+        }
+      });
+    });
+
+    rawData = rawData.filter((block) => {
+      const isImported = importedBlockIds.has(block.id);
+      if (isImported) {
+        return !hiddenBlockIds.has(block.id);
+      } else {
+        return !hideMain;
+      }
+    });
+
+    // Expand recurrence
+    const expandedBlocks: TimeBlock[] = [];
+    const { start: rangeStart, end: rangeEnd } = getViewRange();
+
+    rawData.forEach((block) => {
+      if (block.recurrenceRule) {
+        const dates = getOccurrences(block.date, block.recurrenceRule, rangeStart, rangeEnd);
+        dates.forEach((dateStr) => {
+          const isBase = dateStr === block.date;
+          expandedBlocks.push({
+            ...block,
+            id: isBase ? block.id : `${block.id}_occur_${dateStr}`,
+            date: dateStr,
+          });
+        });
+      } else {
+        expandedBlocks.push(block);
+      }
+    });
+
+    setBlocks(expandedBlocks);
+  }, [userId, batches, visibilityMap, getViewRange]);
+
   const loadScheduleData = useCallback(() => {
-    const tasksData = tasksStore.getAllTasks(userId);
-    const eventsData = tasksStore.getAllEvents(userId);
-    setAllTasks(tasksData);
-    setAllEvents(eventsData);
+    let rawTasks = tasksStore.getAllTasks(userId);
+    let rawEvents = tasksStore.getAllEvents(userId);
+
+    const importedTaskIds = new Set<string>();
+    const hiddenTaskIds = new Set<string>();
+    const importedEventIds = new Set<string>();
+    const hiddenEventIds = new Set<string>();
+    const hideMain = visibilityMap.main === false;
+
+    batches.forEach((batch) => {
+      const isVisible = visibilityMap[batch.id] !== false;
+      batch.tasks.forEach((id) => {
+        importedTaskIds.add(id);
+        if (!isVisible) {
+          hiddenTaskIds.add(id);
+        }
+      });
+      batch.events.forEach((id) => {
+        importedEventIds.add(id);
+        if (!isVisible) {
+          hiddenEventIds.add(id);
+        }
+      });
+    });
+
+    rawTasks = rawTasks.filter((t) => {
+      const isImported = importedTaskIds.has(t.id);
+      if (isImported) {
+        return !hiddenTaskIds.has(t.id);
+      } else {
+        return !hideMain;
+      }
+    });
+
+    rawEvents = rawEvents.filter((e) => {
+      const isImported = importedEventIds.has(e.id);
+      if (isImported) {
+        return !hiddenEventIds.has(e.id);
+      } else {
+        return !hideMain;
+      }
+    });
+
+    // Expand recurrence
+    const expandedTasks: Task[] = [];
+    const expandedEvents: Event[] = [];
+    const { start: rangeStart, end: rangeEnd } = getViewRange();
+
+    rawTasks.forEach((t) => {
+      if (t.recurrenceRule && t.dueDate) {
+        const dates = getOccurrences(t.dueDate, t.recurrenceRule, rangeStart, rangeEnd);
+        dates.forEach((dateStr) => {
+          const isBase = dateStr === t.dueDate;
+          expandedTasks.push({
+            ...t,
+            id: isBase ? t.id : `${t.id}_occur_${dateStr}`,
+            dueDate: dateStr,
+          });
+        });
+      } else {
+        expandedTasks.push(t);
+      }
+    });
+
+    rawEvents.forEach((e) => {
+      if (e.recurrenceRule && e.date) {
+        const dates = getOccurrences(e.date, e.recurrenceRule, rangeStart, rangeEnd);
+        dates.forEach((dateStr) => {
+          const isBase = dateStr === e.date;
+          expandedEvents.push({
+            ...e,
+            id: isBase ? e.id : `${e.id}_occur_${dateStr}`,
+            date: dateStr,
+          });
+        });
+      } else {
+        expandedEvents.push(e);
+      }
+    });
+
+    setAllTasks(expandedTasks);
+    setAllEvents(expandedEvents);
 
     const dateStr = selectedDate.toISOString().split('T')[0];
-    const dayTasks = tasksData.filter((t) => t.dueDate === dateStr);
-    const dayEvents = eventsData.filter((e) => e.date === dateStr);
+    const dayTasks = expandedTasks.filter((t) => t.dueDate === dateStr);
+    const dayEvents = expandedEvents.filter((e) => e.date === dateStr);
+
     setTasks(dayTasks);
     setEvents(dayEvents);
-  }, [userId, selectedDate]);
+  }, [userId, batches, visibilityMap, selectedDate, getViewRange]);
 
   useEffect(() => {
     loadBlocks();
@@ -78,6 +256,240 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
   useEffect(() => {
     loadSettings();
   }, [userId, refreshTrigger, loadSettings]);
+
+  useEffect(() => {
+    loadImportsAndVisibility();
+  }, [userId, refreshTrigger, loadImportsAndVisibility]);
+
+  const handleToggleVisibility = useCallback(async (calendarId: string, isVisible: boolean) => {
+    try {
+      await calendarVisibilityStore.setVisibility(calendarId, isVisible);
+      const updatedMap = await calendarVisibilityStore.getVisibilityMap();
+      setVisibilityMap(updatedMap);
+    } catch (error) {
+      console.error('Failed to toggle visibility:', error);
+    }
+  }, []);
+
+  const handleImportCalendar = useCallback(async () => {
+    try {
+      const res = await pick({
+        type: ['text/calendar', 'application/octet-stream'],
+      });
+
+      if (!res || res.length === 0 || !res[0].uri) return;
+
+      const fileUri = res[0].uri;
+      const fileName = res[0].name || 'imported_calendar.ics';
+      const content = await RNFS.readFile(fileUri, 'utf8');
+
+      const { events: parsedEvents, blocks: parsedBlocks, tasks: parsedTasks } = parseIcsString(content);
+      const totalCount = parsedEvents.length + parsedBlocks.length + parsedTasks.length;
+
+      if (totalCount === 0) {
+        Alert.alert('Import Calendar', 'No valid calendar events, tasks, or time blocks found in the selected file.');
+        return;
+      }
+
+      Alert.alert(
+        'Import Calendar',
+        `Found ${parsedEvents.length} events, ${parsedBlocks.length} time blocks, and ${parsedTasks.length} tasks. Do you want to import them?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Import',
+            onPress: async () => {
+              try {
+                const eventIds: string[] = [];
+                const blockIds: string[] = [];
+                const taskIds: string[] = [];
+
+                parsedEvents.forEach((item) => {
+                  const id = generateId('event');
+                  tasksStore.insertEvent({
+                    id,
+                    userId,
+                    title: item.title,
+                    date: item.date,
+                    startTime: item.startTime,
+                    endTime: item.endTime,
+                    location: item.location || '',
+                  });
+                  eventIds.push(id);
+                });
+
+                parsedBlocks.forEach((item) => {
+                  const id = generateId('block');
+                  timeBlocksStore.insert({
+                    id,
+                    userId,
+                    title: item.title,
+                    date: item.date,
+                    startTime: item.startTime,
+                    endTime: item.endTime,
+                    color: item.color || Colors.blue,
+                    category: item.category || 'Imported',
+                    notes: item.notes || '',
+                  });
+                  blockIds.push(id);
+                });
+
+                parsedTasks.forEach((item) => {
+                  const id = generateId('task');
+                  tasksStore.insertTask({
+                    id,
+                    userId,
+                    title: item.title,
+                    dueDate: item.dueDate,
+                    dueTime: item.dueTime,
+                    isCompleted: false,
+                    priority: item.priority || 'Medium',
+                    category: item.category || 'Imported',
+                    notes: item.notes || '',
+                  });
+                  taskIds.push(id);
+                });
+
+                await importedBatchesStore.saveImportedBatch(fileName, eventIds, blockIds, taskIds);
+
+                Alert.alert('Success', `Successfully imported ${totalCount} items.`);
+                loadImportsAndVisibility();
+                onRefresh();
+              } catch (err) {
+                console.error('Failed to save imported items:', err);
+                Alert.alert('Error', 'Failed to save imported calendar items.');
+              }
+            },
+          },
+        ]
+      );
+    } catch (err) {
+      if (isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED) {
+        // User cancelled the picker, do nothing
+      } else {
+        console.error('Failed to import file:', err);
+        Alert.alert('Error', 'Failed to read or parse the calendar file.');
+      }
+    }
+  }, [userId, loadImportsAndVisibility, onRefresh]);
+
+  const handleExportCalendar = useCallback(async () => {
+    try {
+      const allTasksData = tasksStore.getAllTasks(userId);
+      const allEventsData = tasksStore.getAllEvents(userId);
+      const allBlocksData = timeBlocksStore.getAll(userId);
+      if (allTasksData.length === 0 && allEventsData.length === 0 && allBlocksData.length === 0) {
+        Alert.alert('Export Calendar', 'Your calendar is empty. Nothing to export.');
+        return;
+      }
+      const icsString = generateIcsString(allEventsData, allBlocksData, allTasksData);
+      const tempPath = `${RNFS.TemporaryDirectoryPath}/lafina_calendar_export.ics`;
+      await RNFS.writeFile(tempPath, icsString, 'utf8');
+      await Share.open({
+        url: `file://${tempPath}`,
+        type: 'text/calendar',
+        filename: 'lafina_calendar_export',
+        title: 'Export LAFINA Calendar',
+      });
+      await RNFS.unlink(tempPath).catch((err: any) => console.warn('Clean temp file failed:', err));
+    } catch (err) {
+      if (err && (err as any).message && (err as any).message.includes('User did not share')) {
+        return;
+      }
+      console.error('Failed to export calendar:', err);
+      Alert.alert('Error', 'Failed to generate or share calendar file.');
+    }
+  }, [userId]);
+
+  const confirmBatchRemoval = useCallback((batch: ImportBatch) => {
+    const totalCount = batch.events.length + batch.blocks.length + batch.tasks.length;
+
+    Alert.alert(
+      'Confirm Removal',
+      `Are you sure you want to delete all ${totalCount} items imported from "${batch.fileName}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              batch.events.forEach((id: string) => {
+                try {
+                  tasksStore.deleteEvent(id);
+                } catch (e) {
+                  console.warn(`Failed to delete event ${id}:`, e);
+                }
+              });
+
+              batch.blocks.forEach((id: string) => {
+                try {
+                  timeBlocksStore.delete(id);
+                } catch (e) {
+                  console.warn(`Failed to delete block ${id}:`, e);
+                }
+              });
+
+              batch.tasks.forEach((id: string) => {
+                try {
+                  tasksStore.deleteTask(id);
+                } catch (e) {
+                  console.warn(`Failed to delete task ${id}:`, e);
+                }
+              });
+
+              await importedBatchesStore.deleteImportedBatch(batch.id);
+
+              Alert.alert('Success', `Successfully removed ${totalCount} items.`);
+              loadImportsAndVisibility();
+              onRefresh();
+            } catch (err) {
+              console.error('Failed to remove imported calendar batch:', err);
+              Alert.alert('Error', 'Failed to remove calendar items.');
+            }
+          },
+        },
+      ]
+    );
+  }, [loadImportsAndVisibility, onRefresh]);
+
+  const startRemoveFlow = useCallback(async () => {
+    try {
+      const fetchedBatches = await importedBatchesStore.getImportedBatches();
+      if (fetchedBatches.length === 0) {
+        Alert.alert('Remove Imported Calendar', 'No previously imported calendars were found.');
+        return;
+      }
+
+      const buttons = fetchedBatches.map((batch) => {
+        const dateFormatted = new Date(batch.timestamp).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+
+        return {
+          text: `${batch.fileName} (${dateFormatted})`,
+          onPress: () => confirmBatchRemoval(batch),
+        };
+      });
+
+      buttons.push({
+        text: 'Cancel',
+        style: 'cancel',
+      } as any);
+
+      Alert.alert(
+        'Remove Imported Calendar',
+        'Select the calendar import batch you wish to remove:',
+        buttons
+      );
+    } catch (err) {
+      console.error('Failed to load import batches:', err);
+      Alert.alert('Error', 'Failed to load import history.');
+    }
+  }, [confirmBatchRemoval]);
 
   const navigateDay = useCallback((direction: 'prev' | 'next') => {
     const newDate = new Date(selectedDate);
@@ -193,6 +605,16 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
     loadScheduleData,
     getOverdueTasks,
     getChronologicalFeed,
-    getCategoryColor,
+
+    // Visibility and Import/Export
+    batches,
+    visibilityMap,
+    username,
+    layersModalVisible,
+    setLayersModalVisible,
+    handleToggleVisibility,
+    handleImportCalendar,
+    handleExportCalendar,
+    startRemoveFlow,
   };
 };

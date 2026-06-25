@@ -1,4 +1,5 @@
-import type { Task, Event, TimeBlock, Note } from '../../../storage';
+import type { Task, Event, TimeBlock } from '../../../storage';
+import { ImportBatch } from '../../../storage/importedBatchesStore';
 
 // ── View Modes ──
 export type ViewMode = 'month' | 'week' | 'day';
@@ -30,6 +31,7 @@ export interface TimeBlockForm {
   category: string;
   color: string;
   notes: string;
+  recurrenceRule?: string | null;
 }
 
 export interface ScheduleItemForm {
@@ -40,6 +42,7 @@ export interface ScheduleItemForm {
   category: string;
   location: string;
   notes: string;
+  recurrenceRule?: string | null;
 }
 
 // ── Hook Return Types ──
@@ -66,6 +69,17 @@ export interface CalendarData {
   handleDayTap: (dayNum: number) => void;
   loadBlocks: () => void;
   loadScheduleData: () => void;
+  
+  // Visibility and Import/Export
+  batches: ImportBatch[];
+  visibilityMap: Record<string, boolean>;
+  username: string;
+  layersModalVisible: boolean;
+  setLayersModalVisible: (visible: boolean) => void;
+  handleToggleVisibility: (calendarId: string, isVisible: boolean) => Promise<void>;
+  handleImportCalendar: () => Promise<void>;
+  handleExportCalendar: () => Promise<void>;
+  startRemoveFlow: () => Promise<void>;
 }
 
 export interface TimeBlockModalState {
@@ -78,7 +92,7 @@ export interface TimeBlockModalState {
   openEditBlock: (block: TimeBlock) => void;
   close: () => void;
   updateField: <K extends keyof TimeBlockForm>(key: K, value: TimeBlockForm[K]) => void;
-  save: () => void;
+  save: (recurrenceRule?: string | null) => void;
   delete: (id: string) => void;
   setShowStartPicker: (show: boolean) => void;
   setShowEndPicker: (show: boolean) => void;
@@ -95,7 +109,7 @@ export interface ScheduleItemModalState {
   openEdit: (item: Task | Event, type: 'task' | 'event') => void;
   close: () => void;
   updateField: <K extends keyof ScheduleItemForm>(key: K, value: ScheduleItemForm[K]) => void;
-  save: () => void;
+  save: (recurrenceRule?: string | null) => void;
   delete: (id: string, type: 'task' | 'event') => void;
   setShowTimePicker: (show: boolean) => void;
   setShowEndTimePicker: (show: boolean) => void;

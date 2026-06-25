@@ -26,7 +26,7 @@ export const getLocalImage = (uri: string | null) => {
   return null;
 };
 
-export const renderMarkdown = (text: string): React.ReactNode => {
+export const renderMarkdown = (text: string, colors: any): React.ReactNode => {
   if (!text) return null;
   const lines = text.split('\n');
   return lines.map((line, lineIndex) => {
@@ -128,7 +128,7 @@ export const NoteCardBase: React.FC<NoteCardBaseProps> = ({
               {item.isPinned && <Pin size={12} color={colors.red} style={{ transform: [{ rotate: '45deg' }] }} />}
             </View>
             <Text style={[styles.noteCardBody, { color: colors.textSecondary }]} numberOfLines={item.imageUri ? 2 : 4}>
-              {renderMarkdown(item.body)}
+              {renderMarkdown(item.body, colors)}
             </Text>
             <View style={styles.cardFooter}>
               <Text style={[styles.cardDate, { color: colors.textMuted }]}>
@@ -152,7 +152,7 @@ export const NoteCardBase: React.FC<NoteCardBaseProps> = ({
                   {item.isPinned && <Pin size={12} color={colors.red} style={{ transform: [{ rotate: '45deg' }] }} />}
                 </View>
                 <Text style={[styles.noteCardBody, { color: colors.textSecondary }]} numberOfLines={2}>
-                  {renderMarkdown(item.body)}
+                  {renderMarkdown(item.body, colors)}
                 </Text>
                 <View style={styles.cardFooter}>
                   <Text style={[styles.cardDate, { color: colors.textMuted }]}>

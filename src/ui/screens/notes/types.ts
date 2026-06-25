@@ -1,4 +1,3 @@
-import type { Note } from '../../../storage';
 
 export type FilterType = 'All' | 'AI Transcribed' | 'Personal' | 'Work' | 'Pinned';
 
