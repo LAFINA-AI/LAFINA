@@ -616,5 +616,6 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
     handleImportCalendar,
     handleExportCalendar,
     startRemoveFlow,
+    handleRemoveBatch: confirmBatchRemoval,
   };
 };

@@ -80,6 +80,7 @@ export interface CalendarData {
   handleImportCalendar: () => Promise<void>;
   handleExportCalendar: () => Promise<void>;
   startRemoveFlow: () => Promise<void>;
+  handleRemoveBatch: (batch: ImportBatch) => void;
 }
 
 export interface TimeBlockModalState {

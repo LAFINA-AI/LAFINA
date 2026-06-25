@@ -224,6 +224,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
         batches={calendar.batches}
         visibilityMap={calendar.visibilityMap}
         onToggleVisibility={calendar.handleToggleVisibility}
+        onRemoveBatch={calendar.handleRemoveBatch}
       />
     </View>
   );

@@ -8,7 +8,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { Check, X } from 'lucide-react-native';
+import { Check, X, Trash2 } from 'lucide-react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Fonts, Colors, Shadows } from '../../theme';
 import { ImportBatch } from '../../../storage/importedBatchesStore';
@@ -20,6 +20,7 @@ interface CalendarLayersModalProps {
   batches: ImportBatch[];
   visibilityMap: Record<string, boolean>;
   onToggleVisibility: (calendarId: string, isVisible: boolean) => void;
+  onRemoveBatch: (batch: ImportBatch) => void;
 }
 
 /**
@@ -33,6 +34,7 @@ export const CalendarLayersModal: React.FC<CalendarLayersModalProps> = ({
   batches,
   visibilityMap,
   onToggleVisibility,
+  onRemoveBatch,
 }) => {
   const { colors } = useTheme();
   
@@ -113,28 +115,40 @@ export const CalendarLayersModal: React.FC<CalendarLayersModalProps> = ({
                     });
 
                     return (
-                      <TouchableOpacity
+                      <View
                         key={batch.id}
                         style={[styles.item, { borderBottomColor: colors.border }]}
-                        activeOpacity={0.7}
-                        onPress={() => onToggleVisibility(batch.id, !batchVisible)}
                       >
-                        <View style={[
-                          styles.checkbox,
-                          { borderColor: color },
-                          batchVisible && { backgroundColor: color }
-                        ]}>
-                          {batchVisible && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
-                        </View>
-                        <View style={styles.textContainer}>
-                          <Text style={[styles.itemTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                            {batch.fileName}
-                          </Text>
-                          <Text style={[styles.itemSub, { color: colors.textSecondary }]}>
-                            Imported {dateStr} • {batch.events.length + batch.blocks.length + batch.tasks.length} items
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.itemContent}
+                          activeOpacity={0.7}
+                          onPress={() => onToggleVisibility(batch.id, !batchVisible)}
+                        >
+                          <View style={[
+                            styles.checkbox,
+                            { borderColor: color },
+                            batchVisible && { backgroundColor: color }
+                          ]}>
+                            {batchVisible && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+                          </View>
+                          <View style={styles.textContainer}>
+                            <Text style={[styles.itemTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                              {batch.fileName}
+                            </Text>
+                            <Text style={[styles.itemSub, { color: colors.textSecondary }]}>
+                              Imported {dateStr} • {batch.events.length + batch.blocks.length + batch.tasks.length} items
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.deleteButton}
+                          activeOpacity={0.7}
+                          onPress={() => onRemoveBatch(batch)}
+                          accessibilityLabel="Delete Imported Calendar"
+                        >
+                          <Trash2 size={18} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                      </View>
                     );
                   })
                 )}
@@ -188,6 +202,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
+  },
+  itemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  deleteButton: {
+    padding: 8,
+    marginLeft: 8,
   },
   checkbox: {
     width: 20,
