@@ -44,7 +44,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           resizeMode="contain"
         />
         <Text style={[styles.tagline, themed.tagline]}>
-          Your AI Study Companion
+          Your Offline AI Scheduler
         </Text>
         <Text style={[styles.description, themed.description]}>
           Offline-first smart scheduling, voice notes, and calendar management — no account required.
