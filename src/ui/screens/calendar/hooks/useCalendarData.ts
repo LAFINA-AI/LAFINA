@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ViewMode, CalendarData, FeedItem } from '../types';
 import type { TimeBlock, Task, Event } from '../../../../storage';
-import { timeBlocksStore, tasksStore, userStore } from '../../../../storage';
+import { timeBlocksStore, tasksStore, userStore, db } from '../../../../storage';
 import { Colors } from '../../../theme';
 
 import { importedBatchesStore, ImportBatch } from '../../../../storage/importedBatchesStore';
@@ -304,50 +304,75 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
                 const blockIds: string[] = [];
                 const taskIds: string[] = [];
 
-                parsedEvents.forEach((item) => {
-                  const id = generateId('event');
-                  tasksStore.insertEvent({
-                    id,
-                    userId,
-                    title: item.title,
-                    date: item.date,
-                    startTime: item.startTime,
-                    endTime: item.endTime,
-                    location: item.location || '',
+                const now = new Date().toISOString();
+                await db.transaction(async (tx) => {
+                  parsedEvents.forEach((item) => {
+                    const id = generateId('event');
+                    tx.executeSync(
+                      `INSERT INTO events (id, user_id, title, date, start_time, end_time, location, linked_calendar_block, recurrence_rule, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                      [
+                        id,
+                        userId,
+                        item.title,
+                        item.date,
+                        item.startTime,
+                        item.endTime,
+                        item.location || null,
+                        null,
+                        item.recurrenceRule || null,
+                        now,
+                        now,
+                      ]
+                    );
+                    eventIds.push(id);
                   });
-                  eventIds.push(id);
-                });
 
-                parsedBlocks.forEach((item) => {
-                  const id = generateId('block');
-                  timeBlocksStore.insert({
-                    id,
-                    userId,
-                    title: item.title,
-                    date: item.date,
-                    startTime: item.startTime,
-                    endTime: item.endTime,
-                    color: item.color || Colors.blue,
-                    category: item.category || 'Imported',
-                    notes: item.notes || '',
+                  parsedBlocks.forEach((item) => {
+                    const id = generateId('block');
+                    tx.executeSync(
+                      `INSERT INTO time_blocks (id, user_id, title, date, start_time, end_time, color, category, notes, recurrence_rule, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                      [
+                        id,
+                        userId,
+                        item.title,
+                        item.date,
+                        item.startTime,
+                        item.endTime,
+                        item.color || Colors.blue,
+                        item.category || 'Imported',
+                        item.notes || null,
+                        item.recurrenceRule || null,
+                        now,
+                        now,
+                      ]
+                    );
+                    blockIds.push(id);
                   });
-                  blockIds.push(id);
-                });
 
-                parsedTasks.forEach((item) => {
-                  const id = generateId('task');
-                  tasksStore.insertTask({
-                    id,
-                    userId,
-                    title: item.title,
-                    dueDate: item.dueDate,
-                    dueTime: item.dueTime,
-                    isCompleted: false,
-                    priority: item.priority || 'Medium',
-                    category: item.category || 'Imported',
-                    notes: item.notes || '',
+                  parsedTasks.forEach((item) => {
+                    const id = generateId('task');
+                    tx.executeSync(
+                      `INSERT INTO tasks (id, user_id, title, due_date, due_time, is_completed, priority, category, notes, recurrence_rule, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                      [
+                        id,
+                        userId,
+                        item.title,
+                        item.dueDate || null,
+                        item.dueTime || null,
+                        0,
+                        item.priority || 'Medium',
+                        item.category || 'Imported',
+                        item.notes || null,
+                        item.recurrenceRule || null,
+                        now,
+                        now,
+                      ]
+                    );
+                    taskIds.push(id);
                   });
-                  taskIds.push(id);
                 });
 
                 await importedBatchesStore.saveImportedBatch(fileName, eventIds, blockIds, taskIds);

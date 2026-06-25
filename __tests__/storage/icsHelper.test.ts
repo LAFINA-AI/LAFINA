@@ -254,7 +254,142 @@ describe('icsHelper', () => {
     expect(icsString).toContain('RRULE:FREQ=DAILY;INTERVAL=1;COUNT=10');
 
     const parsed = parseIcsString(icsString);
-    expect(parsed.events[0].recurrenceRule).toBe('FREQ=WEEKLY;BYDAY=MO,WE,FR;INTERVAL=1');
-    expect(parsed.blocks[0].recurrenceRule).toBe('FREQ=DAILY;INTERVAL=1;COUNT=10');
+    expect(parsed.events.length).toBeGreaterThanOrEqual(312);
+    expect(parsed.blocks).toHaveLength(10);
+    expect(parsed.events[0].recurrenceRule).toBeNull();
+    expect(parsed.blocks[0].recurrenceRule).toBeNull();
+  });
+
+  test('should parse recurring events with EXDATE and RDATE', () => {
+    const icsString = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VEVENT',
+      'UID:rec_ex_r',
+      'DTSTART:20260625T090000',
+      'DTEND:20260625T103000',
+      'SUMMARY:Lecture Series',
+      'RRULE:FREQ=DAILY;COUNT=5',
+      'EXDATE;VALUE=DATE:20260626',
+      'EXDATE;VALUE=DATE:20260628',
+      'RDATE;VALUE=DATE:20260701',
+      'RDATE;VALUE=DATE:20260702',
+      'X-LAFINA-TYPE:event',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+
+    const parsed = parseIcsString(icsString);
+    // Should have 5 original, minus 2 excluded, plus 2 added = 5 occurrences.
+    // Occurrence dates:
+    // - 2026-06-25 (original day 1)
+    // - 2026-06-26 (day 2: EXCLUDED)
+    // - 2026-06-27 (original day 3)
+    // - 2026-06-28 (day 4: EXCLUDED)
+    // - 2026-06-29 (original day 5)
+    // - 2026-07-01 (added RDATE)
+    // - 2026-07-02 (added RDATE)
+    // Total = 5 occurrences
+    expect(parsed.events).toHaveLength(5);
+
+    const dates = parsed.events.map(e => e.date).sort();
+    expect(dates).toEqual([
+      '2026-06-25',
+      '2026-06-27',
+      '2026-06-29',
+      '2026-07-01',
+      '2026-07-02',
+    ]);
+  });
+
+  test('should parse recurring event with DURATION instead of DTEND', () => {
+    const icsString = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VEVENT',
+      'UID:rec_duration',
+      'DTSTART:20260625T090000',
+      'DURATION:PT1H30M',
+      'SUMMARY:Lecture Series',
+      'RRULE:FREQ=DAILY;COUNT=3',
+      'X-LAFINA-TYPE:event',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+
+    const parsed = parseIcsString(icsString);
+    expect(parsed.events).toHaveLength(3);
+    parsed.events.forEach(e => {
+      expect(e.startTime).toBe('09:00');
+      expect(e.endTime).toBe('10:30');
+    });
+  });
+
+  test('should apply RECURRENCE-ID overrides correctly', () => {
+    const icsString = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VEVENT',
+      'UID:rec_override',
+      'DTSTART:20260625T090000',
+      'DTEND:20260625T103000',
+      'SUMMARY:Regular Class',
+      'RRULE:FREQ=DAILY;COUNT=3',
+      'X-LAFINA-TYPE:event',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:rec_override',
+      'RECURRENCE-ID:20260626T090000',
+      'DTSTART:20260626T140000',
+      'DTEND:20260626T153000',
+      'SUMMARY:Rescheduled Class',
+      'X-LAFINA-TYPE:event',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+
+    const parsed = parseIcsString(icsString);
+    expect(parsed.events).toHaveLength(3);
+
+    // Day 1
+    const day1 = parsed.events.find(e => e.date === '2026-06-25');
+    expect(day1).toBeDefined();
+    expect(day1!.startTime).toBe('09:00');
+    expect(day1!.title).toBe('Regular Class');
+
+    // Day 2 (Overridden)
+    const day2 = parsed.events.find(e => e.date === '2026-06-26');
+    expect(day2).toBeDefined();
+    expect(day2!.startTime).toBe('14:00');
+    expect(day2!.endTime).toBe('15:30');
+    expect(day2!.title).toBe('Rescheduled Class');
+
+    // Day 3
+    const day3 = parsed.events.find(e => e.date === '2026-06-27');
+    expect(day3).toBeDefined();
+    expect(day3!.startTime).toBe('09:00');
+    expect(day3!.title).toBe('Regular Class');
+  });
+
+  test('should cap infinite recurrence rules to 2 years', () => {
+    const icsString = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VEVENT',
+      'UID:infinite_rec',
+      'DTSTART:20260625T090000',
+      'DTEND:20260625T100000',
+      'SUMMARY:Daily Standup',
+      'RRULE:FREQ=DAILY',
+      'X-LAFINA-TYPE:event',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+
+    const parsed = parseIcsString(icsString);
+    // 2 years of daily events = 365 * 2 + 1 (leap year day check) = 730/731 events
+    expect(parsed.events.length).toBeGreaterThanOrEqual(730);
+    expect(parsed.events.length).toBeLessThanOrEqual(732);
   });
 });
+

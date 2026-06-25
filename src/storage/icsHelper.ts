@@ -1,5 +1,7 @@
 import { Task, Event } from './tasksStore';
 import { TimeBlock } from './timeBlocksStore';
+import ICalParser from 'ical-js-parser';
+import { RRule, RRuleSet, rrulestr } from 'rrule';
 
 /**
  * Escapes special characters for iCalendar format values.
@@ -210,6 +212,187 @@ export const generateIcsString = (
   return lines.join('\r\n') + '\r\n';
 };
 
+// Helper to parse duration string (e.g. PT1H30M or P1W) to milliseconds
+const parseDuration = (iso: string): number => {
+  const clean = iso.trim().toUpperCase();
+  const weekMatch = clean.match(/^P(\d+)W$/);
+  if (weekMatch) {
+    return parseInt(weekMatch[1], 10) * 7 * 24 * 60 * 60 * 1000;
+  }
+  const match = clean.match(/P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return 3600000; // default 1 hour
+  const d = match[1] ? parseInt(match[1], 10) : 0;
+  const h = match[2] ? parseInt(match[2], 10) : 0;
+  const m = match[3] ? parseInt(match[3], 10) : 0;
+  const s = match[4] ? parseInt(match[4], 10) : 0;
+  return ((d * 24 + h) * 60 + m) * 60000 + s * 1000;
+};
+
+// Timezone-independent Date parser
+const parseIcsToUtcDate = (icsValue: string): Date => {
+  try {
+    const clean = icsValue.trim().replace(/Z$/, '');
+    if (clean.includes('T')) {
+      const [datePart, timePart] = clean.split('T');
+      if (!/^\d{8}$/.test(datePart) || timePart.length < 4) {
+        return new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate(), 0, 0, 0));
+      }
+      const year = parseInt(datePart.substring(0, 4), 10);
+      const month = parseInt(datePart.substring(4, 6), 10) - 1;
+      const day = parseInt(datePart.substring(6, 8), 10);
+      const hour = parseInt(timePart.substring(0, 2), 10);
+      const minute = parseInt(timePart.substring(2, 4), 10);
+      const second = timePart.length >= 6 ? parseInt(timePart.substring(4, 6), 10) : 0;
+      return new Date(Date.UTC(year, month, day, hour, minute, second));
+    } else {
+      if (!/^\d{8}$/.test(clean)) {
+        return new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate(), 0, 0, 0));
+      }
+      const year = parseInt(clean.substring(0, 4), 10);
+      const month = parseInt(clean.substring(4, 6), 10) - 1;
+      const day = parseInt(clean.substring(6, 8), 10);
+      return new Date(Date.UTC(year, month, day, 0, 0, 0));
+    }
+  } catch {
+    return new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate(), 0, 0, 0));
+  }
+};
+
+const cleanIcsValue = (val: string): string => {
+  const parts = val.split(':');
+  if (parts.length > 1) {
+    const lastPart = parts[parts.length - 1];
+    if (/\d+/.test(lastPart)) {
+      return lastPart;
+    }
+  }
+  return val;
+};
+
+// Alignment helper for exdate/rdate
+const parseIcsDateWithValueTime = (icsValue: string, referenceTime: Date): Date => {
+  const parsed = parseIcsToUtcDate(icsValue);
+  const clean = icsValue.trim().replace(/Z$/, '');
+  if (!clean.includes('T')) {
+    parsed.setUTCHours(referenceTime.getUTCHours());
+    parsed.setUTCMinutes(referenceTime.getUTCMinutes());
+    parsed.setUTCSeconds(referenceTime.getUTCSeconds());
+    parsed.setUTCMilliseconds(referenceTime.getUTCMilliseconds());
+  }
+  return parsed;
+};
+
+const formatDateForRRule = (date: Date): string => {
+  return date
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}/, '');
+};
+
+const formatUtcDate = (date: Date): string => {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const formatUtcTime = (date: Date): string => {
+  const h = String(date.getUTCHours()).padStart(2, '0');
+  const m = String(date.getUTCMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+};
+
+const resolveDtend = (vevent: any, dtstart: Date): Date => {
+  if (vevent.dtend && vevent.dtend.value) {
+    return parseIcsToUtcDate(vevent.dtend.value);
+  }
+  if (vevent.duration) {
+    const durationMs = parseDuration(vevent.duration);
+    return new Date(dtstart.getTime() + durationMs);
+  }
+  return new Date(dtstart.getTime() + 60 * 60 * 1000); // default: 1 hour
+};
+
+const expandRecurringEvent = (
+  vevent: any,
+  dtstart: Date,
+  dtend: Date,
+  rdates: string[],
+): { date: string; startTime: string; endTime: string }[] => {
+  const duration = dtend.getTime() - dtstart.getTime();
+  const ruleSet = new RRuleSet();
+
+  const rruleString = `DTSTART:${formatDateForRRule(dtstart)}\nRRULE:${vevent.rrule}`;
+  const rule = rrulestr(rruleString, { forceset: false });
+  ruleSet.rrule(rule instanceof RRule ? rule : (rule as RRuleSet).rrules()[0]);
+
+  if (vevent.exdate) {
+    for (const ex of vevent.exdate) {
+      if (ex && ex.value) {
+        const cleanEx = cleanIcsValue(ex.value);
+        ruleSet.exdate(parseIcsDateWithValueTime(cleanEx, dtstart));
+      }
+    }
+  }
+
+  for (const rd of rdates) {
+    ruleSet.rdate(parseIcsDateWithValueTime(rd, dtstart));
+  }
+
+  const expansionEnd = new Date(dtstart);
+  expansionEnd.setFullYear(expansionEnd.getFullYear() + 2);
+
+  const occurrences = ruleSet.between(dtstart, expansionEnd, true);
+
+  return occurrences.map((occurrenceStart) => {
+    const occurrenceEnd = new Date(occurrenceStart.getTime() + duration);
+    return {
+      date: formatUtcDate(occurrenceStart),
+      startTime: formatUtcTime(occurrenceStart),
+      endTime: formatUtcTime(occurrenceEnd),
+    };
+  });
+};
+
+// Normalize CRLF to LF, unfold lines, and sanitize invalid dates so ical-js-parser doesn't drop events
+const sanitizeIcsContent = (icsContent: string): string => {
+  const normalized = icsContent.replace(/\r\n/g, '\n');
+  const unfoldedLines: string[] = [];
+  const rawLines = normalized.split('\n');
+  
+  for (const line of rawLines) {
+    if (line.startsWith(' ') || line.startsWith('\t')) {
+      if (unfoldedLines.length > 0) {
+        unfoldedLines[unfoldedLines.length - 1] += line.substring(1);
+      }
+    } else if (line.trim().length > 0) {
+      unfoldedLines.push(line);
+    }
+  }
+
+  const todayFormatted = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+  const sanitizedLines = unfoldedLines.map(line => {
+    const colonIndex = line.indexOf(':');
+    if (colonIndex === -1) return line;
+    const fullKey = line.substring(0, colonIndex);
+    const value = line.substring(colonIndex + 1).trim();
+    const baseKey = fullKey.split(';')[0].toUpperCase();
+
+    if (['DTSTART', 'DTEND', 'DUE', 'EXDATE', 'RDATE', 'RECURRENCE-ID'].includes(baseKey)) {
+      const cleanValue = cleanIcsValue(value).replace(/Z$/, '');
+      const parts = cleanValue.split('T');
+      const datePart = parts[0];
+      if (!/^\d{8}$/.test(datePart)) {
+        return `${fullKey}:${todayFormatted}`;
+      }
+    }
+    return line;
+  });
+
+  return sanitizedLines.join('\n');
+};
+
 /**
  * Parses an iCalendar string back into LAFINA tasks, events, and time blocks.
  * Supports unfolding lines and parsing custom properties.
@@ -228,119 +411,212 @@ export const parseIcsString = (
   const blocks: Omit<TimeBlock, 'userId' | 'createdAt' | 'updatedAt'>[] = [];
   const tasks: Omit<Task, 'userId' | 'createdAt' | 'updatedAt'>[] = [];
 
-  // Step 1: Unfold lines (lines starting with space/tab are continuation of previous line)
-  const unfoldedLines: string[] = [];
-  const rawLines = icsContent.split(/\r?\n/);
-  
-  for (const line of rawLines) {
-    if (line.startsWith(' ') || line.startsWith('\t')) {
-      if (unfoldedLines.length > 0) {
-        unfoldedLines[unfoldedLines.length - 1] += line.substring(1);
-      }
-    } else if (line.trim().length > 0) {
-      unfoldedLines.push(line);
-    }
-  }
+  const sanitized = sanitizeIcsContent(icsContent);
+  const unfoldedLines = sanitized.split('\n');
 
-  // State tracker for parsing
-  let currentComponent: 'VEVENT' | 'VTODO' | null = null;
-  let componentData: { [key: string]: string } = {};
-
+  // Step 2: Scan unfolded lines to collect all RDATEs by UID (needed because ical-js-parser only keeps last RDATE)
+  const rdatesByUid: { [uid: string]: string[] } = {};
+  let scanUid: string | null = null;
   for (const line of unfoldedLines) {
     const colonIndex = line.indexOf(':');
     if (colonIndex === -1) continue;
-
     const fullKey = line.substring(0, colonIndex);
     const value = line.substring(colonIndex + 1);
-
-    // Get the base property name by splitting off any parameters (e.g. DUE;VALUE=DATE)
     const baseKey = fullKey.split(';')[0].toUpperCase();
 
-    if (baseKey === 'BEGIN') {
-      const compType = value.toUpperCase();
-      if (compType === 'VEVENT' || compType === 'VTODO') {
-        currentComponent = compType as any;
-        componentData = {};
+    if (baseKey === 'BEGIN' && value.toUpperCase() === 'VEVENT') {
+      scanUid = null;
+    } else if (baseKey === 'UID') {
+      scanUid = value.trim();
+    } else if (baseKey === 'RDATE' && scanUid) {
+      if (!rdatesByUid[scanUid]) {
+        rdatesByUid[scanUid] = [];
       }
-    } else if (baseKey === 'END') {
-      const compType = value.toUpperCase();
-      if (compType === 'VEVENT' && currentComponent === 'VEVENT') {
-        // Distinguish VEVENT between regular Event and TimeBlock
-        const type = componentData['X-LAFINA-TYPE'] || 'event';
-        const uid = componentData['UID'] || 'imported_' + Math.random().toString(36).substring(2, 9);
-        const summary = unescapeText(componentData['SUMMARY'] || 'Untitled Event');
-        const dtstart = componentData['DTSTART'] || '';
-        const dtend = componentData['DTEND'] || '';
-        const rrule = componentData['RRULE'] || null;
+      const cleanVal = cleanIcsValue(value);
+      const parts = cleanVal.split(',');
+      for (const part of parts) {
+        if (part.trim()) {
+          rdatesByUid[scanUid].push(part.trim());
+        }
+      }
+    }
+  }
 
-        const startParsed = parseIcsDateTime(dtstart);
-        const endParsed = parseIcsDateTime(dtend);
+  // Step 3: Parse with ical-js-parser
+  const parsed = ICalParser.toJSON(sanitized);
+  const rawEvents = parsed.events || [];
+  const rawTodos = parsed.todos || [];
 
+  const nonOverrides = rawEvents.filter(e => !e.recurrenceId);
+  const overrides = rawEvents.filter(e => e.recurrenceId);
+
+  // Process VEVENTs
+  for (const vevent of nonOverrides) {
+    const type = vevent.xLafinaType || 'event';
+    const uid = vevent.uid || 'imported_' + Math.random().toString(36).substring(2, 9);
+    const summary = unescapeText(vevent.summary || 'Untitled');
+    const location = vevent.location ? unescapeText(vevent.location) : null;
+    const color = vevent.xLafinaColor || '#2196F3';
+    const category = unescapeText(vevent.categories || (type === 'time_block' ? 'Work' : ''));
+    const notes = vevent.description ? unescapeText(vevent.description) : undefined;
+    const rrule = vevent.rrule || null;
+
+    if (!vevent.dtstart || !vevent.dtstart.value) continue;
+
+    const dtstart = parseIcsToUtcDate(vevent.dtstart.value);
+    const dtend = resolveDtend(vevent, dtstart);
+
+    if (!rrule) {
+      const parsedStart = parseIcsDateTime(vevent.dtstart.value);
+      const parsedEnd = vevent.dtend ? parseIcsDateTime(vevent.dtend.value) : null;
+
+      if (type === 'time_block') {
+        blocks.push({
+          id: uid,
+          title: summary,
+          date: parsedStart.date,
+          startTime: parsedStart.time || '09:00',
+          endTime: parsedEnd?.time || '10:00',
+          color,
+          category,
+          notes,
+          recurrenceRule: null,
+        });
+      } else {
+        events.push({
+          id: uid,
+          title: summary,
+          date: parsedStart.date,
+          startTime: parsedStart.time || '12:00',
+          endTime: parsedEnd?.time || '13:00',
+          location,
+          recurrenceRule: null,
+        });
+      }
+    } else {
+      const rdates = rdatesByUid[uid] || [];
+      const expanded = expandRecurringEvent(vevent, dtstart, dtend, rdates);
+
+      expanded.forEach((occurrence, idx) => {
+        const occurrenceId = `${uid}_${idx}`;
         if (type === 'time_block') {
           blocks.push({
-            id: uid,
+            id: occurrenceId,
             title: summary,
-            date: startParsed.date,
-            startTime: startParsed.time || '09:00',
-            endTime: endParsed.time || '10:00',
-            color: componentData['X-LAFINA-COLOR'] || '#2196F3',
-            category: unescapeText(componentData['CATEGORIES'] || 'Work'),
-            notes: componentData['DESCRIPTION'] ? unescapeText(componentData['DESCRIPTION']) : undefined,
-            recurrenceRule: rrule,
+            date: occurrence.date,
+            startTime: occurrence.startTime,
+            endTime: occurrence.endTime,
+            color,
+            category,
+            notes,
+            recurrenceRule: null,
           });
         } else {
           events.push({
-            id: uid,
+            id: occurrenceId,
             title: summary,
-            date: startParsed.date,
-            startTime: startParsed.time || '12:00',
-            endTime: endParsed.time || '13:00',
-            location: componentData['LOCATION'] ? unescapeText(componentData['LOCATION']) : null,
-            recurrenceRule: rrule,
+            date: occurrence.date,
+            startTime: occurrence.startTime,
+            endTime: occurrence.endTime,
+            location,
+            recurrenceRule: null,
           });
         }
-        currentComponent = null;
-      } else if (compType === 'VTODO' && currentComponent === 'VTODO') {
-        const uid = componentData['UID'] || 'imported_' + Math.random().toString(36).substring(2, 9);
-        const summary = unescapeText(componentData['SUMMARY'] || 'Untitled Task');
-        const description = componentData['DESCRIPTION'] ? unescapeText(componentData['DESCRIPTION']) : null;
-        const categories = unescapeText(componentData['CATEGORIES'] || 'General');
-        const status = componentData['STATUS'] || 'NEEDS-ACTION';
-        const priorityVal = parseInt(componentData['PRIORITY'] || '5', 10);
-        const dueVal = componentData['DUE'] || '';
-        const rrule = componentData['RRULE'] || null;
-
-        let priority: 'High' | 'Medium' | 'Low' = 'Medium';
-        if (priorityVal > 0 && priorityVal <= 4) priority = 'High';
-        else if (priorityVal >= 5 && priorityVal <= 8) priority = 'Medium';
-        else if (priorityVal >= 9) priority = 'Low';
-
-        let dueDate: string | null = null;
-        let dueTime: string | null = null;
-        if (dueVal) {
-          const dueParsed = parseIcsDateTime(dueVal);
-          dueDate = dueParsed.date;
-          dueTime = dueParsed.time || null;
-        }
-
-        tasks.push({
-          id: uid,
-          title: summary,
-          dueDate,
-          dueTime,
-          isCompleted: status.toUpperCase() === 'COMPLETED',
-          priority,
-          category: categories,
-          notes: description,
-          recurrenceRule: rrule,
-        });
-        currentComponent = null;
-      }
-    } else if (currentComponent) {
-      // Store fields for the current component
-      componentData[baseKey] = value;
+      });
     }
+  }
+
+  // Apply RECURRENCE-ID overrides
+  for (const override of overrides) {
+    const overrideUid = override.uid;
+    if (!overrideUid || !override.recurrenceId || !override.recurrenceId.value) continue;
+    const overrideDate = parseIcsToUtcDate(override.recurrenceId.value);
+    const type = override.xLafinaType || 'event';
+
+    if (type === 'time_block') {
+      const idx = blocks.findIndex(
+        ev => {
+          if (!ev.id.startsWith(overrideUid)) return false;
+          const occurrenceStart = parseIcsToUtcDate(formatIcsDateTime(ev.date, ev.startTime));
+          return Math.abs(occurrenceStart.getTime() - overrideDate.getTime()) < 86400000;
+        }
+      );
+      if (idx !== -1) {
+        const dtstart = parseIcsToUtcDate(override.dtstart.value);
+        const dtend = resolveDtend(override, dtstart);
+        blocks[idx] = {
+          id: blocks[idx].id,
+          title: override.summary || blocks[idx].title,
+          date: formatUtcDate(dtstart),
+          startTime: formatUtcTime(dtstart),
+          endTime: formatUtcTime(dtend),
+          color: override.xLafinaColor || blocks[idx].color,
+          category: override.categories || blocks[idx].category,
+          notes: override.description ? unescapeText(override.description) : blocks[idx].notes,
+          recurrenceRule: blocks[idx].recurrenceRule,
+        };
+      }
+    } else {
+      const idx = events.findIndex(
+        ev => {
+          if (!ev.id.startsWith(overrideUid)) return false;
+          const occurrenceStart = parseIcsToUtcDate(formatIcsDateTime(ev.date, ev.startTime));
+          return Math.abs(occurrenceStart.getTime() - overrideDate.getTime()) < 86400000;
+        }
+      );
+      if (idx !== -1) {
+        const dtstart = parseIcsToUtcDate(override.dtstart.value);
+        const dtend = resolveDtend(override, dtstart);
+        events[idx] = {
+          id: events[idx].id,
+          title: override.summary || events[idx].title,
+          date: formatUtcDate(dtstart),
+          startTime: formatUtcTime(dtstart),
+          endTime: formatUtcTime(dtend),
+          location: override.location !== undefined ? override.location : events[idx].location,
+          recurrenceRule: events[idx].recurrenceRule,
+        };
+      }
+    }
+  }
+
+  // Process VTODOs
+  for (const todo of rawTodos) {
+    const uid = todo.uid || 'imported_' + Math.random().toString(36).substring(2, 9);
+    const summary = unescapeText(todo.summary || 'Untitled Task');
+    const description = todo.description ? unescapeText(todo.description) : null;
+    const categories = unescapeText(todo.categories || 'General');
+    const status = todo.status || 'NEEDS-ACTION';
+    const priorityVal = parseInt(todo.priority || '5', 10);
+    const dueVal = cleanIcsValue(todo.due || '');
+    const rrule = todo.rrule || null;
+
+    let priority: 'High' | 'Medium' | 'Low' = 'Medium';
+    if (priorityVal > 0 && priorityVal <= 4) priority = 'High';
+    else if (priorityVal >= 5 && priorityVal <= 8) priority = 'Medium';
+    else if (priorityVal >= 9) priority = 'Low';
+
+    let dueDate: string | null = null;
+    let dueTime: string | null = null;
+    if (dueVal) {
+      const dueParsed = parseIcsDateTime(dueVal);
+      dueDate = dueParsed.date;
+      dueTime = dueParsed.time || null;
+    }
+
+    tasks.push({
+      id: uid,
+      title: summary,
+      dueDate,
+      dueTime,
+      isCompleted: status.toUpperCase() === 'COMPLETED',
+      priority,
+      category: categories,
+      notes: description,
+      recurrenceRule: rrule,
+    });
   }
 
   return { events, blocks, tasks };
 };
+
