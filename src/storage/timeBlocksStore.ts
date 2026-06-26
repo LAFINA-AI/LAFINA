@@ -1,4 +1,4 @@
-import { db } from './database';
+import { db, DatabaseTransaction } from './database';
 
 export interface TimeBlock {
   id: string;
@@ -126,10 +126,11 @@ export const timeBlocksStore = {
   /**
    * Soft deletes a time block by setting deleted_at.
    */
-  delete: (id: string): void => {
+  delete: (id: string, tx?: DatabaseTransaction): void => {
     const now = new Date().toISOString();
+    const executor = tx || db;
     try {
-      db.executeSync(
+      executor.executeSync(
         `UPDATE time_blocks SET deleted_at = ?, updated_at = ? WHERE id = ?`,
         [now, now, id]
       );

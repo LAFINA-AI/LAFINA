@@ -1,4 +1,4 @@
-import { db } from './database';
+import { db, DatabaseTransaction } from './database';
 
 export interface Task {
   id: string;
@@ -150,10 +150,11 @@ export const tasksStore = {
     }
   },
 
-  deleteTask: (id: string): void => {
+  deleteTask: (id: string, tx?: DatabaseTransaction): void => {
     const now = new Date().toISOString();
+    const executor = tx || db;
     try {
-      db.executeSync(
+      executor.executeSync(
         `UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ?`,
         [now, now, id]
       );
@@ -244,10 +245,11 @@ export const tasksStore = {
     }
   },
 
-  deleteEvent: (id: string): void => {
+  deleteEvent: (id: string, tx?: DatabaseTransaction): void => {
     const now = new Date().toISOString();
+    const executor = tx || db;
     try {
-      db.executeSync(
+      executor.executeSync(
         `UPDATE events SET deleted_at = ?, updated_at = ? WHERE id = ?`,
         [now, now, id]
       );

@@ -1,4 +1,4 @@
-import { db } from './database';
+import { db, DatabaseTransaction } from './database';
 
 export interface Note {
   id: string;
@@ -163,10 +163,11 @@ export const notesStore = {
     }
   },
 
-  delete: (id: string): void => {
+  delete: (id: string, tx?: DatabaseTransaction): void => {
     const now = new Date().toISOString();
+    const executor = tx || db;
     try {
-      db.executeSync(
+      executor.executeSync(
         `UPDATE notes SET deleted_at = ?, updated_at = ? WHERE id = ?`,
         [now, now, id]
       );

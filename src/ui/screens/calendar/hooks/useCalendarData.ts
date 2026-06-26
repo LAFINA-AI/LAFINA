@@ -439,35 +439,37 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
           style: 'destructive',
           onPress: async () => {
             try {
-              batch.events.forEach((id: string) => {
-                try {
-                  tasksStore.deleteEvent(id);
-                } catch (e) {
-                  console.warn(`Failed to delete event ${id}:`, e);
-                }
-              });
+              await db.transaction(async (tx) => {
+                batch.events.forEach((id: string) => {
+                  try {
+                    tasksStore.deleteEvent(id, tx);
+                  } catch (e) {
+                    console.warn(`Failed to delete event ${id}:`, e);
+                  }
+                });
 
-              batch.blocks.forEach((id: string) => {
-                try {
-                  timeBlocksStore.delete(id);
-                } catch (e) {
-                  console.warn(`Failed to delete block ${id}:`, e);
-                }
-              });
+                batch.blocks.forEach((id: string) => {
+                  try {
+                    timeBlocksStore.delete(id, tx);
+                  } catch (e) {
+                    console.warn(`Failed to delete block ${id}:`, e);
+                  }
+                });
 
-              batch.tasks.forEach((id: string) => {
-                try {
-                  tasksStore.deleteTask(id);
-                } catch (e) {
-                  console.warn(`Failed to delete task ${id}:`, e);
-                }
+                batch.tasks.forEach((id: string) => {
+                  try {
+                    tasksStore.deleteTask(id, tx);
+                  } catch (e) {
+                    console.warn(`Failed to delete task ${id}:`, e);
+                  }
+                });
               });
 
               await importedBatchesStore.deleteImportedBatch(batch.id);
 
-              Alert.alert('Success', `Successfully removed ${totalCount} items.`);
               loadImportsAndVisibility();
               onRefresh();
+              Alert.alert('Success', `Successfully removed ${totalCount} items.`);
             } catch (err) {
               console.error('Failed to remove imported calendar batch:', err);
               Alert.alert('Error', 'Failed to remove calendar items.');
