@@ -92,3 +92,6 @@ __pycache__/
 
 # Editor config — we don't use Cursor
 .cursorrules
+
+# manual ignores
+android/gradle.properties
