@@ -1,14 +1,14 @@
 # LAFINA AI Branding
 
 ## Behind the Logo
-*Note: The source document contains template placeholder text that references a different brand ("Sabrosa"), an apple, a mustache, and glasses, which do not match the visual waveform logo for LAFINA AI.*
 
-The Sabrosa logo is a playful fusion of symbolic elements that represent the brand's personality and purpose. The "Apple" represents health, freshness, and the core of our product line, delicious, quality snacks made with care. The mustache adds a friendly and quirky personality, while the starry-eyed glasses reflect excitement and satisfaction.
+The LAFINA AI logo represents our core identity as a voice-first, offline-first academic scheduling assistant. The undulating soundwave (waveform) graphic symbolizes voice interaction, speech synthesis, and audio feedback—highlighting the app's unique feature of simulated phone call reminders that require spoken acknowledgment to dismiss. The clean, modern typography of the "LAFINA" wordmark conveys structure, organization, and academic focus, forming a perfect union between advanced AI technology and student productivity.
 
-## Logo Color Options   
-1. **Dark Mode:** White text and white waveform on a black background.
-2. **Light Mode:** Black text and grey waveform on a white background.
-3. **Gradient Mode:** White text and white waveform on a vibrant yellow-to-blue gradient background.
+## Logo Color Options
+
+*   **Gradient background (Primary)** — A vibrant yellow-to-red-to-blue gradient representing the active student lifecycle (from morning energy to evening focus). It features a clean white "LAFINA" wordmark placed over a solid white soundwave graphic. This is the primary and official branding color scheme.
+*   **Black background** — A white "LAFINA" wordmark positioned over a grayscale soundwave graphic, designed for dark mode interfaces to reduce eye strain during late-night study sessions.
+*   **White background (bordered)** — A sharp black "LAFINA" wordmark over a grayscale soundwave graphic, providing maximum legibility and contrast for light theme integrations and printed materials.
 
 ## Color Palette (CMYK)
 *Note: The CMYK values in the source document appear to be incorrectly assigned or misaligned relative to the visual color blocks (e.g., the yellow block is labeled with a high Cyan/Magenta profile).*
@@ -22,6 +22,5 @@ The Sabrosa logo is a playful fusion of symbolic elements that represent the bra
 *   **DM Sans** (Aa Aa)
 
 ## About Brand
-*Note: This section also contains placeholder text referencing "Sabrosa" and "snacks."*
 
-Sabrosa's branding is designed to be bold, vibrant, and full of personality, just like the snacks we deliver. The use of deep blue and vivid pink tones creates a striking contrast that captures attention and reflects both trustworthiness and playful energy.
+LAFINA is designed to be a reliable, proactive, and accessible academic companion for USTP university students. Combining voice-first simulated phone call reminders with offline-first local intelligence, the brand represents trust, productivity, and academic empowerment. By contrasting vivid yellow, red, and blue tones against structured grayscale layouts, the brand identity captures the vibrant, dynamic daily life of Filipino students while maintaining a professional, focused tool for managing heavy course loads.
