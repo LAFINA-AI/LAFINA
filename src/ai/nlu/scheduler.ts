@@ -46,6 +46,17 @@ const resolveReply = (result: NluResult, fallback: string): string => {
   return result.reply.trim().length > 0 ? result.reply.trim() : fallback;
 };
 
+const mapRecurrenceToRRule = (recurrence: string | null | undefined): string | null => {
+  if (!recurrence || recurrence === 'none') return null;
+  if (recurrence.startsWith('FREQ=')) return recurrence;
+  const lower = recurrence.toLowerCase();
+  if (lower.includes('daily') || lower.includes('day')) return 'FREQ=DAILY';
+  if (lower.includes('weekly') || lower.includes('week') || lower.includes('monday') || lower.includes('tuesday') || lower.includes('wednesday') || lower.includes('thursday') || lower.includes('friday') || lower.includes('saturday') || lower.includes('sunday')) return 'FREQ=WEEKLY';
+  if (lower.includes('monthly') || lower.includes('month')) return 'FREQ=MONTHLY';
+  if (lower.includes('yearly') || lower.includes('year')) return 'FREQ=YEARLY';
+  return 'FREQ=WEEKLY';
+};
+
 /**
  * Applies a validated NLU result to the local schedule store.
  *
@@ -77,6 +88,7 @@ export const applyNluScheduleResult = (
   }
 
   const date = normalizeScheduleDate(result.date, referenceDate);
+  const recurrenceRule = mapRecurrenceToRRule(result.recurrence);
 
   if (result.time !== null && result.duration_minutes !== null) {
     const startTime = result.time;
@@ -92,6 +104,7 @@ export const applyNluScheduleResult = (
       color: AI_SCHEDULE_COLOR,
       category: DEFAULT_BLOCK_CATEGORY,
       notes: 'Created from offline voice NLU',
+      recurrenceRule,
     });
 
     return {
@@ -111,6 +124,7 @@ export const applyNluScheduleResult = (
     priority: DEFAULT_TASK_PRIORITY,
     category: DEFAULT_TASK_CATEGORY,
     notes: 'Created from offline voice NLU',
+    recurrenceRule,
   });
 
   return {

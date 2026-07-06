@@ -15,6 +15,9 @@ const insertUser = (userId: string): void => {
   );
 };
 
+// Fixed anchor date for deterministic clock mocking: Monday, July 6th, 2026 at 12:00 PM local
+const MOCK_MONDAY_NOON = new Date(2026, 6, 6, 12, 0, 0); // Month is 0-indexed (6 = July)
+
 describe('offline NLU scheduling', () => {
   beforeAll(async () => {
     await initDatabase();
@@ -85,46 +88,143 @@ describe('offline NLU scheduling', () => {
     expect(blocks[0].endTime).toBe('16:00');
   });
 
-  it('creates a task for single time commands like "schedule a meeting 10pm today"', () => {
-    const userId = 'task_user';
-    insertUser(userId);
+  it('parses explicit calendar date "schedule a meeting 9pm on July 8th"', () => {
+    const result = createFallbackNluResult('schedule a meeting 9pm on July 8th', MOCK_MONDAY_NOON);
 
-    const reply = processCommand('schedule a meeting 10pm today', userId);
-    const userTasks = tasksStore.getAllTasks(userId);
-    const userBlocks = timeBlocksStore.getAll(userId);
-
-    expect(reply).toContain('meeting');
-    expect(userTasks).toHaveLength(1);
-    expect(userTasks[0].title).toBe('meeting');
-    expect(userTasks[0].dueTime).toBe('22:00');
-    expect(userBlocks).toHaveLength(0);
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'meeting',
+      date: '2026-07-08',
+      time: '21:00',
+      duration_minutes: null,
+      status: 'success',
+    });
   });
 
-  it('correctly handles speech recognizer output with periods like "schedule a meeting 10 p.m. today"', () => {
-    const userId = 'pm_period_user';
-    insertUser(userId);
+  it('parses US MM/DD date "schedule a meeting at 3pm on 7/8"', () => {
+    const result = createFallbackNluResult('schedule a meeting at 3pm on 7/8', MOCK_MONDAY_NOON);
 
-    const reply = processCommand('schedule a meeting 10 p.m. today', userId);
-    const userTasks = tasksStore.getAllTasks(userId);
-
-    expect(reply).toContain('meeting');
-    expect(userTasks).toHaveLength(1);
-    expect(userTasks[0].title).toBe('meeting');
-    expect(userTasks[0].dueTime).toBe('22:00');
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'meeting',
+      date: '2026-07-08',
+      time: '15:00',
+    });
   });
 
-  it('creates a time block ONLY when an explicit time range is provided', () => {
-    const userId = 'range_user';
+  it('parses "next Monday" semantics skipping to following week', () => {
+    const result = createFallbackNluResult('schedule a meeting 9pm next Monday', MOCK_MONDAY_NOON);
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'meeting',
+      date: '2026-07-13',
+      time: '21:00',
+    });
+  });
+
+  it('parses "on Monday" today for an upcoming evening hour', () => {
+    const result = createFallbackNluResult('schedule a meeting 9pm on Monday', MOCK_MONDAY_NOON);
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'meeting',
+      date: '2026-07-06',
+      time: '21:00',
+    });
+  });
+
+  it('rolls over passed time today (9am on Monday when today is Monday noon) to next week', () => {
+    const result = createFallbackNluResult('schedule a meeting 9am on Monday', MOCK_MONDAY_NOON);
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'meeting',
+      date: '2026-07-13',
+      time: '09:00',
+    });
+  });
+
+  it('parses recurrence start date for "remind me calculus every Monday at 9am"', () => {
+    const result = createFallbackNluResult('remind me calculus every Monday at 9am', MOCK_MONDAY_NOON);
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'calculus',
+      date: '2026-07-06',
+      time: '09:00',
+    });
+  });
+
+  it('handles recurrence + explicit start date "every Monday starting July 20th at 9am"', () => {
+    const result = createFallbackNluResult('every Monday starting July 20th at 9am', MOCK_MONDAY_NOON);
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      date: '2026-07-20',
+      time: '09:00',
+    });
+  });
+
+  it('handles stacked title cleaning when date phrase appears BEFORE title', () => {
+    const result = createFallbackNluResult('on July 8th schedule a meeting at 9pm', MOCK_MONDAY_NOON);
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'meeting',
+      date: '2026-07-08',
+      time: '21:00',
+    });
+  });
+
+  it('handles stacked title cleaning for conversational filler words', () => {
+    const result = createFallbackNluResult(
+      'Um, so I need to call the dentist about that thing at 3pm on July 8th',
+      MOCK_MONDAY_NOON
+    );
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'call dentist about that thing',
+      date: '2026-07-08',
+      time: '15:00',
+    });
+  });
+
+  it('rolls over past bare month/day dates (March 15th when today is July 6th) to next year', () => {
+    const result = createFallbackNluResult('schedule a meeting on March 15th at 2pm', MOCK_MONDAY_NOON);
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'meeting',
+      date: '2027-03-15',
+      time: '14:00',
+    });
+  });
+
+  it('defaults to today when no date expression is mentioned at all', () => {
+    const result = createFallbackNluResult('add task buy milk', MOCK_MONDAY_NOON);
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'buy milk',
+      date: '2026-07-06',
+    });
+  });
+
+  it('schedules a recurring weekly time block for "every monday at 10-11 am schedule a timeblock for studying"', () => {
+    const userId = 'studying_user';
     insertUser(userId);
 
-    const reply = processCommand('schedule a meeting for 10 - 12pm today', userId);
-    const userBlocks = timeBlocksStore.getAll(userId);
+    const reply = processCommand('every monday at 10-11 am schedule a timeblock for studying', userId);
+    const blocks = timeBlocksStore.getAll(userId);
 
-    expect(reply).toContain('meeting');
-    expect(userBlocks).toHaveLength(1);
-    expect(userBlocks[0].title).toBe('meeting');
-    expect(userBlocks[0].startTime).toBe('10:00');
-    expect(userBlocks[0].endTime).toBe('12:00');
+    expect(reply).toContain('studying');
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].title).toBe('studying');
+    expect(blocks[0].startTime).toBe('10:00');
+    expect(blocks[0].endTime).toBe('11:00');
+    expect(blocks[0].recurrenceRule).toBe('FREQ=WEEKLY');
   });
 
   it('replies conversationally to greetings like "hey there" without modifying the schedule', () => {

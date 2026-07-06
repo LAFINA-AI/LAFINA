@@ -239,7 +239,14 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
     setAllTasks(expandedTasks);
     setAllEvents(expandedEvents);
 
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    const formatLocalDate = (d: Date): string => {
+      const year = d.getFullYear();
+      const month = `${d.getMonth() + 1}`.padStart(2, '0');
+      const day = `${d.getDate()}`.padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const dateStr = formatLocalDate(selectedDate);
     const dayTasks = expandedTasks.filter((t) => t.dueDate === dateStr);
     const dayEvents = expandedEvents.filter((e) => e.date === dateStr);
 
@@ -574,15 +581,22 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
     setViewMode('day');
   }, [currentDate, setViewMode]);
 
+  const formatLocalDate = (d: Date): string => {
+    const year = d.getFullYear();
+    const month = `${d.getMonth() + 1}`.padStart(2, '0');
+    const day = `${d.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const getOverdueTasks = useCallback(() => {
     const tasksData = tasksStore.getAllTasks(userId);
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = formatLocalDate(new Date());
     return tasksData.filter((t) => t.dueDate && t.dueDate < todayStr && !t.isCompleted);
   }, [userId]);
 
   const getChronologicalFeed = useCallback((): FeedItem[] => {
     const feed: FeedItem[] = [];
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    const dateStr = formatLocalDate(selectedDate);
     const dayBlocks = blocks.filter((b) => b.date === dateStr);
 
     tasks.forEach((t) => {

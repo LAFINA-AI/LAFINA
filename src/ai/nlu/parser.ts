@@ -13,6 +13,31 @@ interface ParsedTimeRange {
   durationMinutes: number;
 }
 
+const MONTH_MAP: Record<string, number> = {
+  jan: 0, january: 0,
+  feb: 1, february: 1,
+  mar: 2, march: 2,
+  apr: 3, april: 3,
+  may: 4,
+  jun: 5, june: 5,
+  jul: 6, july: 6,
+  aug: 7, august: 7,
+  sep: 8, september: 8,
+  oct: 9, october: 9,
+  nov: 10, november: 10,
+  dec: 11, december: 11,
+};
+
+const WEEKDAY_MAP: Record<string, number> = {
+  sunday: 0, sun: 0,
+  monday: 1, mon: 1,
+  tuesday: 2, tue: 2, tues: 2,
+  wednesday: 3, wed: 3,
+  thursday: 4, thu: 4, thur: 4, thurs: 4,
+  friday: 5, fri: 5,
+  saturday: 6, sat: 6,
+};
+
 const normalizeCommandText = (text: string): string => {
   return text
     .replace(/\b([ap])\s*\.?\s*m\b\.?/gi, '$1m')
@@ -25,15 +50,6 @@ const formatLocalDate = (date: Date): string => {
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
   const day = `${date.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
-};
-
-const resolveCommandDate = (command: string, referenceDate: Date): string => {
-  const date = new Date(referenceDate);
-  if (command.toLowerCase().includes('tomorrow')) {
-    date.setDate(date.getDate() + 1);
-  }
-
-  return formatLocalDate(date);
 };
 
 const normalizeMeridiem = (value: string): 'am' | 'pm' | null => {
@@ -73,6 +89,136 @@ const parseFlexibleTime = (timeText: string, inheritedMeridiem: 'am' | 'pm' | nu
   }
 
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+};
+
+/**
+ * Resolves calendar dates using local device timezone (anchorDate).
+ */
+const resolveCommandDate = (
+  command: string,
+  referenceDate: Date,
+  parsedTime: string | null = null
+): string => {
+  const norm = normalizeCommandText(command);
+  const anchor = new Date(referenceDate);
+  const currentYear = anchor.getFullYear();
+  const currentMonth = anchor.getMonth();
+  const currentDate = anchor.getDate();
+
+  // 1. Explicit Month + Day (e.g. "July 8th", "July 8", "Jul 8", "July 8, 2026")
+  const monthRegex =
+    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?\b/i;
+  const monthMatch = norm.match(monthRegex);
+  if (monthMatch) {
+    const monthKey = monthMatch[1].toLowerCase();
+    const targetMonth = MONTH_MAP[monthKey] ?? currentMonth;
+    const targetDay = Number(monthMatch[2]);
+    let targetYear = monthMatch[3] ? Number(monthMatch[3]) : currentYear;
+
+    if (!monthMatch[3]) {
+      if (targetMonth < currentMonth || (targetMonth === currentMonth && targetDay < currentDate)) {
+        targetYear += 1;
+      }
+    }
+
+    const resolved = new Date(targetYear, targetMonth, targetDay);
+    return formatLocalDate(resolved);
+  }
+
+  // 2. US MM/DD Format (e.g. "7/8", "07/08/2026")
+  const mmddRegex = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?\b/;
+  const mmddMatch = norm.match(mmddRegex);
+  if (mmddMatch) {
+    const targetMonth = Number(mmddMatch[1]) - 1;
+    const targetDay = Number(mmddMatch[2]);
+    let targetYear = currentYear;
+
+    if (mmddMatch[3]) {
+      targetYear = mmddMatch[3].length === 2 ? 2000 + Number(mmddMatch[3]) : Number(mmddMatch[3]);
+    } else {
+      if (targetMonth < currentMonth || (targetMonth === currentMonth && targetDay < currentDate)) {
+        targetYear += 1;
+      }
+    }
+
+    const resolved = new Date(targetYear, targetMonth, targetDay);
+    return formatLocalDate(resolved);
+  }
+
+  // 3. Relative Weekday (e.g. "on Monday", "this Friday", "next Wednesday")
+  const weekdayRegex =
+    /\b(this|next|on)?\s*(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)\b/i;
+  const weekdayMatch = norm.match(weekdayRegex);
+
+  if (weekdayMatch) {
+    const prefix = (weekdayMatch[1] || '').toLowerCase();
+    const dayName = weekdayMatch[2].toLowerCase();
+    const targetDayOfWeek = WEEKDAY_MAP[dayName];
+
+    if (targetDayOfWeek !== undefined) {
+      const currentDayOfWeek = anchor.getDay();
+      let diff = (targetDayOfWeek - currentDayOfWeek + 7) % 7;
+
+      const isRecurrence = /\bevery\b/i.test(norm);
+
+      if (prefix === 'next') {
+        diff = diff === 0 ? 7 : diff + 7;
+      } else if (!isRecurrence) {
+        if (diff === 0 && parsedTime) {
+          const currentHours = anchor.getHours();
+          const currentMins = anchor.getMinutes();
+          const [targetHours, targetMins] = parsedTime.split(':').map(Number);
+
+          if (currentHours > targetHours || (currentHours === targetHours && currentMins >= targetMins)) {
+            diff = 7;
+          }
+        }
+      }
+
+      const resolved = new Date(anchor);
+      resolved.setDate(anchor.getDate() + diff);
+      return formatLocalDate(resolved);
+    }
+  }
+
+  // 4. Tomorrow / Today
+  if (/\btomorrow\b/i.test(norm)) {
+    const resolved = new Date(anchor);
+    resolved.setDate(anchor.getDate() + 1);
+    return formatLocalDate(resolved);
+  }
+
+  // 5. Default: Today (with past-time rollover if time already passed)
+  if (parsedTime && !/\btoday\b/i.test(norm)) {
+    const currentHours = anchor.getHours();
+    const currentMins = anchor.getMinutes();
+    const [targetHours, targetMins] = parsedTime.split(':').map(Number);
+
+    if (currentHours > targetHours || (currentHours === targetHours && currentMins >= targetMins)) {
+      const resolved = new Date(anchor);
+      resolved.setDate(anchor.getDate() + 1);
+      return formatLocalDate(resolved);
+    }
+  }
+
+  return formatLocalDate(anchor);
+};
+
+const extractRecurrencePattern = (command: string): 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly' => {
+  const norm = command.toLowerCase();
+  if (/\b(every\s+day|daily)\b/.test(norm)) {
+    return 'daily';
+  }
+  if (/\b(weekly|every\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat))\b/.test(norm)) {
+    return 'weekly';
+  }
+  if (/\b(monthly|every\s+month)\b/.test(norm)) {
+    return 'monthly';
+  }
+  if (/\b(yearly|annually|every\s+year)\b/.test(norm)) {
+    return 'yearly';
+  }
+  return 'none';
 };
 
 const parseTimeRange = (command: string): ParsedTimeRange | null => {
@@ -139,46 +285,54 @@ const extractSingleTimeMatch = (command: string): { title: string; time: string 
     parsedTime = parseFlexibleTime(timeMatch[1]);
   }
 
-  const cleanTitle = (raw: string): string => {
-    return raw
-      .replace(/^(set|schedule|add|create)\s*(a|an|the)?\s*/i, '')
-      .replace(/^(task|meeting|block|event)\s*/i, '')
-      .replace(/\b(today|tomorrow)\b/gi, '')
-      .replace(/^[.\s,]+|[.\s,]+$/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+  return {
+    title: '',
+    time: parsedTime,
   };
+};
 
-  const rawTitle = timeMatch ? normalized.replace(timeMatch[0], '') : normalized;
-  let title = cleanTitle(rawTitle);
+const cleanTaskTitle = (command: string): string => {
+  let title = normalizeCommandText(command);
+
+  // 1. Remove conversational intros & action keywords
+  title = title
+    .replace(/\b(um|uh|so|like|i\s+need\s+to|remember\s+to|need\s+to|have\s+to)\b/gi, '')
+    .replace(/\b(schedule|set|add|create|remind\s+me|remind)\s*(a|an|the)?\b/gi, '')
+    .replace(/\b(task|meeting|timeblock|time\s+block|block|event)\s*(a|an|the)?\b/gi, '');
+
+  // 2. Remove date expressions
+  const monthPattern =
+    /\b(?:on\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s*,?\s*\d{4})?\b/gi;
+  const mmddPattern = /\b(?:on\s+)?\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/gi;
+  const weekdayPattern =
+    /\b(?:on|this|next)?\s*(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)\b/gi;
+  const relativeDatePattern = /\b(today|tomorrow|starting\s+[^\s]+)\b/gi;
+
+  title = title
+    .replace(monthPattern, '')
+    .replace(mmddPattern, '')
+    .replace(weekdayPattern, '')
+    .replace(relativeDatePattern, '');
+
+  // 3. Remove time expressions
+  const timeRegex = /(?:\b(?:at|by|for)\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b/gi;
+  title = title.replace(TIME_RANGE_PATTERN, '').replace(timeRegex, '');
+
+  // 4. Remove recurrence phrases
+  const recurrencePattern =
+    /\b(every\s+(day|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat)|every|daily|weekly|monthly)\b/gi;
+  title = title.replace(recurrencePattern, '');
+
+  // 5. Remove dangling prepositions
+  title = title.replace(/\b(on|at|by|for|the|starting)\b/gi, '');
+
+  // 6. Strip punctuation & whitespace
+  title = title.replace(/^[.\s,]+|[.\s,]+$/g, '').replace(/\s+/g, ' ').trim();
 
   if (!title) {
     if (/\bmeeting\b/i.test(command)) title = 'meeting';
     else if (/\bclass\b/i.test(command)) title = 'class';
     else title = 'Scheduled Event';
-  }
-
-  return {
-    title,
-    time: parsedTime,
-  };
-};
-
-const extractBlockTitle = (command: string): string => {
-  const normalized = normalizeCommandText(command);
-  let title = normalized
-    .replace(/^(schedule|set|add|create|block)\s*(a|an|the)?\s*/i, '')
-    .replace(/^(task|meeting|block|event)\s*/i, '')
-    .replace(TIME_RANGE_PATTERN, '')
-    .replace(/\b(today|tomorrow|for)\b/gi, '')
-    .replace(/^[.\s,]+|[.\s,]+$/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (!title) {
-    if (/\bmeeting\b/i.test(command)) title = 'meeting';
-    else if (/\bclass\b/i.test(command)) title = 'class';
-    else title = 'Study Block';
   }
 
   return title;
@@ -197,8 +351,11 @@ export const createFallbackNluResult = (
 ): NluResult => {
   const trimmedCommand = command.trim();
   const lowercaseCommand = trimmedCommand.toLowerCase();
-  const date = resolveCommandDate(trimmedCommand, referenceDate);
+
+  const singleTimeMatch = extractSingleTimeMatch(trimmedCommand);
+  const date = resolveCommandDate(trimmedCommand, referenceDate, singleTimeMatch.time);
   const range = parseTimeRange(trimmedCommand);
+  const recurrence = extractRecurrencePattern(trimmedCommand);
 
   // 1. Greetings & Casual Chatbot Responses
   if (/^(hey|hi|hello|greetings|good morning|good afternoon|good evening|sup|howdy|what'?s up)\b/i.test(lowercaseCommand)) {
@@ -227,34 +384,38 @@ export const createFallbackNluResult = (
 
   // 2. Time block with explicit range (e.g. "schedule a meeting for 10 - 12pm today", "block 2-4pm today")
   if (range !== null) {
-    const title = extractBlockTitle(trimmedCommand);
+    const title = cleanTaskTitle(trimmedCommand);
     return {
       intent: 'schedule',
       task: title,
       date,
       time: range.startTime,
       duration_minutes: range.durationMinutes,
+      recurrence: recurrence !== 'none' ? recurrence : null,
       status: 'success',
       reply: `I blocked time for "${title}".`,
     };
   }
 
-  // 3. Single-time scheduling commands (e.g. "schedule a meeting 10 p.m. today", "add task submit report by 5pm")
+  // 3. Single-time scheduling commands (e.g. "schedule a meeting 10 p.m. today", "add task submit report by 5pm", "on July 8th schedule a meeting")
   const isExplicitScheduling =
-    /^(set|schedule|add|create|remind|block)\b/i.test(trimmedCommand) ||
+    /\b(set|schedule|add|create|remind|block|meeting|class)\b/i.test(lowercaseCommand) ||
     lowercaseCommand.includes('time block') ||
-    lowercaseCommand.includes('remind me to');
+    lowercaseCommand.includes('remind me') ||
+    lowercaseCommand.includes('need to') ||
+    singleTimeMatch.time !== null;
 
   if (isExplicitScheduling) {
-    const extracted = extractSingleTimeMatch(trimmedCommand);
+    const title = cleanTaskTitle(trimmedCommand);
     return {
       intent: 'schedule',
-      task: extracted.title,
+      task: title,
       date,
-      time: extracted.time,
+      time: singleTimeMatch.time,
       duration_minutes: null,
+      recurrence: recurrence !== 'none' ? recurrence : null,
       status: 'success',
-      reply: `Task "${extracted.title}" has been added to your schedule.`,
+      reply: `Task "${title}" has been added to your schedule for ${date}.`,
     };
   }
 

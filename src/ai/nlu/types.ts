@@ -8,6 +8,7 @@ export interface NluResult {
   date: string | null;
   time: string | null;
   duration_minutes: number | null;
+  recurrence?: string | null;
   status: NluStatus;
   reply: string;
 }
