@@ -1,0 +1,220 @@
+import { NativeModules, PermissionsAndroid } from 'react-native';
+import { AI_MODEL_ASSETS } from '../modelAssets';
+import { parseNluJson } from '../nlu/jsonParser';
+import { buildNluPrompt } from '../nlu/prompt';
+import { processCommand } from '../nlu/parser';
+import { applyNluScheduleResult } from '../nlu/scheduler';
+import type { CreatedScheduleItemType, NluResult } from '../nlu/types';
+import type { OfflineModelReference } from '../modelAssets';
+
+const MAX_RECORDING_DURATION_MS = 12_000;
+const SILENCE_TIMEOUT_MS = 1_200;
+const LLM_MAX_TOKENS = 220;
+const LLM_TEMPERATURE = 0;
+
+interface RecordUtteranceRequest {
+  vadModel: OfflineModelReference;
+  maxDurationMs: number;
+  silenceTimeoutMs: number;
+}
+
+interface RecordUtteranceResponse {
+  audioFilePath: string;
+  speechDetected: boolean;
+  durationMs: number;
+}
+
+interface TranscribeRequest {
+  audioFilePath: string;
+  model: OfflineModelReference;
+  language: 'en';
+}
+
+interface IntentExtractionRequest {
+  transcript: string;
+  prompt: string;
+  model: OfflineModelReference;
+  temperature: number;
+  maxTokens: number;
+}
+
+interface LafinaVoiceInputModule {
+  recordUtterance: (request: RecordUtteranceRequest) => Promise<RecordUtteranceResponse>;
+  stopRecording?: () => Promise<boolean>;
+}
+
+interface LafinaSpeechToTextModule {
+  transcribe: (request: TranscribeRequest) => Promise<string>;
+}
+
+interface LafinaIntentExtractorModule {
+  extractIntentJson: (request: IntentExtractionRequest) => Promise<string>;
+}
+
+interface OfflineVoiceNativeModules {
+  LafinaVoiceInput?: LafinaVoiceInputModule;
+  LafinaSpeechToText?: LafinaSpeechToTextModule;
+  LafinaIntentExtractor?: LafinaIntentExtractorModule;
+}
+
+export type VoicePipelineErrorCode =
+  | 'permission_denied'
+  | 'native_runtime_unavailable'
+  | 'no_speech_detected'
+  | 'empty_transcript'
+  | 'processing_failed';
+
+export interface VoicePipelineResult {
+  didUpdate: boolean;
+  transcript: string;
+  reply: string;
+  createdItemType: CreatedScheduleItemType | null;
+  nluResult: NluResult | null;
+  errorCode: VoicePipelineErrorCode | null;
+}
+
+const getNativeVoiceModules = (): OfflineVoiceNativeModules => {
+  return NativeModules as unknown as OfflineVoiceNativeModules;
+};
+
+const requestMicrophonePermission = async (): Promise<boolean> => {
+  try {
+    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+    return result === PermissionsAndroid.RESULTS.GRANTED;
+  } catch {
+    return false;
+  }
+};
+
+const unavailableResult = (reply: string, errorCode: VoicePipelineErrorCode): VoicePipelineResult => ({
+  didUpdate: false,
+  transcript: '',
+  reply,
+  createdItemType: null,
+  nluResult: null,
+  errorCode,
+});
+
+/**
+ * Checks whether all offline Android voice runtime modules are registered.
+ *
+ * @returns True when recording, STT, and LLM native modules are available.
+ */
+export const hasOfflineVoiceRuntime = (): boolean => {
+  const modules = getNativeVoiceModules();
+  return Boolean(
+    modules.LafinaVoiceInput &&
+      modules.LafinaSpeechToText &&
+      modules.LafinaIntentExtractor
+  );
+};
+
+/**
+ * Records a spoken command, transcribes it locally, extracts NLU JSON locally, and applies it.
+ *
+ * @param userId Active local user ID that owns any created schedule item.
+ * @returns The pipeline result, including transcript, reply, and storage update status.
+ */
+export const runOfflineVoiceScheduling = async (userId: string): Promise<VoicePipelineResult> => {
+  const modules = getNativeVoiceModules();
+
+  if (!modules.LafinaVoiceInput || !modules.LafinaSpeechToText || !modules.LafinaIntentExtractor) {
+    return unavailableResult(
+      'Offline voice is not available in this build yet. You can type the command below for now.',
+      'native_runtime_unavailable'
+    );
+  }
+
+  const hasPermission = await requestMicrophonePermission();
+  if (!hasPermission) {
+    return unavailableResult(
+      'Microphone permission is needed before I can listen for a schedule command.',
+      'permission_denied'
+    );
+  }
+
+  try {
+    const utterance = await modules.LafinaVoiceInput.recordUtterance({
+      vadModel: AI_MODEL_ASSETS.vad,
+      maxDurationMs: MAX_RECORDING_DURATION_MS,
+      silenceTimeoutMs: SILENCE_TIMEOUT_MS,
+    });
+
+    if (!utterance.speechDetected) {
+      return unavailableResult(
+        "I didn't hear speech clearly enough to schedule anything.",
+        'no_speech_detected'
+      );
+    }
+
+    const transcript = (await modules.LafinaSpeechToText.transcribe({
+      audioFilePath: utterance.audioFilePath,
+      model: AI_MODEL_ASSETS.stt,
+      language: 'en',
+    })).trim();
+
+    if (transcript.length === 0) {
+      return unavailableResult(
+        "I couldn't transcribe that speech clearly enough to schedule it.",
+        'empty_transcript'
+      );
+    }
+
+    const rawNluJson = await modules.LafinaIntentExtractor.extractIntentJson({
+      transcript,
+      prompt: buildNluPrompt(transcript),
+      model: AI_MODEL_ASSETS.llm,
+      temperature: LLM_TEMPERATURE,
+      maxTokens: LLM_MAX_TOKENS,
+    });
+
+    const nluResult = parseNluJson(rawNluJson);
+    const scheduleResult = applyNluScheduleResult(nluResult, userId);
+
+    return {
+      didUpdate: scheduleResult.didUpdate,
+      transcript,
+      reply: scheduleResult.reply,
+      createdItemType: scheduleResult.createdItemType,
+      nluResult,
+      errorCode: null,
+    };
+  } catch (error) {
+    console.error('Offline voice scheduling failed:', error);
+    return unavailableResult(
+      'Sorry, I could not process that speech command locally.',
+      'processing_failed'
+    );
+  }
+};
+
+/**
+ * Processes text input using the local SmolLM2 LLM chatbot engine.
+ *
+ * @param userText Message typed or spoken by the user.
+ * @param userId Active user ID.
+ * @returns Conversational reply generated by the local SmolLM2 LLM.
+ */
+export const runLocalLlmChat = async (userText: string, userId: string): Promise<string> => {
+  const modules = getNativeVoiceModules();
+
+  if (modules.LafinaIntentExtractor) {
+    try {
+      const rawNluJson = await modules.LafinaIntentExtractor.extractIntentJson({
+        transcript: userText,
+        prompt: buildNluPrompt(userText),
+        model: AI_MODEL_ASSETS.llm,
+        temperature: LLM_TEMPERATURE,
+        maxTokens: LLM_MAX_TOKENS,
+      });
+
+      const nluResult = parseNluJson(rawNluJson);
+      const scheduleResult = applyNluScheduleResult(nluResult, userId);
+      return scheduleResult.reply;
+    } catch {
+      // Fall back below if native model call encounters issue
+    }
+  }
+
+  return processCommand(userText, userId);
+};

@@ -13,10 +13,9 @@ import { Trash2 } from 'lucide-react-native';
 import { Fonts } from '../theme';
 import { chatStore } from '../../storage';
 import type { ChatMessage } from '../../storage';
-import { processCommand } from '../../ai';
+import { runLocalLlmChat } from '../../ai';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
-import { AI_PROCESSING_DELAY_MS } from '../../constants';
 import type { ThemeColors } from '../contexts/ThemeContext';
 import { generateId } from '../../utils';
 
@@ -65,7 +64,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     }, 100);
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!inputText.trim()) return;
 
     const userText = inputText.trim();
@@ -96,24 +95,21 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     setMessages(tempMessages);
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
-    // Simulate AI processing delay
-    setTimeout(() => {
-      // 2. Process Command via NLU Parser
-      const aiReply = processCommand(userText, userId);
+    // 2. Process Command via SmolLM2 Local LLM Chatbot
+    const aiReply = await runLocalLlmChat(userText, userId);
 
-      // 3. Insert AI Response
-      const aiMsgId = generateId('msg');
-      const aiMsg = {
-        id: aiMsgId,
-        sessionId,
-        sender: 'assistant' as const,
-        content: aiReply,
-      };
-      chatStore.insertMessage(aiMsg);
+    // 3. Insert AI Response
+    const aiMsgId = generateId('msg');
+    const aiMsg = {
+      id: aiMsgId,
+      sessionId,
+      sender: 'assistant' as const,
+      content: aiReply,
+    };
+    chatStore.insertMessage(aiMsg);
 
-      loadChatHistory();
-      onRefresh();
-    }, AI_PROCESSING_DELAY_MS);
+    loadChatHistory();
+    onRefresh();
   };
 
   const handleClearChat = () => {

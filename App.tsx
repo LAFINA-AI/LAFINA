@@ -246,7 +246,7 @@ function AppContent({
         )}
 
         {/* Voice Assistant Modal */}
-        <VoiceModal visible={voiceVisible} onClose={handleVoiceClose} />
+        <VoiceModal visible={voiceVisible} userId={userId} onClose={handleVoiceClose} />
       </SafeAreaView>
     </SafeAreaProvider>
   );

@@ -4,6 +4,7 @@ const defaultConfig = getDefaultConfig(__dirname);
 const defaultBlockList = defaultConfig.resolver?.blockList;
 
 const defaultSourceExts = defaultConfig.resolver?.sourceExts || [];
+const defaultAssetExts = defaultConfig.resolver?.assetExts || [];
 
 const blockList = Array.isArray(defaultBlockList)
   ? defaultBlockList
@@ -24,6 +25,7 @@ const config = {
       /[/\\]android[/\\]build[/\\]/,
       ...blockList,
     ],
+    assetExts: [...new Set([...defaultAssetExts, 'gguf', 'bin', 'onnx'])],
     sourceExts: [...defaultSourceExts, 'mjs'],
   },
 };
