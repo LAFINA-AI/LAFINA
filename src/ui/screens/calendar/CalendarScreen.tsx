@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Plus, ChevronLeft, ChevronRight, Upload, Download, Layers } from 'lucide-react-native';
+import { Plus, ChevronLeft, ChevronRight, ChevronDown, Upload, Download, Layers } from 'lucide-react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Colors, Shadows } from '../../theme';
 import { getCategoryColor } from '../../theme/categoryColors';
@@ -63,19 +63,34 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View style={styles.header}>
+      {/* Header Row 1: Title & Date Navigation */}
+      <View style={styles.topHeaderRow}>
         <TouchableOpacity
           onPress={() => calendar.setShowDatePicker(true)}
           style={styles.headerTitleContainer}
           activeOpacity={0.7}
         >
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+          <Text
+            style={[styles.headerTitle, { color: colors.textPrimary }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+          >
             {getHeaderTitle(calendar.viewMode, calendar.selectedDate, calendar.currentDate, calendar.weekDays)}
           </Text>
+          <ChevronDown size={18} color={colors.textSecondary} style={styles.titleChevron} />
         </TouchableOpacity>
 
-        <View style={styles.headerRight}>
+        <View style={styles.navGroup}>
+          <TouchableOpacity
+            onPress={calendar.handlePrevPress}
+            style={[styles.navButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+            activeOpacity={0.7}
+            accessibilityLabel="Previous"
+          >
+            <ChevronLeft size={16} color={colors.textPrimary} />
+          </TouchableOpacity>
+
           <TouchableOpacity
             onPress={calendar.handleGoToToday}
             style={[styles.todayButton, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
@@ -84,6 +99,57 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             <Text style={[styles.todayButtonText, { color: colors.textPrimary }]}>Today</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            onPress={calendar.handleNextPress}
+            style={[styles.navButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+            activeOpacity={0.7}
+            accessibilityLabel="Next"
+          >
+            <ChevronRight size={16} color={colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {calendar.showDatePicker && (
+        <DateTimePicker
+          value={calendar.viewMode === 'month' ? calendar.currentDate : calendar.selectedDate}
+          mode="date"
+          display="default"
+          onChange={(_event, date) => {
+            calendar.setShowDatePicker(false);
+            if (date) {
+              calendar.setSelectedDate(date);
+              calendar.setCurrentDate(date);
+            }
+          }}
+        />
+      )}
+
+      {/* Header Row 2: View Mode Switcher & Quick Actions */}
+      <View style={styles.subHeaderRow}>
+        <View style={[styles.toggleRow, { backgroundColor: colors.divider }]}>
+          {(['month', 'week', 'day'] as ViewMode[]).map((mode) => (
+            <TouchableOpacity
+              key={mode}
+              style={[
+                styles.toggleBtn,
+                { backgroundColor: 'transparent' },
+                calendar.viewMode === mode && { backgroundColor: colors.cardBg, ...Shadows.card },
+              ]}
+              onPress={() => calendar.setViewMode(mode)}
+            >
+              <Text style={[
+                styles.toggleText,
+                { color: colors.textSecondary },
+                calendar.viewMode === mode && { color: colors.textPrimary, fontWeight: 'bold' },
+              ]}>
+                {mode.charAt(0).toUpperCase() + mode.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={styles.actionIconsRow}>
           <TouchableOpacity
             onPress={calendar.handleImportCalendar}
             onLongPress={calendar.startRemoveFlow}
@@ -111,54 +177,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
           >
             <Layers size={16} color={colors.textPrimary} />
           </TouchableOpacity>
-
-          <View style={styles.chevronContainer}>
-            <TouchableOpacity onPress={calendar.handlePrevPress} style={[styles.chevronButton, { backgroundColor: colors.inputBg }]}>
-              <ChevronLeft size={16} color={colors.textPrimary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={calendar.handleNextPress} style={[styles.chevronButton, { backgroundColor: colors.inputBg }]}>
-              <ChevronRight size={16} color={colors.textPrimary} />
-            </TouchableOpacity>
-          </View>
         </View>
-      </View>
-
-      {calendar.showDatePicker && (
-        <DateTimePicker
-          value={calendar.viewMode === 'month' ? calendar.currentDate : calendar.selectedDate}
-          mode="date"
-          display="default"
-          onChange={(_event, date) => {
-            calendar.setShowDatePicker(false);
-            if (date) {
-              calendar.setSelectedDate(date);
-              calendar.setCurrentDate(date);
-            }
-          }}
-        />
-      )}
-
-      {/* View Mode Toggle */}
-      <View style={[styles.toggleRow, { backgroundColor: colors.divider }]}>
-        {(['month', 'week', 'day'] as ViewMode[]).map((mode) => (
-          <TouchableOpacity
-            key={mode}
-            style={[
-              styles.toggleBtn,
-              { backgroundColor: 'transparent' },
-              calendar.viewMode === mode && { backgroundColor: colors.cardBg, ...Shadows.card },
-            ]}
-            onPress={() => calendar.setViewMode(mode)}
-          >
-            <Text style={[
-              styles.toggleText,
-              { color: colors.textSecondary },
-              calendar.viewMode === mode && { color: colors.textPrimary, fontWeight: 'bold' },
-            ]}>
-              {mode.charAt(0).toUpperCase() + mode.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
       </View>
 
       {/* Body */}
@@ -236,67 +255,84 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
   },
-  header: {
+  topHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   headerTitleContainer: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     marginRight: 8,
   },
   headerTitle: {
     fontFamily: 'sans-serif-medium',
     fontSize: 22,
     fontWeight: 'bold',
+    flexShrink: 1,
   },
-  headerRight: {
+  titleChevron: {
+    marginLeft: 4,
+  },
+  navGroup: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  navButton: {
+    padding: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   todayButton: {
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 8,
     borderWidth: 1,
+    marginHorizontal: 6,
   },
   todayButtonText: {
     fontSize: 12,
     fontFamily: 'sans-serif',
     fontWeight: '600',
   },
-  chevronContainer: {
+  subHeaderRow: {
     flexDirection: 'row',
-  },
-  chevronButton: {
-    padding: 8,
-    marginLeft: 12,
-    borderRadius: 8,
-  },
-  iconButton: {
-    padding: 8,
-    marginLeft: 12,
-    borderRadius: 8,
-    borderWidth: 1,
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: 16,
   },
   toggleRow: {
+    flex: 1,
     flexDirection: 'row',
     borderRadius: 8,
     padding: 2,
-    marginBottom: 16,
+    marginRight: 10,
   },
   toggleBtn: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 7,
     alignItems: 'center',
     borderRadius: 6,
   },
   toggleText: {
     fontFamily: 'sans-serif',
     fontSize: 13,
+  },
+  actionIconsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconButton: {
+    padding: 8,
+    marginLeft: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   body: {
     flex: 1,
