@@ -74,28 +74,37 @@ export const WeekView: React.FC<WeekViewProps> = ({
             const isSelected = day.toDateString() === selectedDate.toDateString();
             const isToday = day.toDateString() === new Date().toDateString();
             return (
-              <TouchableOpacity
+              <View
                 key={i}
                 style={[
                   styles.datePill,
-                  themed.datePill,
-                  isSelected && styles.datePillActive,
-                  isToday && !isSelected && styles.datePillToday,
+                  { backgroundColor: 'transparent' },
+                  isSelected && Shadows.card,
                 ]}
-                onPress={() => setSelectedDate(day)}
               >
-                <Text style={[styles.pillDayName, themed.pillDayName, isSelected && styles.pillTextActive]}>
-                  {day.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 3)}
-                </Text>
-                <Text style={[
-                  styles.pillDayNum, 
-                  themed.pillDayNum, 
-                  isSelected && styles.pillTextActive, 
-                  isToday && !isSelected && styles.pillTodayNum
-                ]}>
-                  {day.getDate()}
-                </Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.pillTouchTarget,
+                    themed.datePill,
+                    isSelected && styles.datePillActive,
+                    isToday && !isSelected && styles.datePillToday,
+                  ]}
+                  onPress={() => setSelectedDate(day)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.pillDayName, themed.pillDayName, isSelected && styles.pillTextActive]}>
+                    {day.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 3)}
+                  </Text>
+                  <Text style={[
+                    styles.pillDayNum, 
+                    themed.pillDayNum, 
+                    isSelected && styles.pillTextActive, 
+                    isToday && !isSelected && styles.pillTodayNum
+                  ]}>
+                    {day.getDate()}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             );
           })}
         </ScrollView>
@@ -222,15 +231,19 @@ const styles = StyleSheet.create({
     width: 50,
     height: 70,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginRight: 8,
     borderWidth: 1,
     borderColor: 'transparent',
   },
+  pillTouchTarget: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+  },
   datePillActive: {
     backgroundColor: Colors.red,
-    ...Shadows.card,
   },
   datePillToday: {
     borderWidth: 1,
@@ -289,7 +302,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
-    paddingTop: 80,
   },
   emptyIllustration: {
     fontSize: 48,

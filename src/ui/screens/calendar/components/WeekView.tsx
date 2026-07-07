@@ -53,32 +53,40 @@ export const WeekView: React.FC<WeekViewProps> = ({
             const isSelected = day.toDateString() === selectedDate.toDateString();
             const isToday = day.toDateString() === new Date().toDateString();
             return (
-              <TouchableOpacity
+              <View
                 key={i}
                 style={[
                   styles.datePill,
-                  { backgroundColor: colors.cardBg, ...Shadows.card },
-                  isSelected && { backgroundColor: colors.red },
-                  isToday && !isSelected && { borderColor: colors.red, borderWidth: 1.5 },
+                  { backgroundColor: 'transparent', ...Shadows.card },
                 ]}
-                onPress={() => setSelectedDate(day)}
               >
-                <Text style={[
-                  styles.pillDayName,
-                  { color: colors.textSecondary },
-                  isSelected && { color: colors.white },
-                ]}>
-                  {day.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 3)}
-                </Text>
-                <Text style={[
-                  styles.pillDayNum,
-                  { color: colors.textPrimary },
-                  isSelected && { color: colors.white },
-                  isToday && !isSelected && { color: colors.red },
-                ]}>
-                  {day.getDate()}
-                </Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.pillTouchTarget,
+                    { backgroundColor: colors.cardBg },
+                    isSelected && { backgroundColor: colors.red },
+                    isToday && !isSelected && { borderColor: colors.red, borderWidth: 1.5 },
+                  ]}
+                  onPress={() => setSelectedDate(day)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.pillDayName,
+                    { color: colors.textSecondary },
+                    isSelected && { color: colors.white },
+                  ]}>
+                    {day.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 3)}
+                  </Text>
+                  <Text style={[
+                    styles.pillDayNum,
+                    { color: colors.textPrimary },
+                    isSelected && { color: colors.white },
+                    isToday && !isSelected && { color: colors.red },
+                  ]}>
+                    {day.getDate()}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             );
           })}
         </ScrollView>
@@ -194,7 +202,8 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollerContainer: { marginBottom: 16 },
   weekScroller: { paddingVertical: 4 },
-  datePill: { width: 50, height: 68, borderRadius: 25, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  datePill: { width: 50, height: 68, borderRadius: 25, marginRight: 10 },
+  pillTouchTarget: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', borderRadius: 25 },
   pillDayName: { fontSize: 10, fontFamily: 'sans-serif' },
   pillDayNum: { fontSize: 16, fontFamily: 'sans-serif', fontWeight: 'bold', marginTop: 4 },
   overdueBanner: { borderRadius: 12, padding: 8, flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
@@ -216,7 +225,7 @@ const styles = StyleSheet.create({
   blockBandContent: { paddingLeft: 4 },
   blockBandTitle: { fontSize: 13, fontWeight: 'bold', fontFamily: 'sans-serif' },
   blockBandTime: { fontSize: 10, marginTop: 2, fontFamily: 'sans-serif' },
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingTop: 80 },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   emptyIllustration: { fontSize: 48, marginBottom: 16 },
   emptyTitle: { fontFamily: 'sans-serif-medium', fontSize: 18, fontWeight: 'bold', marginBottom: 8 },
   emptySubtitle: { fontFamily: 'sans-serif', fontSize: 13, textAlign: 'center', lineHeight: 18 },

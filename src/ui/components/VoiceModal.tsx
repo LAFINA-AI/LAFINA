@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Colors, Fonts, Shadows } from '../theme';
 import { X, Check, ArrowRight, Mic } from 'lucide-react-native';
-import { processCommand, runOfflineVoiceScheduling } from '../../ai';
+import { processCommand } from '../../ai';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import { NLU_PARSER_DELAY_MS, VOICE_SUCCESS_DELAY_MS } from '../../constants';
@@ -75,6 +75,28 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
     };
   }, []);
 
+  const stopWaveform = useCallback(() => {
+    if (waveIntervalRef.current) {
+      clearInterval(waveIntervalRef.current);
+    }
+    waveBars.forEach((bar) => bar.setValue(8));
+  }, [waveBars]);
+
+  const startWaveform = useCallback(() => {
+    stopWaveform();
+    waveIntervalRef.current = setInterval(() => {
+      waveBars.forEach((bar) => {
+        const randomHeight = Math.floor(Math.random() * 40) + 6;
+        Animated.timing(bar, {
+          toValue: randomHeight,
+          duration: 180,
+          easing: Easing.ease,
+          useNativeDriver: false,
+        }).start();
+      });
+    }, 200);
+  }, [stopWaveform, waveBars]);
+
   useEffect(() => {
     if (!visible) {
       activeCaptureRef.current += 1;
@@ -90,7 +112,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
     setAiReply('');
     setInputText('');
     setVoiceState('idle');
-  }, [visible]);
+  }, [visible, stopWaveform]);
 
   useEffect(() => {
     let animation: Animated.CompositeAnimation | null = null;
@@ -123,29 +145,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
       }
       stopWaveform();
     };
-  }, [visible, voiceState, pulseAnim]);
-
-  const startWaveform = () => {
-    stopWaveform();
-    waveIntervalRef.current = setInterval(() => {
-      waveBars.forEach((bar) => {
-        const randomHeight = Math.floor(Math.random() * 40) + 6;
-        Animated.timing(bar, {
-          toValue: randomHeight,
-          duration: 180,
-          easing: Easing.ease,
-          useNativeDriver: false,
-        }).start();
-      });
-    }, 200);
-  };
-
-  const stopWaveform = () => {
-    if (waveIntervalRef.current) {
-      clearInterval(waveIntervalRef.current);
-    }
-    waveBars.forEach((bar) => bar.setValue(8));
-  };
+  }, [visible, voiceState, pulseAnim, startWaveform, stopWaveform]);
 
   const triggerErrorShake = useCallback((nextState: VoiceState = 'idle') => {
     setVoiceState('error');
