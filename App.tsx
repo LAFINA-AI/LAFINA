@@ -8,6 +8,8 @@ import {
   Text,
   ActivityIndicator,
   Keyboard,
+  DeviceEventEmitter,
+  NativeModules,
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Colors } from './src/ui/theme';
@@ -16,6 +18,8 @@ import { CustomTabBar, TabType } from './src/ui/components/CustomTabBar';
 import { VoiceModal } from './src/ui/components/VoiceModal';
 import { ThemeProvider, useTheme } from './src/ui/contexts/ThemeContext';
 import { SPLASH_DELAY_MS, DEFAULT_USER_ID } from './src/constants';
+import { startSchedulerDaemon, stopSchedulerDaemon } from './src/scheduler';
+
 
 // Screens
 import { ChatScreen } from './src/ui/screens/ChatScreen';
@@ -26,6 +30,7 @@ import { WelcomeScreen } from './src/ui/screens/WelcomeScreen';
 import { LoginScreen } from './src/ui/screens/LoginScreen';
 import { RegisterScreen } from './src/ui/screens/RegisterScreen';
 import { OnboardingScreen } from './src/ui/screens/OnboardingScreen';
+import { IncomingCallScreen } from './src/ui/screens';
 
 // Assets
 const lafinaDefaultLogo = require('./src/assets/lafina_default_logo.png');
@@ -45,6 +50,9 @@ function AppContent({
   const [voiceVisible, setVoiceVisible] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [callVisible, setCallVisible] = useState(false);
+  const [callReminderId, setCallReminderId] = useState('');
+  const [callTask, setCallTask] = useState('');
   const [calendarViewMode, setCalendarViewMode] = useState<ViewMode>('week');
 
   const { colors } = useTheme();
@@ -56,6 +64,45 @@ function AppContent({
     return () => {
       showSubscription.remove();
       hideSubscription.remove();
+    };
+  }, []);
+
+  // Control scheduler daemon and background service
+  useEffect(() => {
+    if (userId) {
+      startSchedulerDaemon(userId);
+
+      const reminderModule = NativeModules.LafinaReminder;
+      if (reminderModule && reminderModule.startService) {
+        reminderModule.startService().catch((err: unknown) => {
+          console.error('Failed to start LafinaReminder foreground service:', err);
+        });
+      }
+    } else {
+      stopSchedulerDaemon();
+      const reminderModule = NativeModules.LafinaReminder;
+      if (reminderModule && reminderModule.stopService) {
+        reminderModule.stopService().catch((err: unknown) => {
+          console.error('Failed to stop LafinaReminder foreground service:', err);
+        });
+      }
+    }
+    return () => {
+      stopSchedulerDaemon();
+    };
+  }, [userId]);
+
+  // Listen for simulated call trigger events
+  useEffect(() => {
+    const triggerSub = DeviceEventEmitter.addListener('LAFINA_CALL_TRIGGER', (event) => {
+      console.log('[App] Received LAFINA_CALL_TRIGGER:', event);
+      setCallReminderId(event.reminderId);
+      setCallTask(event.task);
+      setCallVisible(true);
+    });
+
+    return () => {
+      triggerSub.remove();
     };
   }, []);
 
@@ -247,6 +294,18 @@ function AppContent({
 
         {/* Voice Assistant Modal */}
         <VoiceModal visible={voiceVisible} userId={userId} onClose={handleVoiceClose} />
+
+        {/* Proactive Incoming Call Screen */}
+        <IncomingCallScreen
+          visible={callVisible}
+          reminderId={callReminderId}
+          task={callTask}
+          userId={userId}
+          onClose={() => {
+            setCallVisible(false);
+            triggerRefresh();
+          }}
+        />
       </SafeAreaView>
     </SafeAreaProvider>
   );

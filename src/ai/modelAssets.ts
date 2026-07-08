@@ -1,9 +1,9 @@
-export type OfflineModelKind = 'llm' | 'stt' | 'vad';
+export type OfflineModelKind = 'llm' | 'stt' | 'vad' | 'tts' | 'tts_voice' | 'tts_dict';
 
 export interface OfflineModelReference {
   kind: OfflineModelKind;
   fileName: string;
-  assetId: number;
+  assetId?: number;
 }
 
 const smolLmModel = require('./SmolLM2-135M-Instruct.gguf') as number;
@@ -14,6 +14,9 @@ export const AI_MODEL_FILES = {
   llm: 'SmolLM2-135M-Instruct.gguf',
   stt: 'ggml-tiny.en.bin',
   vad: 'silero_vad.onnx',
+  tts: 'kokoro-v0_19.onnx',
+  tts_voice: 'af_bella.bin',
+  tts_dict: 'cmudict.txt',
 } as const;
 
 /**
@@ -35,4 +38,17 @@ export const AI_MODEL_ASSETS: Record<OfflineModelKind, OfflineModelReference> = 
     fileName: AI_MODEL_FILES.vad,
     assetId: sileroVadModel,
   },
+  tts: {
+    kind: 'tts',
+    fileName: AI_MODEL_FILES.tts,
+  },
+  tts_voice: {
+    kind: 'tts_voice',
+    fileName: AI_MODEL_FILES.tts_voice,
+  },
+  tts_dict: {
+    kind: 'tts_dict',
+    fileName: AI_MODEL_FILES.tts_dict,
+  },
 };
+

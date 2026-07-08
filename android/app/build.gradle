@@ -88,6 +88,9 @@ android {
             abiFilters "arm64-v8a"
         }
     }
+    aaptOptions {
+        noCompress "onnx", "bin", "txt", "gguf"
+    }
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -126,6 +129,7 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

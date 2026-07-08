@@ -8,9 +8,11 @@ import App from '../App';
 
 test('renders correctly', async () => {
   jest.useFakeTimers();
+  let renderer: any;
   await ReactTestRenderer.act(() => {
-    ReactTestRenderer.create(<App />);
+    renderer = ReactTestRenderer.create(<App />);
   });
   jest.runAllTimers();
+  renderer.unmount();
   jest.useRealTimers();
 });

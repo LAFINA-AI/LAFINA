@@ -1,5 +1,8 @@
 import { generateId } from '../../utils';
-import { tasksStore, timeBlocksStore } from '../../storage';
+import { tasksStore, timeBlocksStore, remindersStore } from '../../storage';
+import { NativeModules } from 'react-native';
+import { getReminderPreferences } from '../../scheduler/userPreferences';
+import { preCacheReminderAudio } from '../tts/ttsService';
 import {
   DEFAULT_BLOCK_CATEGORY,
   DEFAULT_TASK_CATEGORY,
@@ -90,6 +93,49 @@ export const applyNluScheduleResult = (
   const date = normalizeScheduleDate(result.date, referenceDate);
   const recurrenceRule = mapRecurrenceToRRule(result.recurrence);
 
+  const createAutoReminder = (userId: string, task: string, eventDate: string, eventTime: string) => {
+    try {
+      const reminderId = generateId('rem');
+      const prefs = getReminderPreferences(userId);
+      const leadTimeMinutes = prefs.leadTimeMinutes;
+
+      const localScheduledDate = new Date(`${eventDate}T${eventTime}:00`);
+      if (isNaN(localScheduledDate.getTime())) return;
+
+      const scheduledAt = localScheduledDate.toISOString();
+      const triggerAt = new Date(localScheduledDate.getTime() - leadTimeMinutes * 60 * 1000).toISOString();
+
+      remindersStore.insertReminder({
+        id: reminderId,
+        userId,
+        task,
+        description: 'Auto-created reminder',
+        scheduledAt,
+        triggerAt,
+        status: 'pending',
+        preCastAudioPath: null,
+      });
+
+      // Schedule exact alarm on Android
+      const reminderModule = NativeModules.LafinaReminder;
+      if (reminderModule && reminderModule.scheduleExactAlarm) {
+        const triggerTimeMs = new Date(triggerAt).getTime();
+        reminderModule.scheduleExactAlarm(triggerTimeMs, reminderId).catch((err: unknown) => {
+          console.error('Failed to schedule exact alarm natively:', err);
+        });
+      }
+
+      // Pre-cache announcement audio
+      const announcementText = `Hey! This is LAFINA. You scheduled "${task}" for ${eventTime}.`;
+      preCacheReminderAudio(reminderId, announcementText).catch((err: unknown) => {
+        console.error('Failed to pre-cache reminder audio:', err);
+      });
+
+    } catch (error) {
+      console.error('Failed to create auto reminder:', error);
+    }
+  };
+
   if (result.time !== null && result.duration_minutes !== null) {
     const startTime = result.time;
     const endTime = formatMinutesAsTime(parseTimeToMinutes(startTime) + result.duration_minutes);
@@ -107,6 +153,8 @@ export const applyNluScheduleResult = (
       recurrenceRule,
     });
 
+    createAutoReminder(userId, title, date, startTime);
+
     return {
       didUpdate: true,
       reply: resolveReply(result, `I blocked ${startTime} to ${endTime} for "${title}".`),
@@ -114,18 +162,21 @@ export const applyNluScheduleResult = (
     };
   }
 
+  const dueTime = result.time ?? DEFAULT_TASK_DUE_TIME;
   tasksStore.insertTask({
     id: generateId('task'),
     userId,
     title,
     dueDate: date,
-    dueTime: result.time ?? DEFAULT_TASK_DUE_TIME,
+    dueTime,
     isCompleted: false,
     priority: DEFAULT_TASK_PRIORITY,
     category: DEFAULT_TASK_CATEGORY,
     notes: 'Created from offline voice NLU',
     recurrenceRule,
   });
+
+  createAutoReminder(userId, title, date, dueTime);
 
   return {
     didUpdate: true,

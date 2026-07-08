@@ -6,3 +6,5 @@ export { RegisterScreen } from './RegisterScreen';
 export { OnboardingScreen } from './OnboardingScreen';
 export { ProfileScreen } from './ProfileScreen';
 export { WelcomeScreen } from './WelcomeScreen';
+export { IncomingCallScreen } from './IncomingCallScreen';
+

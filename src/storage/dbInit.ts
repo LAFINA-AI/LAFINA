@@ -57,7 +57,7 @@ export const initDatabase = async (): Promise<void> => {
       // Schema versioning and migration
       const versionResult = tx.executeSync('PRAGMA user_version');
       const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;
-      const TARGET_VERSION = 3; // Increment for each migration batch
+      const TARGET_VERSION = 4; // Increment for each migration batch
 
       if (currentVersion < TARGET_VERSION) {
         if (currentVersion < 1) {
@@ -134,6 +134,27 @@ export const initDatabase = async (): Promise<void> => {
           }
         }
 
+        if (currentVersion < 4) {
+          const tableExists = (tableName: string): boolean => {
+            const exists = tx.executeSync(
+              `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
+              [tableName]
+            );
+            return exists.rows && exists.rows.length > 0;
+          };
+
+          if (tableExists('reminders')) {
+            try {
+              tx.executeSync('ALTER TABLE reminders ADD COLUMN snooze_count INTEGER NOT NULL DEFAULT 0');
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              if (!msg.toLowerCase().includes('duplicate column')) {
+                throw e;
+              }
+            }
+          }
+        }
+
         tx.executeSync(`PRAGMA user_version = ${TARGET_VERSION}`);
       }
 
@@ -148,6 +169,7 @@ export const initDatabase = async (): Promise<void> => {
           trigger_at TEXT NOT NULL,
           status TEXT NOT NULL DEFAULT 'pending',
           precast_audio_path TEXT,
+          snooze_count INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           deleted_at TEXT,
