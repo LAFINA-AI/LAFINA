@@ -5,6 +5,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.media.Ringtone
+import android.media.RingtoneManager
+import android.net.Uri
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -12,6 +15,8 @@ import com.facebook.react.bridge.ReactMethod
 
 class LafinaReminderModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
+
+  private var activeRingtone: Ringtone? = null
 
   override fun getName(): String = "LafinaReminder"
 
@@ -110,6 +115,43 @@ class LafinaReminderModule(private val reactContext: ReactApplicationContext) :
       promise.resolve(true)
     } catch (e: Exception) {
       promise.reject("ALARM_ERROR", e.message, e)
+    }
+  }
+
+  @ReactMethod
+  fun startRingtone(promise: Promise) {
+    try {
+      synchronized(this) {
+        if (activeRingtone == null) {
+          val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+          activeRingtone = RingtoneManager.getRingtone(reactContext, ringtoneUri)
+        }
+        activeRingtone?.let {
+          if (!it.isPlaying) {
+            it.play()
+          }
+        }
+      }
+      promise.resolve(true)
+    } catch (e: Exception) {
+      promise.reject("RINGTONE_ERROR", e.message, e)
+    }
+  }
+
+  @ReactMethod
+  fun stopRingtone(promise: Promise) {
+    try {
+      synchronized(this) {
+        activeRingtone?.let {
+          if (it.isPlaying) {
+            it.stop()
+          }
+        }
+        activeRingtone = null
+      }
+      promise.resolve(true)
+    } catch (e: Exception) {
+      promise.reject("RINGTONE_ERROR", e.message, e)
     }
   }
 }

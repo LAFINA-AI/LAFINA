@@ -127,10 +127,15 @@ class LafinaTTSModule(private val reactContext: ReactApplicationContext) :
   private fun loadCmuDict(file: File) {
     file.inputStream().bufferedReader().useLines { lines ->
       lines.forEach { line ->
-        if (!line.startsWith(";;;")) {
-          val parts = line.split("  ")
-          if (parts.size >= 2) {
-            cmuDict[parts[0].lowercase()] = parts[1]
+        val trimmed = line.trim()
+        if (!trimmed.startsWith(";;;") && trimmed.isNotEmpty()) {
+          val firstSpace = trimmed.indexOf(' ')
+          if (firstSpace > 0) {
+            val word = trimmed.substring(0, firstSpace).trim()
+            val phonemes = trimmed.substring(firstSpace + 1).trim()
+            if (word.isNotEmpty() && phonemes.isNotEmpty()) {
+              cmuDict[word.lowercase()] = phonemes
+            }
           }
         }
       }

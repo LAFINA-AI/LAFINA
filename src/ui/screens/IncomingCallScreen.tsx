@@ -9,6 +9,7 @@ import {
   Animated,
   Easing,
   Modal,
+  NativeModules,
 } from 'react-native';
 import { Fonts, Shadows } from '../theme';
 import { Phone, PhoneOff } from 'lucide-react-native';
@@ -36,12 +37,21 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
   const [reply, setReply] = useState('');
   const ringAnim = useRef(new Animated.Value(1)).current;
 
-  // Ringing pulse animation
+  // Ringing pulse animation and ringtone
   useEffect(() => {
     let animLoop: Animated.CompositeAnimation | null = null;
+    const reminderModule = NativeModules.LafinaReminder;
+
     if (visible && callState === 'ringing') {
       // Start ringtone vibration
       Vibration.vibrate([1000, 1000, 1000, 1000], true);
+
+      // Start native ringtone audio
+      if (reminderModule && reminderModule.startRingtone) {
+        reminderModule.startRingtone().catch((err: unknown) => {
+          console.error('[CallScreen] Failed to start native ringtone:', err);
+        });
+      }
       
       // Start pulse animation
       animLoop = Animated.loop(
@@ -63,11 +73,21 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
       animLoop.start();
     } else {
       Vibration.cancel();
+      if (reminderModule && reminderModule.stopRingtone) {
+        reminderModule.stopRingtone().catch((err: unknown) => {
+          console.error('[CallScreen] Failed to stop native ringtone:', err);
+        });
+      }
       ringAnim.setValue(1);
     }
 
     return () => {
       Vibration.cancel();
+      if (reminderModule && reminderModule.stopRingtone) {
+        reminderModule.stopRingtone().catch((err: unknown) => {
+          console.error('[CallScreen] Failed to stop native ringtone in cleanup:', err);
+        });
+      }
       animLoop?.stop();
     };
   }, [visible, callState, ringAnim]);
