@@ -2,6 +2,7 @@ package com.lafina
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.util.Log
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -20,6 +21,7 @@ import java.io.InputStreamReader
 class LafinaTTSModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
+  private var activeMediaPlayer: MediaPlayer? = null
   private var ortEnv: OrtEnvironment? = null
   private var ortSession: OrtSession? = null
   private var styleVector: FloatArray? = null
@@ -268,25 +270,48 @@ class LafinaTTSModule(private val reactContext: ReactApplicationContext) :
         val reshapedTokens = Array(1) { LongArray(tokens.size) }
         System.arraycopy(tokens, 0, reshapedTokens[0], 0, tokens.size)
 
-        // Speed tensor [1]
-        val speed = floatArrayOf(1.0f)
-
         // Run ONNX Session
         val tokenTensor = OnnxTensor.createTensor(env, reshapedTokens)
         val styleTensor = OnnxTensor.createTensor(env, reshapedStyle)
-        val speedTensor = OnnxTensor.createTensor(env, speed)
 
-        val inputs = mapOf(
-          "tokens" to tokenTensor,
-          "style" to styleTensor,
-          "speed" to speedTensor
-        )
+        val inputs = mutableMapOf<String, OnnxTensor>()
+        for ((name, nodeInfo) in session.inputInfo) {
+          Log.d("LafinaTTS", "Configuring input: $name")
+          when (name) {
+            "input_ids", "tokens" -> {
+              inputs[name] = tokenTensor
+            }
+            "style" -> {
+              inputs[name] = styleTensor
+            }
+            "speed" -> {
+              val valueInfo = nodeInfo.info
+              if (valueInfo is ai.onnxruntime.TensorInfo) {
+                when (valueInfo.type) {
+                  ai.onnxruntime.OnnxJavaType.INT32 -> {
+                    inputs[name] = OnnxTensor.createTensor(env, intArrayOf(1))
+                  }
+                  ai.onnxruntime.OnnxJavaType.INT64 -> {
+                    inputs[name] = OnnxTensor.createTensor(env, longArrayOf(1L))
+                  }
+                  else -> {
+                    inputs[name] = OnnxTensor.createTensor(env, floatArrayOf(1.0f))
+                  }
+                }
+              } else {
+                inputs[name] = OnnxTensor.createTensor(env, floatArrayOf(1.0f))
+              }
+            }
+          }
+        }
 
         session.run(inputs).use { results ->
           val outputTensor = results[0] as OnnxTensor
           val outputBuffer = outputTensor.floatBuffer
           val shape = outputTensor.info.shape
-          val outputLength = if (shape.size > 1) shape[1].toInt() else shape[0].toInt()
+          // Use the last dimension of the shape to determine size, making it
+          // robust to any dimensional outputs (1D, 2D, 3D).
+          val outputLength = shape.last().toInt()
 
           val audioData = FloatArray(outputLength)
           outputBuffer.get(audioData)
@@ -305,23 +330,45 @@ class LafinaTTSModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun playAudio(filePath: String, promise: Promise) {
-    try {
-      val mediaPlayer = MediaPlayer().apply {
-        setDataSource(filePath)
-        prepare()
-        start()
-        setOnCompletionListener {
-          release()
+    reactContext.runOnUiQueueThread {
+      try {
+        // Clean up any previously active media player
+        activeMediaPlayer?.let {
+          try {
+            if (it.isPlaying) {
+              it.stop()
+            }
+          } catch (ex: Exception) {
+            // ignore if not playing
+          }
+          it.release()
+        }
+
+        val mp = MediaPlayer()
+        activeMediaPlayer = mp
+        mp.setDataSource(filePath)
+        mp.prepare()
+        mp.start()
+
+        mp.setOnCompletionListener { player ->
+          player.release()
+          if (activeMediaPlayer == player) {
+            activeMediaPlayer = null
+          }
           promise.resolve(true)
         }
-        setOnErrorListener { mp, what, extra ->
-          release()
+
+        mp.setOnErrorListener { player, what, extra ->
+          player.release()
+          if (activeMediaPlayer == player) {
+            activeMediaPlayer = null
+          }
           promise.reject("PLAY_ERROR", "MediaPlayer error: what=$what, extra=$extra")
           true
         }
+      } catch (e: Exception) {
+        promise.reject("PLAY_ERROR", e.message, e)
       }
-    } catch (e: Exception) {
-      promise.reject("PLAY_ERROR", e.message, e)
     }
   }
 

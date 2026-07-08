@@ -96,6 +96,15 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     onRefresh();
   };
 
+  const handleTestTtsVoice = async () => {
+    try {
+      const { speakText } = require('../../scheduler');
+      await speakText('Lafina TTS is working perfectly fine');
+    } catch (e: any) {
+      Alert.alert('TTS Test Error', e.message || String(e));
+    }
+  };
+
   const loadStats = () => {
     const allTasks = tasksStore.getAllTasks(userId);
     const completed = allTasks.filter((t) => t.isCompleted).length;
@@ -232,6 +241,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             type="toggle"
             value={summaryStyleDetailed}
             onValueChange={setSummaryStyleDetailed}
+          />
+          <View style={[styles.settingDivider, themed.settingDivider]} />
+          <SettingItem
+            text="Test TTS Voice"
+            type="clickable"
+            onPress={handleTestTtsVoice}
           />
         </View>
 
