@@ -44,6 +44,22 @@ export const playSpeechFile = async (filePath: string): Promise<boolean> => {
 };
 
 /**
+ * Generates a deterministic filename for a given text phrase using a simple FNV-like hash.
+ */
+const getDeterministicFilename = (text: string): string => {
+  const clean = text.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    const char = clean.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0; // Convert to 32bit integer
+  }
+  const hashHex = (hash >>> 0).toString(16);
+  const prefix = clean.substring(0, 15);
+  return `cached_${prefix}_${hashHex}.wav`;
+};
+
+/**
  * Synthesizes speech from text and saves it as a WAV file in the cache directory.
  *
  * @param text The text to read aloud.
@@ -63,8 +79,17 @@ export const synthesizeSpeech = async (text: string): Promise<string> => {
   const cacheDir = `${RNFS.CachesDirectoryPath}/tts_cache`;
   await RNFS.mkdir(cacheDir);
 
-  const filename = `tts_${Date.now()}_${Math.floor(Math.random() * 1000)}.wav`;
+  const filename = getDeterministicFilename(trimmed);
   const outputPath = `${cacheDir}/${filename}`;
+
+  // Check cache first
+  const exists = await RNFS.exists(outputPath);
+  if (exists) {
+    console.log(`[TTS Cache] Hit: "${trimmed.substring(0, 40)}${trimmed.length > 40 ? '...' : ''}" -> ${filename}`);
+    return outputPath;
+  }
+
+  console.log(`[TTS Cache] Miss: Synthesizing: "${trimmed.substring(0, 40)}${trimmed.length > 40 ? '...' : ''}"`);
 
   try {
     const success = await nativeModule.synthesize(trimmed, outputPath);
@@ -83,8 +108,8 @@ export const synthesizeSpeech = async (text: string): Promise<string> => {
     throw error;
   }
 
-  const exists = await RNFS.exists(outputPath);
-  if (!exists) {
+  const fileExistsNow = await RNFS.exists(outputPath);
+  if (!fileExistsNow) {
     throw new Error(`TTS claimed success but WAV is missing: ${outputPath}`);
   }
 
