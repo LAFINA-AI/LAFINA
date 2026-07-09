@@ -192,6 +192,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             allEvents={calendar.allEvents}
             onDayTap={calendar.handleDayTap}
             getCategoryColor={getCategoryColor}
+            onSwipeLeft={calendar.handleNextPress}
+            onSwipeRight={calendar.handlePrevPress}
           />
         )}
         {calendar.viewMode === 'day' && (

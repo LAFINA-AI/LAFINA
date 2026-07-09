@@ -14,6 +14,9 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import type { ThemeColors } from '../contexts/ThemeContext';
 import { GUEST_USER_ID } from '../../constants';
+import { SvgXml } from 'react-native-svg';
+import { ARC_SCREEN_XML } from '../../assets/arc_screen_xml';
+import { Pencil } from 'lucide-react-native';
 
 // Profile sub-components
 import { ProfileStats } from '../components/profile/ProfileStats';
@@ -96,6 +99,37 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     onRefresh();
   };
 
+  const [ttsTesting, setTtsTesting] = useState(false);
+
+  const handleTestTtsVoice = async () => {
+    if (ttsTesting) {
+      return;
+    }
+    setTtsTesting(true);
+    try {
+      const { isTtsAvailable, speakTextWithTts } = require('../../ai');
+      if (!isTtsAvailable()) {
+        Alert.alert(
+          'TTS Unavailable',
+          'The native Kokoro TTS module is not linked. Rebuild the Android app and try again.'
+        );
+        return;
+      }
+      Alert.alert(
+        'Synthesizing…',
+        'First run loads the on-device voice model (may take 10–30s). Keep media volume up.'
+      );
+      await speakTextWithTts('Hey! This is LAFINA. Text to speech is working.');
+      Alert.alert('TTS OK', 'Playback finished. If you heard nothing, raise media volume.');
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error('[Profile] TTS test failed:', e);
+      Alert.alert('TTS Test Error', message);
+    } finally {
+      setTtsTesting(false);
+    }
+  };
+
   const loadStats = () => {
     const allTasks = tasksStore.getAllTasks(userId);
     const completed = allTasks.filter((t) => t.isCompleted).length;
@@ -168,16 +202,23 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   };
 
   return (
-    <ScrollView style={[styles.container, themed.container]} contentContainerStyle={styles.content}>
-      {/* Header */}
-      <Text style={[styles.headerTitle, themed.headerTitle]}>Profile</Text>
+    <ScrollView style={[styles.container, themed.container]} contentContainerStyle={styles.contentContainer}>
+      {/* SVG Header Background */}
+      <View style={styles.headerBackground}>
+        <SvgXml xml={ARC_SCREEN_XML} width="100%" height={180} preserveAspectRatio="none" />
+      </View>
 
       {/* Avatar Section */}
       <View style={styles.avatarSection}>
-        <View style={[styles.avatarCircle, { backgroundColor: colors.blue }]}>
-          <Text style={[styles.avatarInitials, { color: colors.white }]}>
-            {getInitials(currentUser?.username)}
-          </Text>
+        <View style={styles.avatarWrapper}>
+          <View style={[styles.avatarCircle, { backgroundColor: colors.blue }]}>
+            <Text style={[styles.avatarInitials, { color: colors.white }]}>
+              {getInitials(currentUser?.username)}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={handleEditProfile} style={[styles.editBadge, Shadows.card]}>
+            <Pencil size={16} color={colors.textPrimary} />
+          </TouchableOpacity>
         </View>
         <Text style={[styles.userName, themed.userName]}>
           {currentUser?.username || 'Student'}
@@ -185,125 +226,131 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         <Text style={[styles.userEmail, themed.userEmail]}>
           {currentUser?.email || 'No email set'}
         </Text>
-        <TouchableOpacity onPress={handleEditProfile} style={styles.editLink}>
-          <Text style={styles.editLinkText}>Edit Profile</Text>
-        </TouchableOpacity>
       </View>
 
-      {/* Stats Row */}
-      <ProfileStats
-        completedTasksCount={completedTasksCount}
-        notesCount={notesCount}
-        voiceCommandsCount={voiceCommandsCount}
-      />
+      {/* Main Content Area */}
+      <View style={styles.mainContent}>
+        {/* Stats Row */}
+        <ProfileStats
+          completedTasksCount={completedTasksCount}
+          notesCount={notesCount}
+          voiceCommandsCount={voiceCommandsCount}
+        />
 
-      {/* Settings Grouped List */}
-      <View style={styles.settingsContainer}>
-        {/* Preferences Group */}
-        <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Preferences</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
-          <SettingItem
-            text="24-Hour Time Format"
-            type="toggle"
-            value={timeFormat24h}
-            onValueChange={handleToggleTimeFormat}
-          />
-          <View style={[styles.settingDivider, themed.settingDivider]} />
-          <SettingItem
-            text="Week Starts on Monday"
-            type="toggle"
-            value={weekStartsMonday}
-            onValueChange={handleToggleWeekStart}
-          />
+        {/* Settings Grouped List */}
+        <View style={styles.settingsContainer}>
+          {/* Preferences Group */}
+          <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Preferences</Text>
+          <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
+            <SettingItem
+              text="24-Hour Time Format"
+              type="toggle"
+              value={timeFormat24h}
+              onValueChange={handleToggleTimeFormat}
+            />
+            <View style={[styles.settingDivider, themed.settingDivider]} />
+            <SettingItem
+              text="Week Starts on Monday"
+              type="toggle"
+              value={weekStartsMonday}
+              onValueChange={handleToggleWeekStart}
+            />
+          </View>
+
+          {/* AI & Voice Group */}
+          <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>AI & Voice</Text>
+          <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
+            <SettingItem
+              text='Wake Word ("Hey LAFINA")'
+              type="toggle"
+              value={wakeWordEnabled}
+              onValueChange={setWakeWordEnabled}
+            />
+            <View style={[styles.settingDivider, themed.settingDivider]} />
+            <SettingItem
+              text="Detailed AI Summaries"
+              type="toggle"
+              value={summaryStyleDetailed}
+              onValueChange={setSummaryStyleDetailed}
+            />
+            <View style={[styles.settingDivider, themed.settingDivider]} />
+            <SettingItem
+              text={ttsTesting ? 'Testing TTS…' : 'Test TTS Voice'}
+              type="clickable"
+              onPress={handleTestTtsVoice}
+            />
+          </View>
+
+          {/* Notifications Group */}
+          <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Notifications</Text>
+          <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
+            <SettingItem
+              text="Daily Morning Briefing"
+              type="toggle"
+              value={dailyBriefingEnabled}
+              onValueChange={setDailyBriefingEnabled}
+            />
+          </View>
+
+          {/* Appearance Group */}
+          <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Appearance</Text>
+          <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
+            <SettingItem
+              text="Dark Mode"
+              type="toggle"
+              value={isDarkMode}
+              onValueChange={toggleTheme}
+            />
+          </View>
+
+          {/* Data Management Group */}
+          <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Data Settings</Text>
+          <View style={[styles.settingsGroupCard, themed.settingsGroupCard]}>
+            <SettingItem
+              text="Clear All Data"
+              type="clickable"
+              onPress={handleClearData}
+              isDestructive
+            />
+          </View>
+
+          {/* About Group */}
+          <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>About</Text>
+          <View style={[styles.settingsGroupCard, themed.settingsGroupCard]}>
+            <SettingItem
+              text="App Version"
+              type="value"
+              valueText="1.0.0 (Beta-Offline)"
+            />
+            <View style={[styles.settingDivider, themed.settingDivider]} />
+            <SettingItem
+              text="Privacy Policy"
+              type="link"
+              onPress={() => setPrivacyModalVisible(true)}
+            />
+          </View>
         </View>
 
-        {/* AI & Voice Group */}
-        <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>AI & Voice</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
-          <SettingItem
-            text='Wake Word ("Hey LAFINA")'
-            type="toggle"
-            value={wakeWordEnabled}
-            onValueChange={setWakeWordEnabled}
-          />
-          <View style={[styles.settingDivider, themed.settingDivider]} />
-          <SettingItem
-            text="Detailed AI Summaries"
-            type="toggle"
-            value={summaryStyleDetailed}
-            onValueChange={setSummaryStyleDetailed}
-          />
-        </View>
-
-        {/* Notifications Group */}
-        <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Notifications</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
-          <SettingItem
-            text="Daily Morning Briefing"
-            type="toggle"
-            value={dailyBriefingEnabled}
-            onValueChange={setDailyBriefingEnabled}
-          />
-        </View>
-
-        {/* Appearance Group */}
-        <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Appearance</Text>
-        <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
-          <SettingItem
-            text="Dark Mode"
-            type="toggle"
-            value={isDarkMode}
-            onValueChange={toggleTheme}
-          />
-        </View>
-
-        {/* Data Management Group */}
-        <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Data Settings</Text>
-        <View style={[styles.settingsGroupCard, themed.settingsGroupCard]}>
-          <SettingItem
-            text="Clear All Data"
-            type="clickable"
-            onPress={handleClearData}
-            isDestructive
-          />
-        </View>
-
-        {/* About Group */}
-        <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>About</Text>
-        <View style={[styles.settingsGroupCard, themed.settingsGroupCard]}>
-          <SettingItem
-            text="App Version"
-            type="value"
-            valueText="1.0.0 (Beta-Offline)"
-          />
-          <View style={[styles.settingDivider, themed.settingDivider]} />
-          <SettingItem
-            text="Privacy Policy"
-            type="link"
-            onPress={() => setPrivacyModalVisible(true)}
-          />
-        </View>
+        {/* Guest Call-to-Action / Sign Out */}
+        {isGuest ? (
+          <View style={[styles.guestPromptCard, Shadows.card, themed.settingsGroupCard]}>
+            <Text style={[styles.guestPromptTitle, themed.settingText]}>Go Full Access</Text>
+            <Text style={[styles.guestPromptBody, themed.settingValue]}>
+              Create an account to save your data across devices and unlock all features.
+            </Text>
+            <TouchableOpacity onPress={handleCreateAccount} style={styles.createAccountBtn}>
+              <Text style={styles.createAccountBtnText}>Create Account</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleSignOut} style={styles.signOutLink}>
+              <Text style={styles.signOutLinkText}>Dismiss Guest & Sign Out</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn}>
+            <Text style={styles.signOutText}>Sign Out</Text>
+          </TouchableOpacity>
+        )}
       </View>
-
-      {/* Guest Call-to-Action / Sign Out */}
-      {isGuest ? (
-        <View style={[styles.guestPromptCard, Shadows.card, themed.settingsGroupCard]}>
-          <Text style={[styles.guestPromptTitle, themed.settingText]}>Go Full Access</Text>
-          <Text style={[styles.guestPromptBody, themed.settingValue]}>
-            Create an account to save your data across devices and unlock all features.
-          </Text>
-          <TouchableOpacity onPress={handleCreateAccount} style={styles.createAccountBtn}>
-            <Text style={styles.createAccountBtnText}>Create Account</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleSignOut} style={styles.signOutLink}>
-            <Text style={styles.signOutLinkText}>Dismiss Guest & Sign Out</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn}>
-          <Text style={styles.signOutText}>Sign Out</Text>
-        </TouchableOpacity>
-      )}
 
       <View style={{ height: 120 }} />
 
@@ -332,31 +379,56 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  content: {
-    padding: 16,
+  contentContainer: {
+    paddingBottom: 24,
   },
-  headerTitle: {
-    fontFamily: Fonts.heading,
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
+  headerBackground: {
+    width: '100%',
+    height: 180,
+    overflow: 'hidden',
   },
   avatarSection: {
     alignItems: 'center',
+    marginTop: -80,
     marginBottom: 24,
   },
-  avatarCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+  avatarWrapper: {
+    position: 'relative',
+    width: 120,
+    height: 120,
     marginBottom: 12,
   },
+  avatarCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 4,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadows.card,
+  },
   avatarInitials: {
-    fontSize: 28,
+    fontSize: 40,
     fontFamily: Fonts.heading,
     fontWeight: 'bold',
+  },
+  editBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#F0F0F0',
+  },
+  mainContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
   userName: {
     fontSize: 18,
@@ -367,15 +439,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: Fonts.body,
     marginTop: 4,
-  },
-  editLink: {
-    marginTop: 8,
-  },
-  editLinkText: {
-    fontSize: 12,
-    color: Colors.red,
-    fontWeight: 'bold',
-    textDecorationLine: 'underline',
   },
   settingsContainer: {
     marginBottom: 24,

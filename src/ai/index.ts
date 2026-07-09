@@ -3,6 +3,14 @@ export { buildNluPrompt } from './nlu/prompt';
 export { createFallbackNluResult, processCommand } from './nlu/parser';
 export { applyNluScheduleResult } from './nlu/scheduler';
 export { hasOfflineVoiceRuntime, runLocalLlmChat, runOfflineVoiceScheduling } from './native/voicePipeline';
+export {
+  isTtsAvailable,
+  synthesizeSpeech,
+  playSpeechFile,
+  speakTextWithTts,
+  preCacheReminderAudio,
+} from './tts/ttsService';
+
 export type {
   CreatedScheduleItemType,
   NluIntent,

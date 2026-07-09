@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,8 @@ interface MonthViewProps {
   allEvents: Event[];
   onDayTap: (dayNum: number) => void;
   getCategoryColor: (cat: string) => string;
+  onSwipeLeft?: () => void;
+  onSwipeRight?: () => void;
 }
 
 export const MonthView: React.FC<MonthViewProps> = ({
@@ -29,8 +31,48 @@ export const MonthView: React.FC<MonthViewProps> = ({
   allEvents,
   onDayTap,
   getCategoryColor,
+  onSwipeLeft,
+  onSwipeRight,
 }) => {
   const { colors, isDarkMode } = useTheme();
+
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const wasSwipe = useRef(false);
+
+  const handleTouchStart = (e: any) => {
+    touchStartX.current = e.nativeEvent.pageX;
+    touchStartY.current = e.nativeEvent.pageY;
+    wasSwipe.current = false;
+  };
+
+  const handleTouchEnd = (e: any) => {
+    const touchEndX = e.nativeEvent.pageX;
+    const touchEndY = e.nativeEvent.pageY;
+
+    const dx = touchEndX - touchStartX.current;
+    const dy = touchEndY - touchStartY.current;
+
+    // Check if it is a horizontal swipe (dx is large, dy is small)
+    if (Math.abs(dx) > 50 && Math.abs(dy) < 60) {
+      wasSwipe.current = true;
+      if (dx < 0 && onSwipeLeft) {
+        onSwipeLeft();
+      } else if (dx > 0 && onSwipeRight) {
+        onSwipeRight();
+      }
+    } else {
+      wasSwipe.current = false;
+    }
+  };
+
+  const handleDayPress = (day: number) => {
+    if (wasSwipe.current) {
+      wasSwipe.current = false;
+      return;
+    }
+    onDayTap(day);
+  };
   const { firstDayIndex, totalDays } = getDaysInMonth(currentDate, weekStartsMonday);
   const cells: React.ReactNode[] = [];
 
@@ -69,7 +111,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
       <TouchableOpacity
         key={`day-${day}`}
         style={[styles.calendarCell, { borderColor: colors.border }]}
-        onPress={() => onDayTap(day)}
+        onPress={() => handleDayPress(day)}
       >
         <View style={[styles.dayContainer, isToday && { backgroundColor: Colors.red }]}>
           <Text style={[styles.dayText, { color: colors.textPrimary }, isToday && { color: colors.white, fontWeight: 'bold' }]}>
@@ -97,7 +139,11 @@ export const MonthView: React.FC<MonthViewProps> = ({
     : ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   return (
-    <View style={styles.monthGridContainer}>
+    <View
+      style={styles.monthGridContainer}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       <View style={styles.weekdayHeaderRow}>
         {weekdayLabels.map((wd, i) => (
           <Text key={i} style={[styles.weekdayLabel, { color: colors.textSecondary }]}>

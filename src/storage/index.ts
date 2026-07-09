@@ -14,3 +14,6 @@ export { chatStore } from './chatStore';
 export type { ChatMessage, ChatSession } from './chatStore';
 export { behaviorStore } from './behaviorStore';
 export type { BehaviorLog, FeatureSnapshot } from './behaviorStore';
+export { remindersStore } from './remindersStore';
+export type { Reminder, ReminderStatus } from './remindersStore';
+
