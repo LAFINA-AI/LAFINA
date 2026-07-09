@@ -96,12 +96,34 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     onRefresh();
   };
 
+  const [ttsTesting, setTtsTesting] = useState(false);
+
   const handleTestTtsVoice = async () => {
+    if (ttsTesting) {
+      return;
+    }
+    setTtsTesting(true);
     try {
-      const { speakText } = require('../../scheduler');
-      await speakText('Lafina TTS is working perfectly fine');
-    } catch (e: any) {
-      Alert.alert('TTS Test Error', e.message || String(e));
+      const { isTtsAvailable, speakTextWithTts } = require('../../ai');
+      if (!isTtsAvailable()) {
+        Alert.alert(
+          'TTS Unavailable',
+          'The native Kokoro TTS module is not linked. Rebuild the Android app and try again.'
+        );
+        return;
+      }
+      Alert.alert(
+        'Synthesizing…',
+        'First run loads the on-device voice model (may take 10–30s). Keep media volume up.'
+      );
+      await speakTextWithTts('Hey! This is LAFINA. Text to speech is working.');
+      Alert.alert('TTS OK', 'Playback finished. If you heard nothing, raise media volume.');
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error('[Profile] TTS test failed:', e);
+      Alert.alert('TTS Test Error', message);
+    } finally {
+      setTtsTesting(false);
     }
   };
 
@@ -244,7 +266,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           />
           <View style={[styles.settingDivider, themed.settingDivider]} />
           <SettingItem
-            text="Test TTS Voice"
+            text={ttsTesting ? 'Testing TTS…' : 'Test TTS Voice'}
             type="clickable"
             onPress={handleTestTtsVoice}
           />

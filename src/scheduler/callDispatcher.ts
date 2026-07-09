@@ -1,6 +1,6 @@
 import { NativeModules, DeviceEventEmitter } from 'react-native';
 import { remindersStore } from '../storage';
-import { synthesizeSpeech } from '../ai/tts/ttsService';
+import { playSpeechFile, speakTextWithTts } from '../ai/tts/ttsService';
 import { getReminderPreferences } from './userPreferences';
 import { parseNluJson } from '../ai/nlu/jsonParser';
 import { buildNluPrompt } from '../ai/nlu/prompt';
@@ -20,7 +20,6 @@ interface CallDispatcherSession {
 
 let activeSession: CallDispatcherSession | null = null;
 
-const getTTSModule = () => NativeModules.LafinaTTS;
 const getSTTModule = () => NativeModules.LafinaSpeechToText;
 const getIntentExtractor = () => NativeModules.LafinaIntentExtractor;
 
@@ -28,28 +27,32 @@ const getIntentExtractor = () => NativeModules.LafinaIntentExtractor;
  * Native helper to play generated speech file.
  */
 const playAudioFile = async (filePath: string): Promise<boolean> => {
-  const tts = getTTSModule();
-  if (tts && tts.playAudio) {
-    try {
-      return await tts.playAudio(filePath);
-    } catch (e) {
-      console.error('[CallDispatcher] playAudio error:', e);
-    }
+  try {
+    return await playSpeechFile(filePath);
+  } catch (e) {
+    console.error('[CallDispatcher] playAudio error:', e);
+    return false;
   }
-  return false;
 };
 
 /**
  * Handles TTS playback from text (synthesizes then plays).
+ * If synthesis or playback fails, emits a state recovery event so the
+ * call flow is not permanently stuck in 'speaking'.
+ *
+ * Call-flow friendly: errors are logged and swallowed so the conversation
+ * loop can continue. Profile/UI tests should call `speakTextWithTts` instead
+ * if they need the error surfaced.
  */
 export const speakText = async (text: string): Promise<void> => {
   try {
     console.log(`[CallDispatcher] Speaking: "${text}"`);
     DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'speaking', text });
-    const wavPath = await synthesizeSpeech(text);
-    await playAudioFile(wavPath);
+    await speakTextWithTts(text);
   } catch (error) {
     console.error('[CallDispatcher] speakText error:', error);
+    // Recover call state so the flow can continue (don't leave it stuck on 'speaking')
+    DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'connected', text: '' });
   }
 };
 

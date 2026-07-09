@@ -4,10 +4,16 @@ import { remindersStore } from '../../storage';
 
 interface LafinaTTSModuleType {
   synthesize: (text: string, outputPath: string) => Promise<boolean>;
+  playAudio?: (filePath: string) => Promise<boolean>;
+  resetInitError?: () => Promise<boolean>;
 }
 
 const getNativeTTSModule = (): LafinaTTSModuleType | null => {
-  return (NativeModules.LafinaTTS as LafinaTTSModuleType) || null;
+  const mod = NativeModules.LafinaTTS;
+  if (mod && typeof mod.synthesize === 'function') {
+    return mod as LafinaTTSModuleType;
+  }
+  return null;
 };
 
 /**
@@ -15,6 +21,26 @@ const getNativeTTSModule = (): LafinaTTSModuleType | null => {
  */
 export const isTtsAvailable = (): boolean => {
   return getNativeTTSModule() !== null;
+};
+
+/**
+ * Plays a previously synthesized WAV file via the native TTS module.
+ *
+ * @param filePath Absolute path to a WAV file on disk.
+ * @returns Promise resolving true when playback finishes successfully.
+ */
+export const playSpeechFile = async (filePath: string): Promise<boolean> => {
+  const nativeModule = getNativeTTSModule();
+  if (!nativeModule?.playAudio) {
+    throw new Error('Native TTS playAudio is not available.');
+  }
+
+  const exists = await RNFS.exists(filePath);
+  if (!exists) {
+    throw new Error(`TTS audio file does not exist: ${filePath}`);
+  }
+
+  return nativeModule.playAudio(filePath);
 };
 
 /**
@@ -26,7 +52,12 @@ export const isTtsAvailable = (): boolean => {
 export const synthesizeSpeech = async (text: string): Promise<string> => {
   const nativeModule = getNativeTTSModule();
   if (!nativeModule) {
-    throw new Error('Native TTS module is not available.');
+    throw new Error('Native TTS module is not available. Rebuild the Android app so LafinaTTS is linked.');
+  }
+
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error('Cannot synthesize empty text.');
   }
 
   const cacheDir = `${RNFS.CachesDirectoryPath}/tts_cache`;
@@ -35,12 +66,42 @@ export const synthesizeSpeech = async (text: string): Promise<string> => {
   const filename = `tts_${Date.now()}_${Math.floor(Math.random() * 1000)}.wav`;
   const outputPath = `${cacheDir}/${filename}`;
 
-  const success = await nativeModule.synthesize(text, outputPath);
-  if (!success) {
-    throw new Error('TTS synthesis failed inside the native module.');
+  try {
+    const success = await nativeModule.synthesize(trimmed, outputPath);
+    if (!success) {
+      throw new Error(`TTS synthesis returned false for text: "${trimmed.substring(0, 60)}"`);
+    }
+  } catch (error) {
+    // Clear sticky native init failures so the next attempt can reload models
+    if (nativeModule.resetInitError) {
+      try {
+        await nativeModule.resetInitError();
+      } catch {
+        // ignore reset failures
+      }
+    }
+    throw error;
+  }
+
+  const exists = await RNFS.exists(outputPath);
+  if (!exists) {
+    throw new Error(`TTS claimed success but WAV is missing: ${outputPath}`);
   }
 
   return outputPath;
+};
+
+/**
+ * Synthesizes text and plays it aloud end-to-end.
+ *
+ * @param text The text to speak.
+ */
+export const speakTextWithTts = async (text: string): Promise<void> => {
+  const wavPath = await synthesizeSpeech(text);
+  const played = await playSpeechFile(wavPath);
+  if (!played) {
+    throw new Error(`TTS playback failed for: ${wavPath}`);
+  }
 };
 
 /**
@@ -63,7 +124,6 @@ export const preCacheReminderAudio = async (reminderId: string, text: string): P
 
     const outputPath = `${cacheDir}/tts_${reminderId}.wav`;
 
-    // Overwrite existing pre-cached file if it exists
     const exists = await RNFS.exists(outputPath);
     if (exists) {
       await RNFS.unlink(outputPath);
@@ -73,9 +133,8 @@ export const preCacheReminderAudio = async (reminderId: string, text: string): P
     if (success) {
       remindersStore.updatePreCachedAudioPath(reminderId, outputPath);
       return outputPath;
-    } else {
-      console.warn('TTS pre-caching failed.');
     }
+    console.warn('TTS pre-caching failed.');
   } catch (error) {
     console.error('Error pre-caching reminder audio:', error);
   }
