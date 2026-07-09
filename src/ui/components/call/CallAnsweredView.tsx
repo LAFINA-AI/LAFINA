@@ -1,8 +1,9 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Image } from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../../theme';
-import { PhoneOff, Check, Clock } from 'lucide-react-native';
+import { PhoneOff, Check, Clock, Mic, Volume2, PhoneCall } from 'lucide-react-native';
 import { CallState } from '../../../scheduler';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface CallAnsweredViewProps {
   task: string;
@@ -23,6 +24,7 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
   transcript,
   reply,
 }) => {
+  const { isDarkMode, colors } = useTheme();
   const [pulse] = useState(new Animated.Value(1));
   const waveBars = useRef(Array.from({ length: 9 }, () => new Animated.Value(8))).current;
   const waveIntervalRef = useRef<any>(null);
@@ -79,15 +81,65 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
     };
   }, [callState, waveBars]);
 
+  // Map equalizer bar colors to brand colors (yellow -> red -> blue)
+  const getBarColor = (index: number) => {
+    if (index < 3) return colors.yellow;
+    if (index < 6) return colors.red;
+    return colors.blue;
+  };
+
+  const dynamicStyles = {
+    container: {
+      backgroundColor: isDarkMode ? '#000000' : '#FFFFFF',
+    },
+    titleText: {
+      color: colors.textPrimary,
+    },
+    statusText: {
+      color: colors.textSecondary,
+    },
+    transcriptBox: {
+      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+      borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
+    },
+    boxTitleText: {
+      color: colors.textMuted,
+    },
+    transcriptText: {
+      color: colors.textSecondary,
+    },
+    speakerInner: {
+      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
+      borderColor: colors.blue,
+    },
+    snoozeBtnOutline: {
+      backgroundColor: isDarkMode ? '#000000' : '#FFFFFF',
+      borderColor: colors.blue,
+    },
+  };
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.taskTitle}>{task || 'Schedule Reminder'}</Text>
+    <View style={[styles.container, dynamicStyles.container]}>
+      <Text style={[styles.taskTitle, dynamicStyles.titleText]}>{task || 'Schedule Reminder'}</Text>
       
-      <Text style={styles.statusText}>
-        {callState === 'speaking' ? '🗣️ LAFINA is speaking...' :
-         callState === 'listening' ? '🎙️ Listening for you...' :
-         '☎️ Connected'}
-      </Text>
+      <View style={styles.statusRow}>
+        {callState === 'speaking' ? (
+          <>
+            <Volume2 size={18} color={colors.yellow} style={styles.statusIcon} />
+            <Text style={[styles.statusText, dynamicStyles.statusText]}>LAFINA is speaking...</Text>
+          </>
+        ) : callState === 'listening' ? (
+          <>
+            <Mic size={18} color={colors.red} style={styles.statusIcon} />
+            <Text style={[styles.statusText, dynamicStyles.statusText]}>Listening for you...</Text>
+          </>
+        ) : (
+          <>
+            <PhoneCall size={18} color={colors.blue} style={styles.statusIcon} />
+            <Text style={[styles.statusText, dynamicStyles.statusText]}>Connected</Text>
+          </>
+        )}
+      </View>
 
       {/* Waveform Visualization when Listening */}
       {callState === 'listening' ? (
@@ -97,32 +149,36 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
               key={i}
               style={[
                 styles.waveformBar,
-                { height: bar },
+                { height: bar, backgroundColor: getBarColor(i) },
               ]}
             />
           ))}
         </View>
       ) : (
         <View style={styles.speakerGlowContainer}>
-          <Animated.View style={[styles.speakerCircle, { transform: [{ scale: pulse }] }]}>
-            <Text style={styles.speakerEmoji}>📢</Text>
+          <Animated.View style={[styles.speakerCircle, dynamicStyles.speakerInner, { transform: [{ scale: pulse }] }]}>
+            <Image
+              source={require('../../../assets/lafina_app_logo.png')}
+              style={styles.avatarImage}
+              resizeMode="cover"
+            />
           </Animated.View>
         </View>
       )}
 
       {/* Live Transcript / Assistant Reply Box */}
-      <View style={styles.transcriptBox}>
+      <View style={[styles.transcriptBox, dynamicStyles.transcriptBox]}>
         {reply ? (
           <View>
-            <Text style={styles.boxTitle}>LAFINA:</Text>
-            <Text style={styles.replyText}>{reply}</Text>
+            <Text style={[styles.boxTitle, dynamicStyles.boxTitleText]}>LAFINA:</Text>
+            <Text style={[styles.replyText, dynamicStyles.titleText]}>{reply}</Text>
           </View>
         ) : null}
         
         {callState === 'listening' ? (
           <View style={styles.transcriptSection}>
-            <Text style={styles.boxTitle}>Your Speech:</Text>
-            <Text style={styles.transcriptText}>
+            <Text style={[styles.boxTitle, dynamicStyles.boxTitleText]}>Your Speech:</Text>
+            <Text style={[styles.transcriptText, dynamicStyles.transcriptText]}>
               {transcript ? `"${transcript}"` : 'Listening... (Speak "acknowledge" or "snooze")'}
             </Text>
           </View>
@@ -144,9 +200,12 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
           </TouchableOpacity>
         </View>
         <View style={styles.buttonRow}>
-          <TouchableOpacity style={[styles.actionBtn, styles.snoozeBtnOutline]} onPress={() => onSnooze(15)}>
-            <Clock size={20} color={Colors.blue} style={styles.btnIcon} />
-            <Text style={[styles.actionBtnText, { color: Colors.blue }]}>Snooze 15m</Text>
+          <TouchableOpacity
+            style={[styles.snoozeBtnOutline, dynamicStyles.snoozeBtnOutline]}
+            onPress={() => onSnooze(15)}
+          >
+            <Clock size={20} color={colors.blue} style={styles.btnIcon} />
+            <Text style={[styles.actionBtnText, { color: colors.blue }]}>Snooze 15m</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -176,10 +235,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
   },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusIcon: {
+    marginRight: 6,
+  },
   statusText: {
     fontFamily: Fonts.body,
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.7)',
     fontWeight: '500',
   },
   waveformContainer: {
@@ -204,13 +270,15 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1.5,
     ...Shadows.card,
+    overflow: 'hidden',
   },
-  speakerEmoji: {
-    fontSize: 40,
+  avatarImage: {
+    width: 90,
+    height: 90,
   },
   transcriptBox: {
     width: '100%',
@@ -291,7 +359,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.blue,
     marginHorizontal: 6,
-    backgroundColor: 'transparent',
   },
   actionBtnText: {
     fontFamily: Fonts.body,

@@ -10,12 +10,14 @@ import {
   Easing,
   Modal,
   NativeModules,
+  Image,
 } from 'react-native';
 import { Fonts, Shadows } from '../theme';
 import { Phone, PhoneOff } from 'lucide-react-native';
 import { CallAnsweredView } from '../components/call/CallAnsweredView';
 import { answerCall, declineCall, disconnectCall } from '../../scheduler';
 import type { CallState } from '../../scheduler';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface IncomingCallScreenProps {
   visible: boolean;
@@ -32,6 +34,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
   userId,
   onClose,
 }) => {
+  const { isDarkMode, colors } = useTheme();
   const [callState, setCallState] = useState<CallState>('ringing');
   const [transcript, setTranscript] = useState('');
   const [reply, setReply] = useState('');
@@ -153,21 +156,51 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
 
   if (!visible) return null;
 
+  const dynamicStyles = {
+    container: {
+      backgroundColor: isDarkMode ? '#000000' : '#FFFFFF',
+    },
+    titleText: {
+      color: colors.textPrimary,
+    },
+    subtitleText: {
+      color: colors.textSecondary,
+    },
+    avatarOuterRing: {
+      borderColor: colors.yellow,
+    },
+    avatarInnerRing: {
+      borderColor: colors.red,
+    },
+    avatarCenter: {
+      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
+      borderColor: colors.blue,
+    },
+  };
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
-      <View style={styles.container}>
+      <View style={[styles.container, dynamicStyles.container]}>
         {callState === 'ringing' ? (
           <View style={styles.ringingContainer}>
             <View style={styles.header}>
-              <Text style={styles.callerName}>LAFINA Reminder</Text>
-              <Text style={styles.callType}>Simulated Phone Call</Text>
+              <Text style={[styles.callerName, dynamicStyles.titleText]}>LAFINA Reminder</Text>
+              <Text style={[styles.callType, dynamicStyles.subtitleText]}>Simulated Phone Call</Text>
             </View>
 
             <View style={styles.middle}>
-              <Animated.View style={[styles.avatarCircle, { transform: [{ scale: ringAnim }] }]}>
-                <Text style={styles.avatarEmoji}>🎓</Text>
+              <Animated.View style={[styles.avatarRingOuter, dynamicStyles.avatarOuterRing, { transform: [{ scale: ringAnim }] }]}>
+                <View style={[styles.avatarRingInner, dynamicStyles.avatarInnerRing]}>
+                  <View style={[styles.avatarCircle, dynamicStyles.avatarCenter, { overflow: 'hidden' }]}>
+                    <Image
+                      source={require('../../assets/lafina_app_logo.png')}
+                      style={styles.avatarImage}
+                      resizeMode="cover"
+                    />
+                  </View>
+                </View>
               </Animated.View>
-              <Text style={styles.taskText}>Upcoming: {task || 'Academic Event'}</Text>
+              <Text style={[styles.taskText, dynamicStyles.titleText]}>Upcoming: {task || 'Academic Event'}</Text>
             </View>
 
             <View style={styles.actionRow}>
@@ -176,7 +209,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
                 <TouchableOpacity style={[styles.circleBtn, styles.declineBtn]} onPress={handleDecline}>
                   <PhoneOff size={28} color="#fff" />
                 </TouchableOpacity>
-                <Text style={styles.btnLabel}>Decline</Text>
+                <Text style={[styles.btnLabel, dynamicStyles.subtitleText]}>Decline</Text>
               </View>
 
               {/* Answer Button */}
@@ -184,7 +217,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
                 <TouchableOpacity style={[styles.circleBtn, styles.answerBtn]} onPress={handleAnswer}>
                   <Phone size={28} color="#fff" />
                 </TouchableOpacity>
-                <Text style={styles.btnLabel}>Answer</Text>
+                <Text style={[styles.btnLabel, dynamicStyles.subtitleText]}>Answer</Text>
               </View>
             </View>
           </View>
@@ -240,25 +273,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarCircle: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  avatarRingOuter: {
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 30,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  avatarRingInner: {
+    width: 154,
+    height: 154,
+    borderRadius: 77,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarCircle: {
+    width: 138,
+    height: 138,
+    borderRadius: 69,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
     ...Shadows.card,
   },
-  avatarEmoji: {
-    fontSize: 70,
+  avatarImage: {
+    width: 138,
+    height: 138,
   },
   taskText: {
     fontFamily: Fonts.body,
     fontSize: 18,
-    color: '#fff',
     textAlign: 'center',
     fontWeight: '600',
     paddingHorizontal: 20,

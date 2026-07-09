@@ -123,7 +123,7 @@ const quickMatchIntent = (transcript: string, defaultSnoozeMins: number): NluRes
   const snoozeRegex = /\b(snooze|later|delay|wait|minutes|mins|min|snoozed)\b/;
   if (snoozeRegex.test(normalized)) {
     // In Jest tests, if the user says exactly "snooze", let NLU run so test mocks can specify custom durations
-    if (process.env.NODE_ENV === 'test' && normalized === 'snooze') {
+    if ((globalThis as any).process?.env?.NODE_ENV === 'test' && normalized === 'snooze') {
       return null;
     }
 
