@@ -148,15 +148,29 @@ export const remindersStore = {
   },
 
   /**
-   * Snoozes a reminder by updating trigger_at and status, and incrementing snooze_count.
+   * Snoozes a reminder by a relative number of minutes.
    */
   snoozeReminder: (id: string, snoozeMinutes: number): void => {
-    const nowStr = new Date().toISOString();
-    const newTriggerTime = new Date(Date.now() + snoozeMinutes * 60 * 1000).toISOString();
+    if (!Number.isFinite(snoozeMinutes) || snoozeMinutes < 1 || snoozeMinutes > 120) {
+      throw new Error('Snooze duration must be between 1 and 120 minutes.');
+    }
+    const triggerAt = new Date(Date.now() + snoozeMinutes * 60 * 1000).toISOString();
+    remindersStore.snoozeReminderAt(id, triggerAt);
+  },
+
+  /**
+   * Snoozes a reminder at an exact UTC trigger time.
+   */
+  snoozeReminderAt: (id: string, triggerAt: string): void => {
+    const triggerAtMs = new Date(triggerAt).getTime();
+    if (!Number.isFinite(triggerAtMs) || triggerAtMs <= Date.now()) {
+      throw new Error('Snooze trigger must be a valid future time.');
+    }
+    const now = new Date().toISOString();
     try {
       db.executeSync(
         `UPDATE reminders SET status = 'snoozed', trigger_at = ?, snooze_count = snooze_count + 1, updated_at = ? WHERE id = ?`,
-        [newTriggerTime, nowStr, id]
+        [triggerAt, now, id]
       );
     } catch (error) {
       console.error('Error snoozing reminder:', error);

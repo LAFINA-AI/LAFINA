@@ -121,7 +121,9 @@ android {
     }
     externalNativeBuild {
         cmake {
-            buildStagingDirectory = file("C:/L_cxx")
+            path file("src/main/cpp/CMakeLists.txt")
+            version "3.22.1"
+            buildStagingDirectory = file("${rootProject.projectDir}/../.cxx/lafina")
         }
     }
 }

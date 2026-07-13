@@ -163,10 +163,11 @@ export const preCacheReminderAudio = async (reminderId: string, text: string): P
   }
 
   try {
-    const cacheDir = `${RNFS.CachesDirectoryPath}/tts_cache`;
+    const cacheDir = `${RNFS.DocumentDirectoryPath}/tts_reminders`;
     await RNFS.mkdir(cacheDir);
 
-    const outputPath = `${cacheDir}/tts_${reminderId}.wav`;
+    const safeReminderId = reminderId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const outputPath = `${cacheDir}/tts_${safeReminderId}.wav`;
 
     const exists = await RNFS.exists(outputPath);
     if (exists) {
@@ -184,4 +185,22 @@ export const preCacheReminderAudio = async (reminderId: string, text: string): P
   }
 
   return '';
+};
+
+/**
+ * Removes durable pre-cached reminder audio after a terminal reminder action.
+ *
+ * @param filePath Absolute reminder audio path, when one was generated.
+ */
+export const deletePreCachedReminderAudio = async (
+  filePath: string | null
+): Promise<void> => {
+  if (!filePath) return;
+  try {
+    if (await RNFS.exists(filePath)) {
+      await RNFS.unlink(filePath);
+    }
+  } catch (error) {
+    console.warn('[TTS Cache] Failed to delete reminder audio:', error);
+  }
 };

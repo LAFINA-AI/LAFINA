@@ -18,6 +18,18 @@ const emitMock = DeviceEventEmitter.emit as jest.MockedFunction<
 jest.mock('react-native', () => {
   const rn = jest.requireActual('react-native');
   
+  rn.NativeModules.LafinaReminder = {
+    scheduleExactAlarm: jest.fn().mockResolvedValue(true),
+    cancelAlarm: jest.fn().mockResolvedValue(true),
+    finishIncomingCall: jest.fn().mockResolvedValue(true),
+    consumePendingCall: jest.fn().mockResolvedValue(null),
+    getPermissionStatus: jest.fn().mockResolvedValue({
+      canScheduleExactAlarms: true,
+      canUseFullScreenIntent: true,
+      notificationsEnabled: true,
+    }),
+  };
+
   rn.NativeModules.LafinaTTS = {
     synthesize: jest.fn().mockResolvedValue(true),
     playAudio: jest.fn().mockResolvedValue(true),

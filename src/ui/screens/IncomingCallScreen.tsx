@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,14 +9,19 @@ import {
   Animated,
   Easing,
   Modal,
-  NativeModules,
+  PermissionsAndroid,
   Image,
 } from 'react-native';
 import { Fonts, Shadows } from '../theme';
 import { Phone, PhoneOff } from 'lucide-react-native';
 import { CallAnsweredView } from '../components/call/CallAnsweredView';
-import { answerCall, declineCall, disconnectCall } from '../../scheduler';
-import type { CallState } from '../../scheduler';
+import {
+  answerCall,
+  declineCall,
+  manualAcknowledgeCall,
+  manualSnoozeCall,
+} from '../../scheduler';
+import type { CallState, NativeCallAction } from '../../scheduler';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface IncomingCallScreenProps {
@@ -25,6 +30,7 @@ interface IncomingCallScreenProps {
   task: string;
   userId: string;
   onClose: () => void;
+  initialAction?: NativeCallAction;
 }
 
 export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
@@ -33,30 +39,21 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
   task,
   userId,
   onClose,
+  initialAction = 'call',
 }) => {
   const { isDarkMode, colors } = useTheme();
   const [callState, setCallState] = useState<CallState>('ringing');
   const [transcript, setTranscript] = useState('');
   const [reply, setReply] = useState('');
   const ringAnim = useRef(new Animated.Value(1)).current;
+  const processedActionRef = useRef('');
 
-  // Ringing pulse animation and ringtone
+  // Ringing pulse animation. Native notifications own ringtone playback.
   useEffect(() => {
     let animLoop: Animated.CompositeAnimation | null = null;
-    const reminderModule = NativeModules.LafinaReminder;
 
     if (visible && callState === 'ringing') {
-      // Start ringtone vibration
       Vibration.vibrate([1000, 1000, 1000, 1000], true);
-
-      // Start native ringtone audio
-      if (reminderModule && reminderModule.startRingtone) {
-        reminderModule.startRingtone().catch((err: unknown) => {
-          console.error('[CallScreen] Failed to start native ringtone:', err);
-        });
-      }
-      
-      // Start pulse animation
       animLoop = Animated.loop(
         Animated.sequence([
           Animated.timing(ringAnim, {
@@ -76,21 +73,11 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
       animLoop.start();
     } else {
       Vibration.cancel();
-      if (reminderModule && reminderModule.stopRingtone) {
-        reminderModule.stopRingtone().catch((err: unknown) => {
-          console.error('[CallScreen] Failed to stop native ringtone:', err);
-        });
-      }
       ringAnim.setValue(1);
     }
 
     return () => {
       Vibration.cancel();
-      if (reminderModule && reminderModule.stopRingtone) {
-        reminderModule.stopRingtone().catch((err: unknown) => {
-          console.error('[CallScreen] Failed to stop native ringtone in cleanup:', err);
-        });
-      }
       animLoop?.stop();
     };
   }, [visible, callState, ringAnim]);
@@ -129,30 +116,47 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
     };
   }, [visible, onClose]);
 
-  const handleAnswer = async () => {
+  const handleAnswer = useCallback(async (): Promise<void> => {
     Vibration.cancel();
     setCallState('connected');
+    const microphonePermission = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+    );
+    if (microphonePermission !== PermissionsAndroid.RESULTS.GRANTED) {
+      setReply('Microphone permission is unavailable. Please use the buttons below.');
+      return;
+    }
     await answerCall(reminderId, userId);
-  };
+  }, [reminderId, userId]);
 
-  const handleDecline = async () => {
+  const handleDecline = useCallback(async (): Promise<void> => {
     Vibration.cancel();
     await declineCall(reminderId, userId);
     onClose();
-  };
+  }, [reminderId, userId, onClose]);
 
-  const handleManualSnooze = (minutes: number) => {
-    // Direct call dispatcher update
-    const { remindersStore } = require('../../storage');
-    remindersStore.snoozeReminder(reminderId, minutes);
-    disconnectCall();
-  };
+  const handleManualSnooze = useCallback(async (minutes: number): Promise<void> => {
+    await manualSnoozeCall(reminderId, userId, minutes);
+  }, [reminderId, userId]);
 
-  const handleManualAcknowledge = () => {
-    const { remindersStore } = require('../../storage');
-    remindersStore.acknowledgeReminder(reminderId);
-    disconnectCall();
-  };
+  const handleManualAcknowledge = useCallback(async (): Promise<void> => {
+    await manualAcknowledgeCall(reminderId, userId);
+  }, [reminderId, userId]);
+
+  useEffect(() => {
+    if (!visible || !reminderId) return;
+    const actionKey = reminderId + ':' + initialAction;
+    if (processedActionRef.current === actionKey) return;
+    processedActionRef.current = actionKey;
+    if (initialAction === 'answer') void handleAnswer();
+    if (initialAction === 'decline') void handleDecline();
+  }, [visible, reminderId, initialAction, handleAnswer, handleDecline]);
+
+  useEffect(() => {
+    if (!visible || callState !== 'ringing') return;
+    const timeout = setTimeout(() => void handleDecline(), 45_000);
+    return () => clearTimeout(timeout);
+  }, [visible, callState, handleDecline]);
 
   if (!visible) return null;
 
