@@ -27,7 +27,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   viewMode: propViewMode,
   onViewModeChange: propOnViewModeChange,
 }) => {
-  const { colors } = useTheme();
+  const { colors, isDarkMode } = useTheme();
 
   const calendar = useCalendarData({
     userId,
@@ -64,51 +64,106 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header Row 1: Title & Date Navigation */}
-      <View style={styles.topHeaderRow}>
-        <TouchableOpacity
-          onPress={() => calendar.setShowDatePicker(true)}
-          style={styles.headerTitleContainer}
-          activeOpacity={0.7}
-        >
-          <Text
-            style={[styles.headerTitle, { color: colors.textPrimary }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.8}
-          >
-            {getHeaderTitle(calendar.viewMode, calendar.selectedDate, calendar.currentDate, calendar.weekDays)}
-          </Text>
-          <ChevronDown size={18} color={colors.textSecondary} style={styles.titleChevron} />
-        </TouchableOpacity>
+      {calendar.viewMode === 'month' ? (
+        <View style={styles.topHeaderContainer}>
+          <View style={styles.filipinoHeaderRow}>
+            {/* Left Year Box */}
+            <View style={[styles.yearBox, { backgroundColor: isDarkMode ? '#4D8CFF' : '#002C9C', borderColor: isDarkMode ? '#FF5C5C' : '#E50000' }]}>
+              <Text style={styles.yearBoxText}>{calendar.currentDate.getFullYear()}</Text>
+            </View>
 
-        <View style={styles.navGroup}>
-          <TouchableOpacity
-            onPress={calendar.handlePrevPress}
-            style={[styles.navButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
-            activeOpacity={0.7}
-            accessibilityLabel="Previous"
-          >
-            <ChevronLeft size={16} color={colors.textPrimary} />
-          </TouchableOpacity>
+            {/* Middle Month Box */}
+            <TouchableOpacity
+              onPress={() => calendar.setShowDatePicker(true)}
+              style={[styles.monthBox, { borderColor: isDarkMode ? '#4D8CFF' : '#002C9C', backgroundColor: isDarkMode ? colors.cardBg : '#FFFFFF' }]}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.monthBoxText, { color: isDarkMode ? '#FF5C5C' : '#E50000' }]}>
+                {calendar.currentDate.toLocaleDateString('en-US', { month: 'long' }).toUpperCase()}
+              </Text>
+              <ChevronDown size={14} color={isDarkMode ? '#FF5C5C' : '#E50000'} style={styles.monthChevron} />
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={calendar.handleGoToToday}
-            style={[styles.todayButton, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.todayButtonText, { color: colors.textPrimary }]}>Today</Text>
-          </TouchableOpacity>
+            {/* Right Year Box */}
+            <View style={[styles.yearBox, { backgroundColor: isDarkMode ? '#4D8CFF' : '#002C9C', borderColor: isDarkMode ? '#FF5C5C' : '#E50000' }]}>
+              <Text style={styles.yearBoxText}>{calendar.currentDate.getFullYear()}</Text>
+            </View>
+          </View>
+          
+          {/* Retro Nav Controls */}
+          <View style={styles.retroNavRow}>
+            <TouchableOpacity
+              onPress={calendar.handlePrevPress}
+              style={[styles.retroNavButton, { borderColor: isDarkMode ? '#FFFFFF' : '#000000' }]}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.retroNavText, { color: isDarkMode ? '#FFFFFF' : '#000000' }]}>◄ PREV</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={calendar.handleNextPress}
-            style={[styles.navButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
-            activeOpacity={0.7}
-            accessibilityLabel="Next"
-          >
-            <ChevronRight size={16} color={colors.textPrimary} />
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={calendar.handleGoToToday}
+              style={[styles.retroTodayBtn, { borderColor: isDarkMode ? '#FF5C5C' : '#E50000', backgroundColor: isDarkMode ? '#2C1B18' : '#FFF0F0' }]}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.retroTodayText, { color: isDarkMode ? '#FF5C5C' : '#E50000' }]}>TODAY</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={calendar.handleNextPress}
+              style={[styles.retroNavButton, { borderColor: isDarkMode ? '#FFFFFF' : '#000000' }]}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.retroNavText, { color: isDarkMode ? '#FFFFFF' : '#000000' }]}>NEXT ►</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      ) : (
+        <View style={styles.topHeaderRow}>
+          <TouchableOpacity
+            onPress={() => calendar.setShowDatePicker(true)}
+            style={styles.headerTitleContainer}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[styles.headerTitle, { color: colors.textPrimary }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+            >
+              {getHeaderTitle(calendar.viewMode, calendar.selectedDate, calendar.currentDate, calendar.weekDays)}
+            </Text>
+            <ChevronDown size={18} color={colors.textSecondary} style={styles.titleChevron} />
+          </TouchableOpacity>
+
+          <View style={styles.navGroup}>
+            <TouchableOpacity
+              onPress={calendar.handlePrevPress}
+              style={[styles.navButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+              activeOpacity={0.7}
+              accessibilityLabel="Previous"
+            >
+              <ChevronLeft size={16} color={colors.textPrimary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={calendar.handleGoToToday}
+              style={[styles.todayButton, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.todayButtonText, { color: colors.textPrimary }]}>Today</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={calendar.handleNextPress}
+              style={[styles.navButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+              activeOpacity={0.7}
+              accessibilityLabel="Next"
+            >
+              <ChevronRight size={16} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {calendar.showDatePicker && (
         <DateTimePicker
@@ -338,6 +393,80 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
+  },
+  topHeaderContainer: {
+    marginBottom: 12,
+  },
+  filipinoHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+    height: 48,
+  },
+  yearBox: {
+    flex: 1,
+    maxWidth: 80,
+    borderWidth: 2,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  yearBoxText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    fontFamily: 'sans-serif-condensed',
+  },
+  monthBox: {
+    flex: 2,
+    flexDirection: 'row',
+    borderWidth: 2,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 6,
+  },
+  monthBoxText: {
+    fontSize: 18,
+    fontWeight: '900',
+    fontFamily: 'sans-serif-condensed',
+    letterSpacing: 1,
+  },
+  monthChevron: {
+    marginLeft: 6,
+  },
+  retroNavRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  retroNavButton: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderRadius: 4,
+    paddingVertical: 5,
+    alignItems: 'center',
+    marginHorizontal: 2,
+  },
+  retroNavText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    fontFamily: 'sans-serif-medium',
+  },
+  retroTodayBtn: {
+    flex: 1.2,
+    borderWidth: 1.5,
+    borderRadius: 4,
+    paddingVertical: 5,
+    alignItems: 'center',
+    marginHorizontal: 2,
+  },
+  retroTodayText: {
+    fontSize: 11,
+    fontWeight: '900',
+    fontFamily: 'sans-serif-medium',
+    letterSpacing: 0.5,
   },
   fab: {
     position: 'absolute',
