@@ -213,7 +213,9 @@ export const MonthView: React.FC<MonthViewProps> = ({
   // 1. Render start empty cells with moon phase displays
   for (let i = 0; i < firstDayIndex; i++) {
     const isSun = weekStartsMonday ? (i === 6) : (i === 0);
-    const gridBorderColor = isSun ? calendarSunGridColor : calendarGridColor;
+    const isSat = weekStartsMonday ? (i === 5) : (i === 6);
+    const isRedDay = isSun || isSat;
+    const gridBorderColor = isRedDay ? calendarSunGridColor : calendarGridColor;
     
     if (emptyIndex < 4) {
       const phase = moonPhaseSlots[emptyIndex];
@@ -274,11 +276,13 @@ export const MonthView: React.FC<MonthViewProps> = ({
     const dayGridIndex = firstDayIndex + day - 1;
     const dayOfWeekIndex = dayGridIndex % 7;
     const isSun = weekStartsMonday ? (dayOfWeekIndex === 6) : (dayOfWeekIndex === 0);
+    const isSat = weekStartsMonday ? (dayOfWeekIndex === 5) : (dayOfWeekIndex === 6);
+    const isRedDay = isSun || isSat;
     const holiday = getHoliday(currentDate.getFullYear(), currentDate.getMonth(), day);
     const isHoliday = holiday !== null;
 
-    const numColor = (isSun || isHoliday) ? calendarRed : calendarBlue;
-    const gridBorderColor = (isSun || isHoliday) ? calendarSunGridColor : calendarGridColor;
+    const numColor = (isRedDay || isHoliday) ? calendarRed : calendarBlue;
+    const gridBorderColor = (isRedDay || isHoliday) ? calendarSunGridColor : calendarGridColor;
 
     let dayMoonEmoji = '';
     if (day === phases.newMoonDay) dayMoonEmoji = '🌑';
@@ -347,7 +351,9 @@ export const MonthView: React.FC<MonthViewProps> = ({
   for (let j = 0; j < trailingEmptyCount; j++) {
     const gridIndex = firstDayIndex + totalDays + j;
     const isSun = weekStartsMonday ? (gridIndex % 7 === 6) : (gridIndex % 7 === 0);
-    const gridBorderColor = isSun ? calendarSunGridColor : calendarGridColor;
+    const isSat = weekStartsMonday ? (gridIndex % 7 === 5) : (gridIndex % 7 === 6);
+    const isRedDay = isSun || isSat;
+    const gridBorderColor = isRedDay ? calendarSunGridColor : calendarGridColor;
     
     if (emptyIndex < 4) {
       const phase = moonPhaseSlots[emptyIndex];
@@ -390,12 +396,14 @@ export const MonthView: React.FC<MonthViewProps> = ({
       <View style={styles.weekdayHeaderRow}>
         {weekdayLabels.map((wd, i) => {
           const isSun = weekStartsMonday ? (i === 6) : (i === 0);
+          const isSat = weekStartsMonday ? (i === 5) : (i === 6);
+          const isRedDay = isSun || isSat;
           return (
             <View
               key={i}
               style={[
                 styles.weekdayLabelBox,
-                isSun
+                isRedDay
                   ? { backgroundColor: isDarkMode ? '#2C1B18' : '#FFFFFF', borderColor: calendarRed, borderWidth: 1.5 }
                   : { backgroundColor: calendarBlue, borderColor: isDarkMode ? '#2C2C2E' : '#FFFFFF', borderWidth: 0.5 }
               ]}
@@ -403,7 +411,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
               <Text
                 style={[
                   styles.weekdayLabelText,
-                  isSun ? { color: calendarRed } : { color: '#FFFFFF' }
+                  isRedDay ? { color: calendarRed } : { color: '#FFFFFF' }
                 ]}
               >
                 {wd}
