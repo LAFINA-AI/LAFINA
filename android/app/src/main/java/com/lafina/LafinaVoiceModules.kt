@@ -14,6 +14,7 @@ import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import org.json.JSONObject
 
 class LafinaVoiceInputModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -263,31 +264,60 @@ class LafinaIntentExtractorModule(reactContext: ReactApplicationContext) :
         val parsedTime = parseTimeFromText(normalizedText)
         
         var cleanTask = normalizedText
-          .replace(Regex("^(schedule|set|add|create)\\s*(a|an|the)?\\s*", RegexOption.IGNORE_CASE), "")
-          .replace(Regex("^(task|meeting|block|event)\\s*", RegexOption.IGNORE_CASE), "")
-          .replace(Regex("(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?", RegexOption.IGNORE_CASE), "")
+          .replace(
+            Regex(
+              "^(schedule|set(?:\\s+up)?|add|create|remind(?:\\s+me(?:\\s+to)?)?)\\s*(a|an|the)?\\s*",
+              RegexOption.IGNORE_CASE
+            ),
+            ""
+          )
+          .replace(Regex("^(task|meeting|time\\s*block|block|event)\\s*", RegexOption.IGNORE_CASE), "")
+          .replace(
+            Regex(
+              "(?:\\b(?:at|by|from)\\s+)?\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)\\b",
+              RegexOption.IGNORE_CASE
+            ),
+            ""
+          )
+          .replace(
+            Regex(
+              "(?:\\b(?:at|by|from)\\s+)?(?:[01]?\\d|2[0-3]):[0-5]\\d\\b",
+              RegexOption.IGNORE_CASE
+            ),
+            ""
+          )
           .replace(Regex("\\b(today|tomorrow)\\b", RegexOption.IGNORE_CASE), "")
+          .replace(Regex("\\bthe\\b", RegexOption.IGNORE_CASE), "")
+          .replace(
+            Regex("^[\\s,:-]*(?:(?:on|at|by|for|starting)\\b[\\s,:-]*)+", RegexOption.IGNORE_CASE),
+            ""
+          )
+          .replace(
+            Regex("(?:[\\s,:-]*(?:on|at|by|for|starting)\\b)+[\\s,:-]*$", RegexOption.IGNORE_CASE),
+            ""
+          )
           .replace(Regex("\\s+"), " ")
-          .trim()
+          .trim(' ', '.', ',', ':', '-')
 
         if (cleanTask.isEmpty()) {
           cleanTask = if (lower.contains("meeting")) "meeting" else if (lower.contains("class")) "class" else "Scheduled Event"
         }
 
-        val timeValue = if (parsedTime != null) "\"$parsedTime\"" else "null"
-        val replyText = if (parsedTime != null) "Task '$cleanTask' added for $parsedTime." else "Added task '$cleanTask'."
-
-        val intentJson = """
-        {
-          "intent": "schedule",
-          "task": "$cleanTask",
-          "date": null,
-          "time": $timeValue,
-          "duration_minutes": null,
-          "status": "success",
-          "reply": "$replyText"
+        val replyText = if (parsedTime != null) {
+          "Task '$cleanTask' added for $parsedTime."
+        } else {
+          "Added task '$cleanTask'."
         }
-        """.trimIndent()
+
+        val intentJson = JSONObject().apply {
+          put("intent", "schedule")
+          put("task", cleanTask)
+          put("date", JSONObject.NULL)
+          put("time", parsedTime ?: JSONObject.NULL)
+          put("duration_minutes", JSONObject.NULL)
+          put("status", "success")
+          put("reply", replyText)
+        }.toString()
         promise.resolve(intentJson)
         return
       }

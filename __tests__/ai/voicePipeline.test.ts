@@ -1,9 +1,16 @@
 import {
   buildNluPrompt,
   hasOfflineVoiceRuntime,
+  runLocalLlmChat,
   runOfflineVoiceScheduling,
 } from '../../src/ai';
-import { db, initDatabase, tasksStore, timeBlocksStore } from '../../src/storage';
+import {
+  db,
+  initDatabase,
+  remindersStore,
+  tasksStore,
+  timeBlocksStore,
+} from '../../src/storage';
 
 const insertUser = (userId: string): void => {
   const now = new Date().toISOString();
@@ -19,6 +26,7 @@ describe('Voice Pipeline Integration', () => {
   });
 
   afterEach(() => {
+    db.executeSync('DELETE FROM reminders');
     db.executeSync('DELETE FROM time_blocks');
     db.executeSync('DELETE FROM tasks');
     db.executeSync('DELETE FROM users');
@@ -31,6 +39,25 @@ describe('Voice Pipeline Integration', () => {
     expect(prompt).toContain('Today is 2026-07-06');
     expect(prompt).toContain('"intent": "schedule | snooze | cancel | out_of_scope | acknowledge"');
     expect(prompt).toContain('Transcript: "Add task submit report by 5pm"');
+  });
+
+  it('uses deterministic title extraction first for typed scheduling chat', async () => {
+    const userId = 'chat_schedule_user';
+    insertUser(userId);
+
+    const reply = await runLocalLlmChat(
+      'schedule an event Thesis Defense at 3pm tomorrow',
+      userId
+    );
+    const tasks = tasksStore.getAllTasks(userId);
+    const reminders = remindersStore.getAllReminders(userId);
+
+    expect(reply).toContain('Thesis Defense');
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].title).toBe('Thesis Defense');
+    expect(tasks[0].dueTime).toBe('15:00');
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0].task).toBe('Thesis Defense');
   });
 
   it('returns native_runtime_unavailable gracefully when native voice modules are not linked in JS unit test env', async () => {

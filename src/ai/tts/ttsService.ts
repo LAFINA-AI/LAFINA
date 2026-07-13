@@ -8,6 +8,8 @@ interface LafinaTTSModuleType {
   resetInitError?: () => Promise<boolean>;
 }
 
+const inFlightSyntheses = new Map<string, Promise<string>>();
+
 const getNativeTTSModule = (): LafinaTTSModuleType | null => {
   const mod = NativeModules.LafinaTTS;
   if (mod && typeof mod.synthesize === 'function') {
@@ -82,38 +84,55 @@ export const synthesizeSpeech = async (text: string): Promise<string> => {
   const filename = getDeterministicFilename(trimmed);
   const outputPath = `${cacheDir}/${filename}`;
 
-  // Check cache first
-  const exists = await RNFS.exists(outputPath);
-  if (exists) {
-    console.log(`[TTS Cache] Hit: "${trimmed.substring(0, 40)}${trimmed.length > 40 ? '...' : ''}" -> ${filename}`);
-    return outputPath;
+  const inFlight = inFlightSyntheses.get(outputPath);
+  if (inFlight) {
+    return inFlight;
   }
 
-  console.log(`[TTS Cache] Miss: Synthesizing: "${trimmed.substring(0, 40)}${trimmed.length > 40 ? '...' : ''}"`);
+  const synthesis = (async (): Promise<string> => {
+    // Check cache first
+    const exists = await RNFS.exists(outputPath);
+    if (exists) {
+      console.log(`[TTS Cache] Hit: "${trimmed.substring(0, 40)}${trimmed.length > 40 ? '...' : ''}" -> ${filename}`);
+      return outputPath;
+    }
+
+    console.log(`[TTS Cache] Miss: Synthesizing: "${trimmed.substring(0, 40)}${trimmed.length > 40 ? '...' : ''}"`);
+
+    try {
+      const success = await nativeModule.synthesize(trimmed, outputPath);
+      if (!success) {
+        throw new Error(`TTS synthesis returned false for text: "${trimmed.substring(0, 60)}"`);
+      }
+    } catch (error) {
+      // Clear sticky native init failures so the next attempt can reload models
+      if (nativeModule.resetInitError) {
+        try {
+          await nativeModule.resetInitError();
+        } catch {
+          // ignore reset failures
+        }
+      }
+      throw error;
+    }
+
+    const fileExistsNow = await RNFS.exists(outputPath);
+    if (!fileExistsNow) {
+      throw new Error(`TTS claimed success but WAV is missing: ${outputPath}`);
+    }
+
+    return outputPath;
+  })();
+
+  inFlightSyntheses.set(outputPath, synthesis);
 
   try {
-    const success = await nativeModule.synthesize(trimmed, outputPath);
-    if (!success) {
-      throw new Error(`TTS synthesis returned false for text: "${trimmed.substring(0, 60)}"`);
+    return await synthesis;
+  } finally {
+    if (inFlightSyntheses.get(outputPath) === synthesis) {
+      inFlightSyntheses.delete(outputPath);
     }
-  } catch (error) {
-    // Clear sticky native init failures so the next attempt can reload models
-    if (nativeModule.resetInitError) {
-      try {
-        await nativeModule.resetInitError();
-      } catch {
-        // ignore reset failures
-      }
-    }
-    throw error;
   }
-
-  const fileExistsNow = await RNFS.exists(outputPath);
-  if (!fileExistsNow) {
-    throw new Error(`TTS claimed success but WAV is missing: ${outputPath}`);
-  }
-
-  return outputPath;
 };
 
 /**

@@ -2,8 +2,17 @@ import { DeviceEventEmitter, NativeModules } from 'react-native';
 import { db } from '../../src/storage/database';
 import { initDatabase } from '../../src/storage/dbInit';
 import { remindersStore } from '../../src/storage/remindersStore';
-import { answerCall, declineCall, disconnectCall } from '../../src/scheduler/callDispatcher';
+import {
+  answerCall,
+  declineCall,
+  disconnectCall,
+  speakText,
+} from '../../src/scheduler/callDispatcher';
 import { behaviorStore } from '../../src/storage/behaviorStore';
+
+const emitMock = DeviceEventEmitter.emit as jest.MockedFunction<
+  typeof DeviceEventEmitter.emit
+>;
 
 // Mocks for React Native modules
 jest.mock('react-native', () => {
@@ -52,10 +61,83 @@ describe('callDispatcher controller', () => {
     );
 
     jest.clearAllMocks();
+    emitMock.mockImplementation(() => undefined);
   });
 
   afterEach(() => {
     disconnectCall();
+  });
+
+  it('returns safely when the requested reminder does not exist', async () => {
+    await answerCall('missing_reminder', 'user1');
+
+    expect(NativeModules.LafinaSpeechToText.transcribe).not.toHaveBeenCalled();
+  });
+
+  it('recovers the call state when TTS playback fails', async () => {
+    NativeModules.LafinaTTS.playAudio.mockRejectedValueOnce(
+      new Error('playback failed')
+    );
+
+    await speakText('Recovery test.');
+
+    expect(DeviceEventEmitter.emit).toHaveBeenCalledWith(
+      'LAFINA_CALL_STATE_CHANGE',
+      { state: 'connected', text: '' }
+    );
+  });
+
+  it('falls back to NLU for an unrecognized response and retries locally', async () => {
+    const reminder = {
+      id: 'rem_retry',
+      userId: 'user1',
+      task: 'Research Review',
+      description: null,
+      scheduledAt: new Date().toISOString(),
+      triggerAt: new Date().toISOString(),
+      status: 'pending' as const,
+      preCastAudioPath: '/cache/retry.wav',
+    };
+    remindersStore.insertReminder(reminder);
+    NativeModules.LafinaSpeechToText.transcribe
+      .mockResolvedValueOnce('maybe today')
+      .mockResolvedValueOnce('acknowledge');
+    NativeModules.LafinaIntentExtractor.extractIntentJson.mockResolvedValueOnce(
+      JSON.stringify({
+        intent: 'out_of_scope',
+        task: null,
+        date: null,
+        time: null,
+        duration_minutes: null,
+        status: 'rejected',
+        reply: 'Please choose acknowledge or snooze.',
+      })
+    );
+
+    const disconnected = new Promise<void>((resolve) => {
+      emitMock.mockImplementation((eventName: string, ...params: unknown[]) => {
+        const payload = params[0];
+        if (
+          eventName === 'LAFINA_CALL_STATE_CHANGE' &&
+          typeof payload === 'object' &&
+          payload !== null &&
+          'state' in payload &&
+          payload.state === 'disconnected'
+        ) {
+          resolve();
+        }
+      });
+    });
+
+    await answerCall('rem_retry', 'user1');
+    await disconnected;
+
+    expect(
+      NativeModules.LafinaIntentExtractor.extractIntentJson
+    ).toHaveBeenCalledTimes(1);
+    expect(remindersStore.getReminderById('rem_retry')?.status).toBe(
+      'acknowledged'
+    );
   });
 
   it('connects, plays greeting, transcribes response, and acknowledges reminder', async () => {
@@ -105,24 +187,16 @@ describe('callDispatcher controller', () => {
 
     remindersStore.insertReminder(reminder);
 
-    // Mock NLU response to be snooze intent with 10 min duration
-    NativeModules.LafinaIntentExtractor.extractIntentJson.mockResolvedValueOnce(JSON.stringify({
-      intent: 'snooze',
-      task: null,
-      date: null,
-      time: null,
-      duration_minutes: 10,
-      status: 'success',
-      reply: 'Snoozed study session for 10 minutes.',
-    }));
-    NativeModules.LafinaSpeechToText.snooze = jest.fn();
-    NativeModules.LafinaSpeechToText.transcribe.mockResolvedValueOnce('snooze');
+    NativeModules.LafinaSpeechToText.transcribe.mockResolvedValueOnce(
+      'snooze for 10 minutes'
+    );
 
     await answerCall('rem_snooze', 'user1');
 
     const updated = remindersStore.getReminderById('rem_snooze');
     expect(updated?.status).toBe('snoozed');
     expect(updated?.snoozeCount).toBe(1);
+    expect(NativeModules.LafinaIntentExtractor.extractIntentJson).not.toHaveBeenCalled();
 
     // Verify it rescheduled in the future (around 10 minutes from now)
     const timeDiff = new Date(updated?.triggerAt || '').getTime() - Date.now();

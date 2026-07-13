@@ -263,16 +263,16 @@ const parseTimeRange = (command: string): ParsedTimeRange | null => {
   };
 };
 
-const extractSingleTimeMatch = (command: string): { title: string; time: string | null } => {
+const extractSingleTimeMatch = (command: string): string | null => {
   const normalized = normalizeCommandText(command);
   const timeRegex = /(?:\b(?:at|by|for)\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/gi;
   let timeMatch: RegExpExecArray | null = timeRegex.exec(normalized);
 
   if (!timeMatch) {
-    const fallbackRegex = /(?:\b(?:at|by|for)\s+)?(\d{1,2}(?::\d{2})?)\b/gi;
+    const fallbackRegex = /\b(?:at|by|from)\s+(\d{1,2}(?::\d{2})?)\b|\b((?:[01]?\d|2[0-3]):[0-5]\d)\b/gi;
     let m: RegExpExecArray | null;
     while ((m = fallbackRegex.exec(normalized)) !== null) {
-      const candidate = parseFlexibleTime(m[1]);
+      const candidate = parseFlexibleTime(m[1] ?? m[2]);
       if (candidate) {
         timeMatch = m;
         break;
@@ -282,13 +282,10 @@ const extractSingleTimeMatch = (command: string): { title: string; time: string 
 
   let parsedTime: string | null = null;
   if (timeMatch) {
-    parsedTime = parseFlexibleTime(timeMatch[1]);
+    parsedTime = parseFlexibleTime(timeMatch[1] ?? timeMatch[2]);
   }
 
-  return {
-    title: '',
-    time: parsedTime,
-  };
+  return parsedTime;
 };
 
 const cleanTaskTitle = (command: string): string => {
@@ -297,7 +294,7 @@ const cleanTaskTitle = (command: string): string => {
   // 1. Remove conversational intros & action keywords
   title = title
     .replace(/\b(um|uh|so|like|i\s+need\s+to|remember\s+to|need\s+to|have\s+to)\b/gi, '')
-    .replace(/\b(schedule|set|add|create|remind\s+me|remind)\s*(a|an|the)?\b/gi, '')
+    .replace(/\b(schedule|set(?:\s+up)?|add|create|remind\s+me(?:\s+to)?|remind)\s*(a|an|the)?\b/gi, '')
     .replace(/\b(task|meeting|timeblock|time\s+block|block|event)\s*(a|an|the)?\b/gi, '');
 
   // 2. Remove date expressions
@@ -315,16 +312,24 @@ const cleanTaskTitle = (command: string): string => {
     .replace(relativeDatePattern, '');
 
   // 3. Remove time expressions
-  const timeRegex = /(?:\b(?:at|by|for)\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b/gi;
-  title = title.replace(TIME_RANGE_PATTERN, '').replace(timeRegex, '');
+  const meridiemTimePattern = /(?:\b(?:at|by|from)\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi;
+  const clockTimePattern = /(?:\b(?:at|by|from)\s+)?(?:[01]?\d|2[0-3]):[0-5]\d\b/gi;
+  title = title
+    .replace(TIME_RANGE_PATTERN, '')
+    .replace(meridiemTimePattern, '')
+    .replace(clockTimePattern, '');
 
   // 4. Remove recurrence phrases
   const recurrencePattern =
     /\b(every\s+(day|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat)|every|daily|weekly|monthly)\b/gi;
   title = title.replace(recurrencePattern, '');
 
-  // 5. Remove dangling prepositions
-  title = title.replace(/\b(on|at|by|for|the|starting)\b/gi, '');
+  // 5. Remove only dangling prepositions so meaningful phrases such as
+  // "study for calculus" remain intact.
+  title = title
+    .replace(/\bthe\b/gi, '')
+    .replace(/^[\s,:-]*(?:(?:on|at|by|for|starting)\b[\s,:-]*)+/i, '')
+    .replace(/(?:[\s,:-]*(?:on|at|by|for|starting)\b)+[\s,:-]*$/i, '');
 
   // 6. Strip punctuation & whitespace
   title = title.replace(/^[.\s,]+|[.\s,]+$/g, '').replace(/\s+/g, ' ').trim();
@@ -352,8 +357,8 @@ export const createFallbackNluResult = (
   const trimmedCommand = command.trim();
   const lowercaseCommand = trimmedCommand.toLowerCase();
 
-  const singleTimeMatch = extractSingleTimeMatch(trimmedCommand);
-  const date = resolveCommandDate(trimmedCommand, referenceDate, singleTimeMatch.time);
+  const singleTime = extractSingleTimeMatch(trimmedCommand);
+  const date = resolveCommandDate(trimmedCommand, referenceDate, singleTime);
   const range = parseTimeRange(trimmedCommand);
   const recurrence = extractRecurrencePattern(trimmedCommand);
 
@@ -403,7 +408,7 @@ export const createFallbackNluResult = (
     lowercaseCommand.includes('time block') ||
     lowercaseCommand.includes('remind me') ||
     lowercaseCommand.includes('need to') ||
-    singleTimeMatch.time !== null;
+    singleTime !== null;
 
   if (isExplicitScheduling) {
     const title = cleanTaskTitle(trimmedCommand);
@@ -411,7 +416,7 @@ export const createFallbackNluResult = (
       intent: 'schedule',
       task: title,
       date,
-      time: singleTimeMatch.time,
+      time: singleTime,
       duration_minutes: null,
       recurrence: recurrence !== 'none' ? recurrence : null,
       status: 'success',

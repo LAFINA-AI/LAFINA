@@ -2,7 +2,7 @@ import { NativeModules, PermissionsAndroid } from 'react-native';
 import { AI_MODEL_ASSETS } from '../modelAssets';
 import { parseNluJson } from '../nlu/jsonParser';
 import { buildNluPrompt } from '../nlu/prompt';
-import { processCommand } from '../nlu/parser';
+import { createFallbackNluResult, processCommand } from '../nlu/parser';
 import { applyNluScheduleResult } from '../nlu/scheduler';
 import type { CreatedScheduleItemType, NluResult } from '../nlu/types';
 import type { OfflineModelReference } from '../modelAssets';
@@ -197,6 +197,14 @@ export const runOfflineVoiceScheduling = async (userId: string): Promise<VoicePi
  */
 export const runLocalLlmChat = async (userText: string, userId: string): Promise<string> => {
   const modules = getNativeVoiceModules();
+  const deterministicResult = createFallbackNluResult(userText);
+
+  // Scheduling commands are handled deterministically first. This avoids an
+  // unnecessary native-model round trip and keeps title/date extraction
+  // consistent between typed chat and the offline fallback path.
+  if (deterministicResult.intent === 'schedule') {
+    return applyNluScheduleResult(deterministicResult, userId).reply;
+  }
 
   if (modules.LafinaIntentExtractor) {
     try {

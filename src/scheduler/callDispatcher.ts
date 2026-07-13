@@ -1,6 +1,6 @@
 import { NativeModules, DeviceEventEmitter } from 'react-native';
 import { remindersStore } from '../storage';
-import { playSpeechFile, speakTextWithTts } from '../ai/tts/ttsService';
+import { playSpeechFile, speakTextWithTts, synthesizeSpeech } from '../ai/tts/ttsService';
 import { getReminderPreferences } from './userPreferences';
 import { parseNluJson } from '../ai/nlu/jsonParser';
 import { buildNluPrompt } from '../ai/nlu/prompt';
@@ -20,6 +20,23 @@ interface CallDispatcherSession {
 }
 
 let activeSession: CallDispatcherSession | null = null;
+
+const ACKNOWLEDGE_CONFIRMATION = 'Great! Task acknowledged. Have a productive day.';
+
+const getSnoozeConfirmation = (minutes: number): string => {
+  return `Snoozed for ${minutes} minutes.`;
+};
+
+const warmCallResponseAudio = async (defaultSnoozeMinutes: number): Promise<void> => {
+  try {
+    // Warm snooze first because acknowledgement is more likely to already be
+    // cached. Sequential synthesis avoids competing ONNX inference threads.
+    await synthesizeSpeech(getSnoozeConfirmation(defaultSnoozeMinutes));
+    await synthesizeSpeech(ACKNOWLEDGE_CONFIRMATION);
+  } catch (error) {
+    console.warn('[CallDispatcher] Could not warm response audio:', error);
+  }
+};
 
 const getSTTModule = () => NativeModules.LafinaSpeechToText;
 const getIntentExtractor = () => NativeModules.LafinaIntentExtractor;
@@ -80,15 +97,20 @@ export const answerCall = async (reminderId: string, userId: string): Promise<vo
   };
 
   DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'connected', task: reminder.task });
+  const prefs = getReminderPreferences(userId);
 
   // 1. Speak the reminder prompt (use pre-cached audio if available)
   try {
     if (reminder.preCastAudioPath) {
+      warmCallResponseAudio(prefs.snoozeDurationMinutes);
       console.log('[CallDispatcher] Playing pre-cached audio');
       DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'speaking', text: reminder.task });
       await playAudioFile(reminder.preCastAudioPath);
     } else {
       await speakText(`Hey! This is LAFINA. You scheduled "${reminder.task}" for today. Would you like to acknowledge or snooze it?`);
+      // The greeting initializes Kokoro when it was not pre-cached. Warm the
+      // short responses while STT is listening instead of competing with it.
+      warmCallResponseAudio(prefs.snoozeDurationMinutes);
     }
   } catch (e) {
     console.error('[CallDispatcher] Failed to play initial greeting:', e);
@@ -115,18 +137,13 @@ const quickMatchIntent = (transcript: string, defaultSnoozeMins: number): NluRes
       time: null,
       duration_minutes: null,
       status: 'success',
-      reply: 'Great! Task acknowledged. Have a productive day.',
+      reply: ACKNOWLEDGE_CONFIRMATION,
     };
   }
 
   // Match Snooze (snooze, later, wait, delay, minutes, mins)
   const snoozeRegex = /\b(snooze|later|delay|wait|minutes|mins|min|snoozed)\b/;
   if (snoozeRegex.test(normalized)) {
-    // In Jest tests, if the user says exactly "snooze", let NLU run so test mocks can specify custom durations
-    if ((globalThis as any).process?.env?.NODE_ENV === 'test' && normalized === 'snooze') {
-      return null;
-    }
-
     // Attempt to parse minutes if specified
     const numberMatch = normalized.match(/\b(\d+)\b/);
     let minutes = defaultSnoozeMins;
@@ -143,7 +160,7 @@ const quickMatchIntent = (transcript: string, defaultSnoozeMins: number): NluRes
       time: null,
       duration_minutes: minutes,
       status: 'success',
-      reply: `Snoozed for ${minutes} minutes.`,
+      reply: getSnoozeConfirmation(minutes),
     };
   }
 
@@ -204,7 +221,7 @@ const runCallLoop = async (): Promise<void> => {
     // 3. Act on Intent
     if (nluResult.intent === 'acknowledge') {
       remindersStore.acknowledgeReminder(activeSession.reminderId);
-      await speakText(nluResult.reply || 'Great! Task acknowledged. Have a productive day.');
+      await speakText(nluResult.reply || ACKNOWLEDGE_CONFIRMATION);
       disconnectCall();
     } else if (nluResult.intent === 'snooze') {
       // Parse snooze duration, default to user's onboarding pref if not specified
@@ -218,7 +235,7 @@ const runCallLoop = async (): Promise<void> => {
       }
 
       remindersStore.snoozeReminder(activeSession.reminderId, minutes);
-      await speakText(nluResult.reply || `Snoozed for ${minutes} minutes.`);
+      await speakText(nluResult.reply || getSnoozeConfirmation(minutes));
       disconnectCall();
     } else {
       // Out of scope / unrecognized

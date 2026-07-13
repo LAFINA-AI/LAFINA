@@ -212,6 +212,46 @@ describe('offline NLU scheduling', () => {
     });
   });
 
+  it('extracts a named event title instead of leaving the time preposition', () => {
+    const result = createFallbackNluResult(
+      'schedule an event Thesis Defense at 3pm tomorrow',
+      MOCK_MONDAY_NOON
+    );
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'Thesis Defense',
+      date: '2026-07-07',
+      time: '15:00',
+    });
+  });
+
+  it('uses a safe generic title when no event name is provided', () => {
+    const result = createFallbackNluResult(
+      'schedule an event at 3pm tomorrow',
+      MOCK_MONDAY_NOON
+    );
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'Scheduled Event',
+      time: '15:00',
+    });
+  });
+
+  it('preserves meaningful numbers and prepositions in task names', () => {
+    const result = createFallbackNluResult(
+      'add task Review chapter 5 for calculus by 9pm',
+      MOCK_MONDAY_NOON
+    );
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'Review chapter 5 for calculus',
+      time: '21:00',
+    });
+  });
+
   it('schedules a recurring weekly time block for "every monday at 10-11 am schedule a timeblock for studying"', () => {
     const userId = 'studying_user';
     insertUser(userId);
