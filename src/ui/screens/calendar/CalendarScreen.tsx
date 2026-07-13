@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
+  Modal,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Plus, ChevronLeft, ChevronRight, ChevronDown, Upload, Download, Layers } from 'lucide-react-native';
+import { Plus, ChevronLeft, ChevronRight, ChevronDown, Upload, Download, Layers, Clock, CheckSquare, FileText } from 'lucide-react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Colors, Shadows } from '../../theme';
 import { getCategoryColor } from '../../theme/categoryColors';
@@ -14,10 +15,12 @@ import { useCalendarData } from './hooks/useCalendarData';
 import { useTimeBlockModal } from './hooks/useTimeBlockModal';
 import { useScheduleItemModal } from './hooks/useScheduleItemModal';
 import { WeekView, MonthView, DayView, AddBlockModal, AddTaskEventModal } from './components';
+import { NoteEditor } from '../notes/components/NoteEditor';
 import { getHeaderTitle } from './utils/calendarHelpers';
 import { CalendarScreenProps, ViewMode } from './types';
-import { tasksStore } from '../../../storage';
+import { tasksStore, notesStore } from '../../../storage';
 import type { Task } from '../../../storage';
+import { generateId } from '../../../utils';
 import { CalendarLayersModal } from '../../components/calendar/CalendarLayersModal';
 
 export const CalendarScreen: React.FC<CalendarScreenProps> = ({
@@ -28,6 +31,14 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   onViewModeChange: propOnViewModeChange,
 }) => {
   const { colors, isDarkMode } = useTheme();
+
+  const [fabMenuVisible, setFabMenuVisible] = useState(false);
+  const [noteModalVisible, setNoteModalVisible] = useState(false);
+  const [noteTitle, setNoteTitle] = useState('');
+  const [noteBody, setNoteBody] = useState('');
+  const [noteCategory, setNoteCategory] = useState('Personal');
+  const [isPinned, setIsPinned] = useState(false);
+  const [noteSelection, setNoteSelection] = useState({ start: 0, end: 0 });
 
   const calendar = useCalendarData({
     userId,
@@ -52,7 +63,31 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   });
 
   const handleFABPress = () => {
-    blockModal.openNewBlock();
+    setFabMenuVisible(true);
+  };
+
+  const handleSaveNote = () => {
+    if (!noteTitle.trim() && !noteBody.trim()) {
+      setNoteModalVisible(false);
+      return;
+    }
+    notesStore.insert({
+      id: generateId('note'),
+      userId,
+      title: noteTitle.trim() || 'Untitled Note',
+      body: noteBody,
+      category: noteCategory,
+      isPinned: isPinned,
+      tags: [],
+      isVoiceTranscribed: false,
+      imageUri: null,
+    });
+    setNoteTitle('');
+    setNoteBody('');
+    setNoteCategory('Personal');
+    setIsPinned(false);
+    setNoteModalVisible(false);
+    onRefresh();
   };
 
   const toggleTaskCompletion = (task: Task) => {
@@ -302,6 +337,120 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
         onToggleVisibility={calendar.handleToggleVisibility}
         onRemoveBatch={calendar.handleRemoveBatch}
       />
+
+      {/* FAB Choice Overlay Menu */}
+      <Modal
+        visible={fabMenuVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setFabMenuVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setFabMenuVisible(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBg, borderColor: colors.border, borderWidth: 1.5 }]}>
+            <Text style={[styles.modalHeaderTitle, { color: colors.textPrimary, textAlign: 'center' }]}>Create New</Text>
+            
+            <TouchableOpacity
+              style={[styles.fabMenuItem, { borderBottomColor: colors.divider }]}
+              onPress={() => {
+                setFabMenuVisible(false);
+                blockModal.openNewBlock();
+              }}
+            >
+              <Clock size={20} color={colors.blue} style={styles.fabMenuItemIcon} />
+              <Text style={[styles.fabMenuItemText, { color: colors.textPrimary }]}>Time Block</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.fabMenuItem, { borderBottomColor: colors.divider }]}
+              onPress={() => {
+                setFabMenuVisible(false);
+                scheduleModal.openNew('task');
+              }}
+            >
+              <CheckSquare size={20} color={colors.red} style={styles.fabMenuItemIcon} />
+              <Text style={[styles.fabMenuItemText, { color: colors.textPrimary }]}>Task</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.fabMenuItem, { borderBottomColor: colors.divider }]}
+              onPress={() => {
+                setFabMenuVisible(false);
+                setNoteTitle('');
+                setNoteBody('');
+                setNoteCategory('Personal');
+                setIsPinned(false);
+                setNoteSelection({ start: 0, end: 0 });
+                setNoteModalVisible(true);
+              }}
+            >
+              <FileText size={20} color={colors.textSecondary} style={styles.fabMenuItemIcon} />
+              <Text style={[styles.fabMenuItemText, { color: colors.textPrimary }]}>Note</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: colors.divider, marginTop: 16, alignSelf: 'stretch', alignItems: 'center' }]}
+              onPress={() => setFabMenuVisible(false)}
+            >
+              <Text style={[styles.modalBtnTextDark, { color: colors.textPrimary, fontWeight: 'bold' }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Full Note Editor Modal matching NotesScreen */}
+      <NoteEditor
+        visible={noteModalVisible}
+        editingNote={null}
+        noteTitle={noteTitle}
+        noteBody={noteBody}
+        noteCategory={noteCategory}
+        noteTags={[]}
+        isPinned={isPinned}
+        imageUri={null}
+        selection={noteSelection}
+        aiLoading={false}
+        aiActionType=""
+        onTitleChange={setNoteTitle}
+        onBodyChange={setNoteBody}
+        onCategoryChange={setNoteCategory}
+        onPinToggle={() => setIsPinned(p => !p)}
+        onImageUriChange={() => {}}
+        onSelectionChange={setNoteSelection}
+        onClose={() => setNoteModalVisible(false)}
+        onSave={handleSaveNote}
+        onDelete={() => {}}
+        onFormatting={(type) => {
+          const { start, end } = noteSelection;
+          const before = noteBody.substring(0, start);
+          const selected = noteBody.substring(start, end);
+          const after = noteBody.substring(end);
+          let newText = '';
+          let newCursorPos = start;
+
+          if (type === 'bold') {
+            newText = start === end ? `${before}****${after}` : `${before}**${selected}**${after}`;
+            newCursorPos = start === end ? start + 2 : start + 2 + selected.length + 2;
+          } else if (type === 'italic') {
+            newText = start === end ? `${before}**${after}` : `${before}*${selected}*${after}`;
+            newCursorPos = start === end ? start + 1 : start + 1 + selected.length + 1;
+          } else if (type === 'checklist') {
+            const needsNewline = start > 0 && noteBody.charAt(start - 1) !== '\n';
+            const prefix = needsNewline ? '\n- [ ] ' : '- [ ] ';
+            newText = `${before}${prefix}${selected}${after}`;
+            newCursorPos = start + prefix.length + selected.length;
+          }
+
+          setNoteBody(newText);
+          setNoteSelection({ start: newCursorPos, end: newCursorPos });
+        }}
+        onAttachImage={() => {}}
+        onRemoveImage={() => {}}
+        onAiAction={() => {}}
+      />
     </View>
   );
 };
@@ -478,5 +627,70 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.red,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+  },
+  modalHeaderTitle: {
+    fontFamily: 'sans-serif-medium',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  textArea: {
+    height: 120,
+    textAlignVertical: 'top',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 8,
+  },
+  modalBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  saveBtn: {
+    backgroundColor: Colors.red,
+  },
+  cancelBtn: {},
+  modalBtnText: {
+    color: Colors.textLight,
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  modalBtnTextDark: {
+    fontSize: 14,
+  },
+  fabMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  fabMenuItemIcon: {
+    marginRight: 16,
+  },
+  fabMenuItemText: {
+    fontSize: 15,
+    fontFamily: 'sans-serif-medium',
   },
 });
