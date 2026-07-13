@@ -35,7 +35,7 @@ jest.mock('react-native', () => {
     playAudio: jest.fn().mockResolvedValue(true),
   };
 
-  rn.NativeModules.LafinaSpeechToText = {
+  rn.NativeModules.LafinaCallSpeechToText = {
     transcribe: jest.fn().mockResolvedValue('acknowledge'),
   };
 
@@ -83,7 +83,7 @@ describe('callDispatcher controller', () => {
   it('returns safely when the requested reminder does not exist', async () => {
     await answerCall('missing_reminder', 'user1');
 
-    expect(NativeModules.LafinaSpeechToText.transcribe).not.toHaveBeenCalled();
+    expect(NativeModules.LafinaCallSpeechToText.transcribe).not.toHaveBeenCalled();
   });
 
   it('recovers the call state when TTS playback fails', async () => {
@@ -111,7 +111,7 @@ describe('callDispatcher controller', () => {
       preCastAudioPath: '/cache/retry.wav',
     };
     remindersStore.insertReminder(reminder);
-    NativeModules.LafinaSpeechToText.transcribe
+    NativeModules.LafinaCallSpeechToText.transcribe
       .mockResolvedValueOnce('maybe today')
       .mockResolvedValueOnce('acknowledge');
     NativeModules.LafinaIntentExtractor.extractIntentJson.mockResolvedValueOnce(
@@ -177,7 +177,7 @@ describe('callDispatcher controller', () => {
     expect(NativeModules.LafinaTTS.playAudio).toHaveBeenCalledWith('/cache/audio.wav');
     
     // Verify SpeechToText was run
-    expect(NativeModules.LafinaSpeechToText.transcribe).toHaveBeenCalled();
+    expect(NativeModules.LafinaCallSpeechToText.transcribe).toHaveBeenCalled();
 
     // Verify final disconnect event was sent
     expect(DeviceEventEmitter.emit).toHaveBeenCalledWith('LAFINA_CALL_STATE_CHANGE', {
@@ -199,7 +199,7 @@ describe('callDispatcher controller', () => {
 
     remindersStore.insertReminder(reminder);
 
-    NativeModules.LafinaSpeechToText.transcribe.mockResolvedValueOnce(
+    NativeModules.LafinaCallSpeechToText.transcribe.mockResolvedValueOnce(
       'snooze for 10 minutes'
     );
 

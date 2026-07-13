@@ -21,7 +21,7 @@ jest.mock('react-native', () => {
     synthesize: jest.fn().mockResolvedValue(true),
     playAudio: jest.fn().mockResolvedValue(true),
   };
-  rn.NativeModules.LafinaSpeechToText = {
+  rn.NativeModules.LafinaCallSpeechToText = {
     transcribe: jest.fn(),
     stopListening: jest.fn().mockResolvedValue(true),
   };
@@ -73,7 +73,7 @@ describe('offline reminder call integration', () => {
       expect.objectContaining({ reminderId: 'rem_offline_flow' })
     );
 
-    NativeModules.LafinaSpeechToText.transcribe.mockResolvedValueOnce({
+    NativeModules.LafinaCallSpeechToText.transcribe.mockResolvedValueOnce({
       transcript: 'snooze 10 minutes',
       speechDetected: true,
       captureDurationMs: 2100,
@@ -97,7 +97,7 @@ describe('offline reminder call integration', () => {
       'triggered'
     );
 
-    NativeModules.LafinaSpeechToText.transcribe.mockResolvedValueOnce({
+    NativeModules.LafinaCallSpeechToText.transcribe.mockResolvedValueOnce({
       transcript: 'acknowledge',
       speechDetected: true,
       captureDurationMs: 1400,

@@ -11,6 +11,7 @@ class LafinaVoicePackage : ReactPackage {
     return listOf(
       LafinaVoiceInputModule(reactContext),
       LafinaSpeechToTextModule(reactContext),
+      LafinaCallSpeechToTextModule(reactContext),
       LafinaIntentExtractorModule(reactContext),
       LafinaTTSModule(reactContext),
       LafinaReminderModule(reactContext)

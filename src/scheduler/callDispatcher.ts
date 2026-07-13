@@ -82,7 +82,7 @@ const warmCallResponseAudio = async (defaultSnoozeMinutes: number): Promise<void
 };
 
 const getSTTModule = (): SpeechToTextModule | null => {
-  const module = NativeModules.LafinaSpeechToText as SpeechToTextModule | undefined;
+  const module = NativeModules.LafinaCallSpeechToText as SpeechToTextModule | undefined;
   return module?.transcribe ? module : null;
 };
 

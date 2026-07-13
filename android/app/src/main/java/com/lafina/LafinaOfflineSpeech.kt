@@ -101,7 +101,7 @@ private class SileroVadProcessor(private val reactContext: ReactApplicationConte
   }
 }
 
-class LafinaSpeechToTextModule(private val reactContext: ReactApplicationContext) :
+class LafinaCallSpeechToTextModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
   private val executor = Executors.newSingleThreadExecutor()
   private val cancelled = AtomicBoolean(false)
@@ -109,7 +109,7 @@ class LafinaSpeechToTextModule(private val reactContext: ReactApplicationContext
   @Volatile private var whisperContext: Long = 0L
   private var vadProcessor: SileroVadProcessor? = null
 
-  override fun getName(): String = "LafinaSpeechToText"
+  override fun getName(): String = "LafinaCallSpeechToText"
 
   private fun sendEvent(eventName: String, params: WritableMap) {
     if (reactContext.hasActiveReactInstance()) {
