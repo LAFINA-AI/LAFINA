@@ -12,6 +12,7 @@ import {
   Keyboard,
   NativeModules,
   DeviceEventEmitter,
+  PermissionsAndroid,
 } from 'react-native';
 import { Colors, Fonts, Shadows } from '../theme';
 import { X, Check, ArrowRight, Mic } from 'lucide-react-native';
@@ -50,9 +51,43 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
   const waveBars = useRef(Array.from({ length: 9 }, () => new Animated.Value(8))).current;
   const waveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeCaptureRef = useRef(0);
+  const microphoneRequestRef = useRef<Promise<boolean> | null>(null);
 
   const { colors } = useTheme();
   const themed = useThemedStyles((c, d) => getVoiceThemedStyles(c, d));
+
+  const ensureMicrophonePermission = useCallback(async (): Promise<boolean> => {
+    try {
+      if (await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO)) {
+        return true;
+      }
+
+      if (!microphoneRequestRef.current) {
+        microphoneRequestRef.current = PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: 'Microphone access',
+            message: 'LAFINA needs microphone access to transcribe scheduling commands.',
+            buttonPositive: 'Allow',
+            buttonNegative: 'Not now',
+          }
+        ).then(result => result === PermissionsAndroid.RESULTS.GRANTED);
+      }
+
+      return await microphoneRequestRef.current;
+    } catch (error) {
+      console.error('Failed to request microphone permission:', error);
+      return false;
+    } finally {
+      microphoneRequestRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (visible) {
+      void ensureMicrophonePermission();
+    }
+  }, [ensureMicrophonePermission, visible]);
 
   useEffect(() => {
     const partialSub = DeviceEventEmitter.addListener('onSpeechPartialResult', (e: { transcript?: string }) => {
@@ -165,6 +200,16 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
   const handlePressIn = useCallback(async () => {
     const captureId = activeCaptureRef.current + 1;
     activeCaptureRef.current = captureId;
+
+    const hasPermission = await ensureMicrophonePermission();
+    if (activeCaptureRef.current !== captureId) return;
+    if (!hasPermission) {
+      setTranscribedText('');
+      setDebugText('Microphone access is required to transcribe speech.');
+      triggerErrorShake('idle');
+      return;
+    }
+
     setVoiceState('listening');
     setTranscribedText('Listening...');
     setDebugText('');
@@ -176,8 +221,10 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
       }
     } catch (err) {
       console.error('Failed to start SpeechRecognizer on press in:', err);
+      setDebugText('Speech recognition could not start. Please try again.');
+      triggerErrorShake('idle');
     }
-  }, []);
+  }, [ensureMicrophonePermission, triggerErrorShake]);
 
   // Release mic button to stop recording and process speech
   const handlePressOut = useCallback(async () => {

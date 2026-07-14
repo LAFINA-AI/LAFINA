@@ -35,7 +35,20 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
 
   const updateField = useCallback(<K extends keyof ScheduleItemForm>(key: K, value: ScheduleItemForm[K]) => {
-    setForm(prev => ({ ...prev, [key]: value }));
+    setForm(prev => {
+      const next = { ...prev, [key]: value };
+      if (key === 'time') {
+        const startStr = value as string;
+        const [h, m] = startStr.split(':').map(Number);
+        const date = new Date();
+        date.setHours(isNaN(h) ? 0 : h, isNaN(m) ? 0 : m, 0, 0);
+        date.setHours(date.getHours() + 1);
+        const nextH = date.getHours().toString().padStart(2, '0');
+        const nextM = date.getMinutes().toString().padStart(2, '0');
+        next.endTime = `${nextH}:${nextM}`;
+      }
+      return next;
+    });
   }, []);
 
   const openNew = useCallback((type: 'task' | 'event') => {

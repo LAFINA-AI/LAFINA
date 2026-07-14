@@ -295,7 +295,7 @@ const cleanTaskTitle = (command: string): string => {
   title = title
     .replace(/\b(um|uh|so|like|i\s+need\s+to|remember\s+to|need\s+to|have\s+to)\b/gi, '')
     .replace(/\b(schedule|set(?:\s+up)?|add|create|remind\s+me(?:\s+to)?|remind)\s*(a|an|the)?\b/gi, '')
-    .replace(/\b(task|meeting|timeblock|time\s+block|block|event)\s*(a|an|the)?\b/gi, '');
+    .replace(/\b(task|timeblock|time\s+block|block|event)\s*(a|an|the)?\b/gi, '');
 
   // 2. Remove date expressions
   const monthPattern =

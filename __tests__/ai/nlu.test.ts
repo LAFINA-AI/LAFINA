@@ -112,6 +112,19 @@ describe('offline NLU scheduling', () => {
     });
   });
 
+  it('preserves meeting as part of a deterministic schedule title', () => {
+    const result = createFallbackNluResult(
+      'Set a schedule for meeting with Yohan at 3:30pm',
+      MOCK_MONDAY_NOON
+    );
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'meeting with Yohan',
+      time: '15:30',
+    });
+  });
+
   it('parses "next Monday" semantics skipping to following week', () => {
     const result = createFallbackNluResult('schedule a meeting 9pm next Monday', MOCK_MONDAY_NOON);
 
