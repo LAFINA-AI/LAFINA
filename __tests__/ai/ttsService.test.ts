@@ -93,11 +93,11 @@ describe('offline TTS service', () => {
     );
 
     expect(RNFS.unlink).toHaveBeenCalledWith(
-      '/cache/tts_cache/tts_reminder_1.wav'
+      '/documents/tts_reminders/tts_reminder_1.wav'
     );
     expect(synthesize).toHaveBeenCalledWith(
       'Your thesis defense begins soon.',
-      '/cache/tts_cache/tts_reminder_1.wav'
+      '/documents/tts_reminders/tts_reminder_1.wav'
     );
     expect(updateSpy).toHaveBeenCalledWith('reminder_1', path);
     updateSpy.mockRestore();

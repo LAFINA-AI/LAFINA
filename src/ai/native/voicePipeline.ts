@@ -43,8 +43,17 @@ interface LafinaVoiceInputModule {
   stopRecording?: () => Promise<boolean>;
 }
 
+interface OfflineTranscriptionResult {
+  transcript: string;
+  speechDetected: boolean;
+  captureDurationMs: number;
+  inferenceDurationMs: number;
+}
+
 interface LafinaSpeechToTextModule {
-  transcribe: (request: TranscribeRequest) => Promise<string>;
+  transcribe: (
+    request: TranscribeRequest
+  ) => Promise<string | OfflineTranscriptionResult>;
 }
 
 interface LafinaIntentExtractorModule {
@@ -147,11 +156,14 @@ export const runOfflineVoiceScheduling = async (userId: string): Promise<VoicePi
       );
     }
 
-    const transcript = (await modules.LafinaSpeechToText.transcribe({
+    const transcription = await modules.LafinaSpeechToText.transcribe({
       audioFilePath: utterance.audioFilePath,
       model: AI_MODEL_ASSETS.stt,
       language: 'en',
-    })).trim();
+    });
+    const transcript = (
+      typeof transcription === 'string' ? transcription : transcription.transcript
+    ).trim();
 
     if (transcript.length === 0) {
       return unavailableResult(

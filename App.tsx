@@ -9,16 +9,25 @@ import {
   ActivityIndicator,
   Keyboard,
   DeviceEventEmitter,
-  NativeModules,
+  Alert,
+  PermissionsAndroid,
 } from 'react-native';
+import type { AlertButton } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Colors } from './src/ui/theme';
-import { initDatabase, db, userStore } from './src/storage';
+import { initDatabase, remindersStore, userStore } from './src/storage';
 import { CustomTabBar, TabType } from './src/ui/components/CustomTabBar';
 import { VoiceModal } from './src/ui/components/VoiceModal';
 import { ThemeProvider, useTheme } from './src/ui/contexts/ThemeContext';
-import { SPLASH_DELAY_MS, DEFAULT_USER_ID } from './src/constants';
-import { startSchedulerDaemon, stopSchedulerDaemon } from './src/scheduler';
+import { SPLASH_DELAY_MS } from './src/constants';
+import {
+  consumePendingNativeCall,
+  getReminderPermissionStatus,
+  openExactAlarmSettings,
+  openFullScreenIntentSettings,
+  reconcileReminderAlarms,
+} from './src/scheduler';
+import type { NativeCallAction, NativeCallTrigger } from './src/scheduler';
 
 
 // Screens
@@ -53,6 +62,7 @@ function AppContent({
   const [callVisible, setCallVisible] = useState(false);
   const [callReminderId, setCallReminderId] = useState('');
   const [callTask, setCallTask] = useState('');
+  const [callAction, setCallAction] = useState<NativeCallAction>('call');
   const [calendarViewMode, setCalendarViewMode] = useState<ViewMode>('week');
 
   const { colors } = useTheme();
@@ -67,44 +77,81 @@ function AppContent({
     };
   }, []);
 
-  // Control scheduler daemon and background service
+  // Reconcile exact alarms and consume a call that launched a cold app process.
   useEffect(() => {
-    if (userId) {
-      startSchedulerDaemon(userId);
+    if (!userId) return;
 
-      const reminderModule = NativeModules.LafinaReminder;
-      if (reminderModule && reminderModule.startService) {
-        reminderModule.startService().catch((err: unknown) => {
-          console.error('Failed to start LafinaReminder foreground service:', err);
+    void reconcileReminderAlarms(remindersStore.getPendingReminders(userId));
+    void (async (): Promise<void> => {
+      let status = await getReminderPermissionStatus();
+      if (status && !status.notificationsEnabled) {
+        await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+        );
+        status = await getReminderPermissionStatus();
+      }
+      if (!status || (status.canScheduleExactAlarms && status.canUseFullScreenIntent)) {
+        return;
+      }
+
+      const buttons: AlertButton[] = [{ text: 'Later', style: 'cancel' }];
+      if (!status.canScheduleExactAlarms) {
+        buttons.push({
+          text: 'Alarm access',
+          onPress: () => void openExactAlarmSettings(),
         });
       }
-    } else {
-      stopSchedulerDaemon();
-      const reminderModule = NativeModules.LafinaReminder;
-      if (reminderModule && reminderModule.stopService) {
-        reminderModule.stopService().catch((err: unknown) => {
-          console.error('Failed to stop LafinaReminder foreground service:', err);
+      if (!status.canUseFullScreenIntent) {
+        buttons.push({
+          text: 'Full-screen access',
+          onPress: () => void openFullScreenIntentSettings(),
         });
       }
-    }
-    return () => {
-      stopSchedulerDaemon();
-    };
-  }, [userId]);
-
-  // Listen for simulated call trigger events
-  useEffect(() => {
-    const triggerSub = DeviceEventEmitter.addListener('LAFINA_CALL_TRIGGER', (event) => {
-      console.log('[App] Received LAFINA_CALL_TRIGGER:', event);
-      setCallReminderId(event.reminderId);
-      setCallTask(event.task);
+      Alert.alert(
+        'Enable reminder calls',
+        'LAFINA needs Android alarm and full-screen access to ring reliably while the app is closed.',
+        buttons
+      );
+    })().catch((error: unknown) => {
+      console.error('[App] Failed to prepare reminder permissions:', error);
+    });
+    void consumePendingNativeCall().then((payload) => {
+      if (!payload) return;
+      const reminder = remindersStore.getReminderById(payload.reminderId);
+      if (!reminder || reminder.userId !== userId) return;
+      setCallReminderId(reminder.id);
+      setCallTask(payload.task || reminder.task);
+      setCallAction(payload.action);
       setCallVisible(true);
     });
+  }, [userId]);
+
+  // Listen for both foreground scheduler events and native alarm/activity intents.
+  useEffect(() => {
+    const showCall = (event: NativeCallTrigger): void => {
+      const reminder = remindersStore.getReminderById(event.reminderId);
+      if (!reminder || (userId && reminder.userId !== userId)) return;
+      setCallReminderId(reminder.id);
+      setCallTask(event.task || reminder.task);
+      setCallAction(event.action);
+      setCallVisible(true);
+    };
+
+    const foregroundSubscription = DeviceEventEmitter.addListener(
+      'LAFINA_CALL_TRIGGER',
+      (event: { reminderId: string; task: string }) =>
+        showCall({ ...event, action: 'call' })
+    );
+    const nativeSubscription = DeviceEventEmitter.addListener(
+      'LAFINA_NATIVE_CALL_TRIGGER',
+      (event: NativeCallTrigger) => showCall(event)
+    );
 
     return () => {
-      triggerSub.remove();
+      foregroundSubscription.remove();
+      nativeSubscription.remove();
     };
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     const setupApp = async () => {
@@ -301,6 +348,7 @@ function AppContent({
           reminderId={callReminderId}
           task={callTask}
           userId={userId}
+          initialAction={callAction}
           onClose={() => {
             setCallVisible(false);
             triggerRefresh();

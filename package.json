@@ -7,6 +7,7 @@
     "graphify": "graphify",
     "lint": "eslint .",
     "preflight": "npm run typecheck && npm test && npm run lint",
+    "profile:call": "powershell -ExecutionPolicy Bypass -File scripts/profile-call.ps1",
     "start": "react-native start",
     "test": "jest",
     "test:coverage": "jest --coverage",

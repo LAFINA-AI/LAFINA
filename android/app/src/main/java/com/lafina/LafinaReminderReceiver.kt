@@ -3,28 +3,21 @@ package com.lafina
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 
 class LafinaReminderReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
-    val action = intent.action
-    if (action == Intent.ACTION_BOOT_COMPLETED) {
-      val serviceIntent = Intent(context, LafinaReminderService::class.java)
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        context.startForegroundService(serviceIntent)
-      } else {
-        context.startService(serviceIntent)
+    when (intent.action) {
+      LafinaReminderModule.ACTION_TRIGGER_REMINDER -> {
+        val reminderId = intent.getStringExtra("reminderId") ?: return
+        val task = intent.getStringExtra("task") ?: ""
+        LafinaReminderModule.handleAlarmTrigger(context, reminderId, task)
       }
-    } else if (action == "com.lafina.ACTION_TRIGGER_REMINDER") {
-      val reminderId = intent.getStringExtra("reminderId")
-      val serviceIntent = Intent(context, LafinaReminderService::class.java).apply {
-        putExtra("action", "trigger")
-        putExtra("reminderId", reminderId)
-      }
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        context.startForegroundService(serviceIntent)
-      } else {
-        context.startService(serviceIntent)
+      Intent.ACTION_BOOT_COMPLETED,
+      Intent.ACTION_MY_PACKAGE_REPLACED,
+      Intent.ACTION_TIME_CHANGED,
+      Intent.ACTION_TIMEZONE_CHANGED,
+      "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" -> {
+        LafinaReminderModule.restoreScheduledAlarms(context)
       }
     }
   }

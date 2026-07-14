@@ -1,14 +1,30 @@
-import { NativeModules, DeviceEventEmitter } from 'react-native';
+import { DeviceEventEmitter, NativeModules } from 'react-native';
 import { remindersStore } from '../storage';
-import { playSpeechFile, speakTextWithTts, synthesizeSpeech } from '../ai/tts/ttsService';
+import {
+  playSpeechFile,
+  speakTextWithTts,
+  synthesizeSpeech,
+} from '../ai/tts/ttsService';
 import { getReminderPreferences } from './userPreferences';
 import { parseNluJson } from '../ai/nlu/jsonParser';
 import { buildNluPrompt } from '../ai/nlu/prompt';
 import { AI_MODEL_ASSETS } from '../ai/modelAssets';
+import type { OfflineModelReference } from '../ai/modelAssets';
 import type { NluResult } from '../ai/nlu/types';
+import {
+  acknowledgeReminderAction,
+  autoSnoozeReminderAction,
+  snoozeReminderAction,
+} from './reminderActions';
+import { finishNativeIncomingCall } from './reminderAlarm';
 
-// Types of call flow state
-export type CallState = 'ringing' | 'connected' | 'speaking' | 'listening' | 'disconnected';
+export type CallState =
+  | 'ringing'
+  | 'connected'
+  | 'speaking'
+  | 'listening'
+  | 'processing'
+  | 'disconnected';
 
 interface CallDispatcherSession {
   reminderId: string;
@@ -19,71 +35,95 @@ interface CallDispatcherSession {
   retryCount: number;
 }
 
+interface TranscriptionResult {
+  transcript: string;
+}
+
+interface SpeechToTextModule {
+  transcribe: (options: { language: 'en' }) => Promise<string | TranscriptionResult>;
+  stopListening?: () => Promise<boolean>;
+}
+
+interface IntentExtractorModule {
+  extractIntentJson: (options: {
+    transcript: string;
+    prompt: string;
+    model: OfflineModelReference;
+    temperature: number;
+    maxTokens: number;
+  }) => Promise<string>;
+}
+
 let activeSession: CallDispatcherSession | null = null;
 
 const ACKNOWLEDGE_CONFIRMATION = 'Great! Task acknowledged. Have a productive day.';
 
-const getSnoozeConfirmation = (minutes: number): string => {
-  return `Snoozed for ${minutes} minutes.`;
-};
+const getSnoozeConfirmation = (minutes: number): string =>
+  `Snoozed for ${minutes} minutes.`;
+
+const buildAnnouncement = (task: string): string =>
+  `Hey! This is LAFINA. You scheduled "${task}". Would you like to acknowledge or snooze it?`;
 
 const warmCallResponseAudio = async (defaultSnoozeMinutes: number): Promise<void> => {
+  const phrases = [
+    ACKNOWLEDGE_CONFIRMATION,
+    getSnoozeConfirmation(5),
+    getSnoozeConfirmation(10),
+    getSnoozeConfirmation(15),
+    getSnoozeConfirmation(defaultSnoozeMinutes),
+  ];
   try {
-    // Warm snooze first because acknowledgement is more likely to already be
-    // cached. Sequential synthesis avoids competing ONNX inference threads.
-    await synthesizeSpeech(getSnoozeConfirmation(defaultSnoozeMinutes));
-    await synthesizeSpeech(ACKNOWLEDGE_CONFIRMATION);
+    for (const phrase of [...new Set(phrases)]) {
+      await synthesizeSpeech(phrase);
+    }
   } catch (error) {
     console.warn('[CallDispatcher] Could not warm response audio:', error);
   }
 };
 
-const getSTTModule = () => NativeModules.LafinaSpeechToText;
-const getIntentExtractor = () => NativeModules.LafinaIntentExtractor;
-
-/**
- * Native helper to play generated speech file.
- */
-const playAudioFile = async (filePath: string): Promise<boolean> => {
-  try {
-    return await playSpeechFile(filePath);
-  } catch (e) {
-    console.error('[CallDispatcher] playAudio error:', e);
-    return false;
-  }
+const getSTTModule = (): SpeechToTextModule | null => {
+  const module = NativeModules.LafinaCallSpeechToText as SpeechToTextModule | undefined;
+  return module?.transcribe ? module : null;
 };
 
+const getIntentExtractor = (): IntentExtractorModule | null => {
+  const module = NativeModules.LafinaIntentExtractor as IntentExtractorModule | undefined;
+  return module?.extractIntentJson ? module : null;
+};
+
+const extractTranscript = (result: string | TranscriptionResult): string =>
+  typeof result === 'string' ? result : result.transcript;
+
 /**
- * Handles TTS playback from text (synthesizes then plays).
- * If synthesis or playback fails, emits a state recovery event so the
- * call flow is not permanently stuck in 'speaking'.
- *
- * Call-flow friendly: errors are logged and swallowed so the conversation
- * loop can continue. Profile/UI tests should call `speakTextWithTts` instead
- * if they need the error surfaced.
+ * Handles TTS playback from text while recovering the visible call state on failure.
  */
 export const speakText = async (text: string): Promise<void> => {
   try {
-    console.log(`[CallDispatcher] Speaking: "${text}"`);
     DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'speaking', text });
     await speakTextWithTts(text);
   } catch (error) {
     console.error('[CallDispatcher] speakText error:', error);
-    // Recover call state so the flow can continue (don't leave it stuck on 'speaking')
-    DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'connected', text: '' });
+    DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', {
+      state: 'connected',
+      text: '',
+    });
   }
 };
 
 /**
- * Initiates the answering call sequence.
- *
- * @param reminderId The ID of the triggered reminder.
- * @param userId Active user ID.
+ * Answers a triggered reminder and starts the offline voice interaction.
  */
-export const answerCall = async (reminderId: string, userId: string): Promise<void> => {
+export const answerCall = async (
+  reminderId: string,
+  userId: string
+): Promise<void> => {
   const reminder = remindersStore.getReminderById(reminderId);
-  if (!reminder) {
+  if (!reminder || reminder.userId !== userId) {
     console.error('[CallDispatcher] Reminder not found:', reminderId);
+    return;
+  }
+  if (reminder.status === 'acknowledged' || reminder.status === 'missed') {
+    await finishNativeIncomingCall(reminderId);
     return;
   }
 
@@ -96,62 +136,52 @@ export const answerCall = async (reminderId: string, userId: string): Promise<vo
     retryCount: 0,
   };
 
-  DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'connected', task: reminder.task });
-  const prefs = getReminderPreferences(userId);
+  await finishNativeIncomingCall(reminderId);
+  remindersStore.updateReminderStatus(reminderId, 'triggered');
+  DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', {
+    state: 'connected',
+    task: reminder.task,
+  });
 
-  // 1. Speak the reminder prompt (use pre-cached audio if available)
-  try {
-    if (reminder.preCastAudioPath) {
-      warmCallResponseAudio(prefs.snoozeDurationMinutes);
-      console.log('[CallDispatcher] Playing pre-cached audio');
-      DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'speaking', text: reminder.task });
-      await playAudioFile(reminder.preCastAudioPath);
-    } else {
-      await speakText(`Hey! This is LAFINA. You scheduled "${reminder.task}" for today. Would you like to acknowledge or snooze it?`);
-      // The greeting initializes Kokoro when it was not pre-cached. Warm the
-      // short responses while STT is listening instead of competing with it.
-      warmCallResponseAudio(prefs.snoozeDurationMinutes);
+  const preferences = getReminderPreferences(userId);
+  const announcement = buildAnnouncement(reminder.task);
+  void warmCallResponseAudio(preferences.snoozeDurationMinutes);
+
+  let playedCachedAnnouncement = false;
+  if (reminder.preCastAudioPath) {
+    try {
+      DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', {
+        state: 'speaking',
+        text: announcement,
+      });
+      playedCachedAnnouncement = await playSpeechFile(reminder.preCastAudioPath);
+    } catch (error) {
+      console.warn('[CallDispatcher] Cached announcement unavailable:', error);
     }
-  } catch (e) {
-    console.error('[CallDispatcher] Failed to play initial greeting:', e);
+  }
+  if (!playedCachedAnnouncement) {
+    await speakText(announcement);
   }
 
-  // 2. Start the conversation loop
   await runCallLoop();
 };
 
-/**
- * Fast-path matching for common acknowledge and snooze keywords.
- * Completely bypasses NLU model runtime if standard phrases are spoken.
- */
-const quickMatchIntent = (transcript: string, defaultSnoozeMins: number): NluResult | null => {
-  const normalized = transcript.trim().toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "");
+const quickMatchIntent = (
+  transcript: string,
+  defaultSnoozeMinutes: number
+): NluResult | null => {
+  const normalized = transcript
+    .trim()
+    .toLowerCase()
+    .replace(/[.,/#!$%^&*;:{}=_`~()?\-]/g, '');
 
-  // Match Acknowledge (ack, ok, okay, dismiss, stop, done, confirm, yes, complete, completed)
-  const ackRegex = /\b(acknowledge|ack|dismiss|stop|done|confirm|yes|completed|complete|ok|okay)\b/;
-  if (ackRegex.test(normalized)) {
-    return {
-      intent: 'acknowledge',
-      task: null,
-      date: null,
-      time: null,
-      duration_minutes: null,
-      status: 'success',
-      reply: ACKNOWLEDGE_CONFIRMATION,
-    };
-  }
-
-  // Match Snooze (snooze, later, wait, delay, minutes, mins)
   const snoozeRegex = /\b(snooze|later|delay|wait|minutes|mins|min|snoozed)\b/;
   if (snoozeRegex.test(normalized)) {
-    // Attempt to parse minutes if specified
     const numberMatch = normalized.match(/\b(\d+)\b/);
-    let minutes = defaultSnoozeMins;
+    let minutes = defaultSnoozeMinutes;
     if (numberMatch) {
-      const parsed = parseInt(numberMatch[1], 10);
-      if (!isNaN(parsed) && parsed > 0 && parsed <= 120) {
-        minutes = parsed;
-      }
+      const parsed = Number.parseInt(numberMatch[1], 10);
+      if (parsed >= 1 && parsed <= 120) minutes = parsed;
     }
     return {
       intent: 'snooze',
@@ -164,163 +194,193 @@ const quickMatchIntent = (transcript: string, defaultSnoozeMins: number): NluRes
     };
   }
 
+  const acknowledgeRegex =
+    /\b(acknowledge|ack|dismiss|stop|done|confirm|yes|completed|complete|ok|okay)\b/;
+  if (acknowledgeRegex.test(normalized)) {
+    return {
+      intent: 'acknowledge',
+      task: null,
+      date: null,
+      time: null,
+      duration_minutes: null,
+      status: 'success',
+      reply: ACKNOWLEDGE_CONFIRMATION,
+    };
+  }
+
   return null;
 };
 
-/**
- * Conversation loop: listens to mic, processes with STT + NLU, acts accordingly.
- */
-const runCallLoop = async (): Promise<void> => {
-  if (!activeSession || activeSession.state === 'disconnected') return;
+const resolveIntent = async (
+  transcript: string,
+  defaultSnoozeMinutes: number
+): Promise<NluResult | null> => {
+  const quickResult = quickMatchIntent(transcript, defaultSnoozeMinutes);
+  if (quickResult) return quickResult;
 
-  const stt = getSTTModule();
   const extractor = getIntentExtractor();
+  if (!extractor) return null;
 
-  if (!stt || !extractor) {
-    console.error('[CallDispatcher] Native STT/NLU modules not available.');
-    await speakText('Sorry, voice components are unavailable. Please use the buttons on screen.');
-    return;
-  }
+  DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', {
+    state: 'processing',
+    text: 'Processing...',
+  });
+  const rawNluJson = await extractor.extractIntentJson({
+    transcript,
+    prompt: buildNluPrompt(transcript),
+    model: AI_MODEL_ASSETS.llm,
+    temperature: 0,
+    maxTokens: 220,
+  });
+  return parseNluJson(rawNluJson);
+};
 
-  try {
-    // 1. Start STT listening
-    console.log('[CallDispatcher] Listening for user response...');
-    DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'listening' });
-    
-    // Transcribe user speech (timeout after 6 seconds)
-    const transcript = (await stt.transcribe({ language: 'en' })) || '';
-    console.log(`[CallDispatcher] User said: "${transcript}"`);
-
-    if (!transcript.trim()) {
-      handleNoSpeech();
+const runCallLoop = async (): Promise<void> => {
+  while (activeSession && activeSession.state !== 'disconnected') {
+    const session = activeSession;
+    const stt = getSTTModule();
+    if (!stt) {
+      await speakText(
+        'Sorry, offline speech recognition is unavailable. Please use the buttons on screen.'
+      );
       return;
     }
 
-    // 2. Process NLU (Check fast-path local parser first, fall back to SmolLM2)
-    const prefs = getReminderPreferences(activeSession.userId);
-    let nluResult = quickMatchIntent(transcript, prefs.snoozeDurationMinutes);
+    try {
+      DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'listening' });
+      const transcript = extractTranscript(await stt.transcribe({ language: 'en' })).trim();
+      const preferences = getReminderPreferences(session.userId);
 
-    if (nluResult) {
-      console.log('[CallDispatcher] Quick-matched intent locally:', nluResult);
-    } else {
-      console.log('[CallDispatcher] Bypassed quick-match. Calling NLU model...');
-      DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'speaking', text: 'Processing...' });
-      
-      const rawNluJson = await extractor.extractIntentJson({
-        transcript,
-        prompt: buildNluPrompt(transcript),
-        model: AI_MODEL_ASSETS.llm,
-        temperature: 0,
-        maxTokens: 220,
-      });
-
-      nluResult = parseNluJson(rawNluJson);
-      console.log('[CallDispatcher] NLU parsed result:', nluResult);
-    }
-
-    // 3. Act on Intent
-    if (nluResult.intent === 'acknowledge') {
-      remindersStore.acknowledgeReminder(activeSession.reminderId);
-      await speakText(nluResult.reply || ACKNOWLEDGE_CONFIRMATION);
-      disconnectCall();
-    } else if (nluResult.intent === 'snooze') {
-      // Parse snooze duration, default to user's onboarding pref if not specified
-      let minutes = nluResult.duration_minutes || prefs.snoozeDurationMinutes;
-      
-      if (activeSession.snoozeCount >= prefs.maxSnoozeCount) {
-        await speakText(`Sorry, you've reached your limit of ${prefs.maxSnoozeCount} snoozes for this reminder. Please acknowledge.`);
-        activeSession.retryCount++;
-        runCallLoop();
-        return;
+      if (!transcript) {
+        session.retryCount += 1;
+        if (session.retryCount >= 3) break;
+        await speakText("I didn't catch that. Please say acknowledge or snooze.");
+        continue;
       }
 
-      remindersStore.snoozeReminder(activeSession.reminderId, minutes);
-      await speakText(nluResult.reply || getSnoozeConfirmation(minutes));
-      disconnectCall();
-    } else {
-      // Out of scope / unrecognized
-      handleInvalidResponse();
+      const result = await resolveIntent(
+        transcript,
+        preferences.snoozeDurationMinutes
+      );
+      if (result?.intent === 'acknowledge') {
+        const action = await acknowledgeReminderAction(
+          session.reminderId,
+          session.userId
+        );
+        await speakText(action.message);
+        if (action.ok) {
+          disconnectCall();
+          return;
+        }
+      } else if (result?.intent === 'snooze') {
+        const minutes =
+          result.duration_minutes ?? preferences.snoozeDurationMinutes;
+        const action = await snoozeReminderAction(
+          session.reminderId,
+          session.userId,
+          minutes
+        );
+        await speakText(action.message);
+        if (action.ok) {
+          disconnectCall();
+          return;
+        }
+      } else {
+        session.retryCount += 1;
+        if (session.retryCount >= 3) break;
+        await speakText(
+          'Sorry, I can only acknowledge or snooze the reminder. Which would you like?'
+        );
+      }
+    } catch (error) {
+      console.error('[CallDispatcher] Call loop error:', error);
+      session.retryCount += 1;
+      if (session.retryCount >= 3) break;
+      await speakText('Something went wrong. Please say acknowledge or snooze again.');
     }
-
-  } catch (error) {
-    console.error('[CallDispatcher] Error in call loop:', error);
-    handleInvalidResponse();
   }
+
+  await autoSnoozeCall();
 };
 
 /**
- * Handles case when user says nothing or speech is not detected.
- */
-const handleNoSpeech = async (): Promise<void> => {
-  if (!activeSession) return;
-
-  activeSession.retryCount++;
-  if (activeSession.retryCount >= 3) {
-    console.log('[CallDispatcher] Max silence retries reached. Auto-snoozing...');
-    autoSnoozeCall();
-  } else {
-    await speakText("I didn't catch that. Please say acknowledge or snooze.");
-    runCallLoop();
-  }
-};
-
-/**
- * Handles case when user says something unrecognized.
- */
-const handleInvalidResponse = async (): Promise<void> => {
-  if (!activeSession) return;
-
-  activeSession.retryCount++;
-  if (activeSession.retryCount >= 3) {
-    console.log('[CallDispatcher] Max invalid retries reached. Auto-snoozing...');
-    autoSnoozeCall();
-  } else {
-    await speakText('Sorry, I can only acknowledge or snooze the reminder. Which would you like to do?');
-    runCallLoop();
-  }
-};
-
-/**
- * Automatically snoozes the reminder (e.g. on max retries or call decline).
+ * Automatically snoozes the active reminder or marks it missed at its limit.
  */
 export const autoSnoozeCall = async (): Promise<void> => {
-  if (!activeSession) return;
+  const session = activeSession;
+  if (!session) return;
 
-  try {
-    const prefs = getReminderPreferences(activeSession.userId);
-    const snoozeDuration = prefs.autoSnoozeDurationMinutes;
-    remindersStore.snoozeReminder(activeSession.reminderId, snoozeDuration);
-    await speakText(`Auto-snoozing for ${snoozeDuration} minutes.`);
-  } catch (e) {
-    console.error('[CallDispatcher] Auto-snooze error:', e);
-  } finally {
-    disconnectCall();
+  const action = await autoSnoozeReminderAction(
+    session.reminderId,
+    session.userId
+  );
+  if (session.state !== 'ringing') {
+    await speakText(action.message);
   }
+  disconnectCall();
 };
 
 /**
- * Declines the incoming call directly (maps to auto-snooze).
+ * Declines an incoming reminder and applies its automatic snooze behavior.
  */
-export const declineCall = async (reminderId: string, userId: string): Promise<void> => {
+export const declineCall = async (
+  reminderId: string,
+  userId: string
+): Promise<void> => {
+  const reminder = remindersStore.getReminderById(reminderId);
+  if (!reminder || reminder.userId !== userId) {
+    await finishNativeIncomingCall(reminderId);
+    return;
+  }
   activeSession = {
     reminderId,
     userId,
-    task: '',
-    state: 'connected',
-    snoozeCount: 0,
+    task: reminder.task,
+    state: 'ringing',
+    snoozeCount: reminder.snoozeCount,
     retryCount: 0,
   };
   await autoSnoozeCall();
 };
 
 /**
- * Cleans up and disconnects the active call session.
+ * Applies a manual snooze through the same coordinated scheduler path.
+ */
+export const manualSnoozeCall = async (
+  reminderId: string,
+  userId: string,
+  minutes: number
+): Promise<void> => {
+  const action = await snoozeReminderAction(reminderId, userId, minutes);
+  if (!action.ok) await speakText(action.message);
+  if (action.ok) disconnectCall();
+};
+
+/**
+ * Applies a manual acknowledgement through the same coordinated scheduler path.
+ */
+export const manualAcknowledgeCall = async (
+  reminderId: string,
+  userId: string
+): Promise<void> => {
+  const action = await acknowledgeReminderAction(reminderId, userId);
+  if (!action.ok) await speakText(action.message);
+  if (action.ok) disconnectCall();
+};
+
+/**
+ * Stops the active call loop and publishes the terminal UI state.
  */
 export const disconnectCall = (): void => {
+  const stt = getSTTModule();
+  if (stt?.stopListening) {
+    void stt.stopListening().catch(() => undefined);
+  }
   if (activeSession) {
     activeSession.state = 'disconnected';
-    console.log('[CallDispatcher] Call disconnected');
-    DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'disconnected' });
     activeSession = null;
+    DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', {
+      state: 'disconnected',
+    });
   }
 };

@@ -41,6 +41,21 @@ export const DayView: React.FC<DayViewProps> = ({
 }) => {
   const { colors } = useTheme();
   const dateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+
+  const [currentTime, setCurrentTime] = React.useState(new Date());
+
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const isToday = React.useMemo(() => {
+    const todayStr = `${currentTime.getFullYear()}-${String(currentTime.getMonth() + 1).padStart(2, '0')}-${String(currentTime.getDate()).padStart(2, '0')}`;
+    return dateStr === todayStr;
+  }, [dateStr, currentTime]);
+
   const dayBlocks = blocks.filter((b) => b.date === dateStr);
   const dayTasks = allTasks.filter((t) => t.dueDate === dateStr);
   const dayEvents = allEvents.filter((e) => e.date === dateStr);
@@ -87,6 +102,17 @@ export const DayView: React.FC<DayViewProps> = ({
                 : `${hour === 0 ? 12 : hour > 12 ? hour - 12 : hour} ${hour >= 12 ? 'PM' : 'AM'}`}
             </Text>
             <View style={[styles.hourTimelineCell, { borderTopColor: colors.border }]}>
+              {isToday && hour === currentTime.getHours() && (
+                <View
+                  style={[
+                    styles.currentTimeIndicator,
+                    { top: `${(currentTime.getMinutes() / 60) * 100}%` },
+                  ]}
+                >
+                  <View style={[styles.currentTimeDot, { backgroundColor: colors.red }]} />
+                  <View style={[styles.currentTimeLine, { backgroundColor: colors.red }]} />
+                </View>
+              )}
               {hasItems ? (
                 <View style={styles.hourlyItemsContainer}>
                   {slotBlocks.map((b) => (
@@ -150,7 +176,26 @@ const styles = StyleSheet.create({
   hourlyContainer: { flex: 1 },
   hourRow: { flexDirection: 'row', minHeight: 70 },
   hourLabel: { width: 50, fontSize: 11, fontFamily: 'sans-serif', paddingTop: 4, textAlign: 'right', paddingRight: 8 },
-  hourTimelineCell: { flex: 1, borderTopWidth: 1, paddingLeft: 8, justifyContent: 'center' },
+  hourTimelineCell: { flex: 1, borderTopWidth: 1, paddingLeft: 8, justifyContent: 'center', position: 'relative' },
+  currentTimeIndicator: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 10,
+    transform: [{ translateY: -4 }],
+  },
+  currentTimeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginLeft: -4,
+  },
+  currentTimeLine: {
+    flex: 1,
+    height: 2,
+  },
   hourlyBlockCard: { flex: 1, borderRadius: 8, borderLeftWidth: 4, padding: 8, marginVertical: 4, justifyContent: 'center' },
   hourlyBlockTitle: { fontSize: 13, fontFamily: 'sans-serif', fontWeight: 'bold' },
   hourlyBlockTime: { fontSize: 10, fontFamily: 'sans-serif', marginTop: 2 },

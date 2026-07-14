@@ -1,7 +1,7 @@
 import { generateId } from '../../utils';
 import { tasksStore, timeBlocksStore, remindersStore } from '../../storage';
-import { NativeModules } from 'react-native';
 import { getReminderPreferences } from '../../scheduler/userPreferences';
+import { scheduleReminderAlarm } from '../../scheduler/reminderAlarm';
 import { preCacheReminderAudio } from '../tts/ttsService';
 import {
   DEFAULT_BLOCK_CATEGORY,
@@ -103,7 +103,8 @@ export const applyNluScheduleResult = (
       if (isNaN(localScheduledDate.getTime())) return;
 
       const scheduledAt = localScheduledDate.toISOString();
-      const triggerAt = new Date(localScheduledDate.getTime() - leadTimeMinutes * 60 * 1000).toISOString();
+      const preferredTriggerMs = localScheduledDate.getTime() - leadTimeMinutes * 60 * 1000;
+      const triggerAt = new Date(Math.max(preferredTriggerMs, Date.now() + 1000)).toISOString();
 
       remindersStore.insertReminder({
         id: reminderId,
@@ -116,17 +117,13 @@ export const applyNluScheduleResult = (
         preCastAudioPath: null,
       });
 
-      // Schedule exact alarm on Android
-      const reminderModule = NativeModules.LafinaReminder;
-      if (reminderModule && reminderModule.scheduleExactAlarm) {
-        const triggerTimeMs = new Date(triggerAt).getTime();
-        reminderModule.scheduleExactAlarm(triggerTimeMs, reminderId).catch((err: unknown) => {
-          console.error('Failed to schedule exact alarm natively:', err);
-        });
-      }
+      // Register the persisted exact Android alarm used while the app is stopped.
+      void scheduleReminderAlarm(reminderId, task, triggerAt).catch((error: unknown) => {
+        console.error('Failed to schedule exact alarm natively:', error);
+      });
 
       // Pre-cache announcement audio
-      const announcementText = `Hey! This is LAFINA. You scheduled "${task}" for ${eventTime}.`;
+      const announcementText = `Hey! This is LAFINA. You scheduled "${task}". Would you like to acknowledge or snooze it?`;
       preCacheReminderAudio(reminderId, announcementText).catch((err: unknown) => {
         console.error('Failed to pre-cache reminder audio:', err);
       });
