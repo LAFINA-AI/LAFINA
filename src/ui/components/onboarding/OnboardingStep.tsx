@@ -4,6 +4,7 @@ import { Colors, Fonts, Layout, Shadows } from '../../theme';
 import { useTheme } from '../../contexts/ThemeContext';
 import { BookOpen, Clock, Activity, Award } from 'lucide-react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import type { LongestClassGap, SnoozeTendency, StudyPeakHour, WeeklyClassCount } from '../../../storage';
 
 interface OnboardingStepProps {
   step: number;
@@ -11,21 +12,21 @@ interface OnboardingStepProps {
   setWakeTime: (val: string) => void;
   sleepTime: string;
   setSleepTime: (val: string) => void;
-  studyPeak: string[];
-  toggleStudyPeak: (val: string) => void;
+  studyPeak: StudyPeakHour[];
+  toggleStudyPeak: (val: StudyPeakHour) => void;
   busiestDay: string;
   setBusiestDay: (val: string) => void;
   reminderLead: string;
   setReminderLead: (val: string) => void;
-  snoozeTendency: string;
-  setSnoozeTendency: (val: string) => void;
-  classCount: string;
-  setClassCount: (val: string) => void;
-  longestGap: string;
-  setLongestGap: (val: string) => void;
+  snoozeTendency: SnoozeTendency;
+  setSnoozeTendency: (val: SnoozeTendency) => void;
+  classCount: WeeklyClassCount;
+  setClassCount: (val: WeeklyClassCount) => void;
+  longestGap: LongestClassGap;
+  setLongestGap: (val: LongestClassGap) => void;
 }
 
-const studyPeakOptions = [
+const studyPeakOptions: { label: string; value: StudyPeakHour }[] = [
   { label: 'Morning (6-10 AM)', value: 'morning' },
   { label: 'Late Morning (10 AM-12 PM)', value: 'late_morning' },
   { label: 'Afternoon (12-4 PM)', value: 'afternoon' },
@@ -42,15 +43,15 @@ const reminderLeadOptions = [
   { label: '1 hour before', value: '60' },
 ];
 
-const snoozeTendencyOptions = [
+const snoozeTendencyOptions: { label: string; value: SnoozeTendency }[] = [
   { label: 'Do it right away', value: 'immediate' },
   { label: 'Snooze once', value: 'snooze_once' },
   { label: 'Snooze multiple times', value: 'snooze_multiple' },
   { label: 'Often ignore', value: 'ignore' },
 ];
 
-const classCountOptions = ['1-3', '4-6', '7+'];
-const longestGapOptions = ['None', '30 min', '1 hour', '2+ hours'];
+const classCountOptions: WeeklyClassCount[] = ['1-3', '4-6', '7+'];
+const longestGapOptions: LongestClassGap[] = ['None', '30 min', '1 hour', '2+ hours'];
 
 const wakeTimeOptions = ['05:00', '06:00', '07:00', '08:00', '09:00'];
 const sleepTimeOptions = ['21:00', '22:00', '23:00', '00:00', '01:00'];

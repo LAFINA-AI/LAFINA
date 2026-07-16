@@ -14,6 +14,19 @@ export { chatStore } from './chatStore';
 export type { ChatMessage, ChatSession } from './chatStore';
 export { behaviorStore } from './behaviorStore';
 export type { BehaviorLog, FeatureSnapshot } from './behaviorStore';
+export { completeUserOnboarding } from './onboardingStore';
+export {
+  getDefaultUserPreferences,
+  preferencesStore,
+} from './preferencesStore';
+export type {
+  LongestClassGap,
+  SnoozeTendency,
+  StoredUserPreferences,
+  StudyPeakHour,
+  UserPreferences,
+  WeeklyClassCount,
+} from './preferencesStore';
 export { remindersStore } from './remindersStore';
 export type { Reminder, ReminderStatus } from './remindersStore';
 

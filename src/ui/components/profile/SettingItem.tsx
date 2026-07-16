@@ -76,6 +76,7 @@ export const SettingItem: React.FC<SettingItemProps> = ({
       activeOpacity={0.7}
     >
       <Text style={[styles.settingText, themed.settingText]}>{text}</Text>
+      {valueText && <Text style={[styles.linkValue, themed.settingValue]}>{valueText}</Text>}
       <Text style={[styles.linkArrow, themed.linkArrow]}>➔</Text>
     </TouchableOpacity>
   );
@@ -94,9 +95,16 @@ const styles = StyleSheet.create({
   settingText: {
     fontSize: 14,
     fontFamily: Fonts.body,
+    flex: 1,
+    marginRight: 8,
   },
   settingValue: {
     fontSize: 12,
+  },
+  linkValue: {
+    fontSize: 11,
+    marginLeft: 'auto',
+    marginRight: 8,
   },
   linkArrow: {
     fontSize: 12,

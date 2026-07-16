@@ -22,6 +22,7 @@ describe('Storage Layer', () => {
     db.executeSync('DELETE FROM job_queue_items');
     db.executeSync('DELETE FROM reminders');
     db.executeSync('DELETE FROM users');
+    db.executeSync('DELETE FROM user_preferences');
   });
 
   it('initializes without errors and creates tables', async () => {
@@ -37,6 +38,7 @@ describe('Storage Layer', () => {
     expect(tables).toContain('tasks');
     expect(tables).toContain('events');
     expect(tables).toContain('notes');
+    expect(tables).toContain('user_preferences');
   });
 
   it('can insert and retrieve a reminder', async () => {

@@ -173,7 +173,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
     } else {
       wiggleAnim.setValue(0);
     }
-  }, [isEditingCats]);
+  }, [isEditingCats, wiggleAnim]);
 
   const wiggleStyle = {
     transform: [
@@ -226,7 +226,6 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
     }
   };
 
-  const allCategories = ['Work', 'Personal', 'Health', 'Learning', ...customCategories];
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>

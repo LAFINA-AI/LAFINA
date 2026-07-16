@@ -29,6 +29,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
   const handleGetStarted = () => {
     const guest = userStore.createGuestUser();
+    userStore.setCurrentUser(guest.id);
     onGetStarted(guest.id);
   };
 

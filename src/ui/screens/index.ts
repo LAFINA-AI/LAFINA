@@ -8,3 +8,4 @@ export { ProfileScreen } from './ProfileScreen';
 export { WelcomeScreen } from './WelcomeScreen';
 export { IncomingCallScreen } from './IncomingCallScreen';
 
+export { PreferencesSettingsScreen } from './PreferencesSettingsScreen';

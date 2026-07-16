@@ -8,7 +8,8 @@ import {
   Alert,
 } from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
-import { tasksStore, notesStore, userStore } from '../../storage';
+import { preferencesStore, tasksStore, notesStore, userStore } from '../../storage';
+import type { UserPreferences } from '../../storage';
 import type { User } from '../../storage';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
@@ -22,6 +23,7 @@ import { Pencil } from 'lucide-react-native';
 import { ProfileStats } from '../components/profile/ProfileStats';
 import { SettingItem } from '../components/profile/SettingItem';
 import { PrivacyModal } from '../components/profile/PrivacyModal';
+import { PreferencesSettingsScreen } from './PreferencesSettingsScreen';
 
 function getInitials(username: string | null | undefined): string {
   if (!username || username.trim().length === 0) {
@@ -33,6 +35,19 @@ function getInitials(username: string | null | undefined): string {
   }
   return (words[0][0] + words[1][0]).toUpperCase();
 }
+
+const getSnoozePreferenceLabel = (preferences: UserPreferences): string => {
+  switch (preferences.snoozeTendency) {
+    case 'immediate':
+      return 'Immediate';
+    case 'snooze_multiple':
+      return 'Multiple snoozes';
+    case 'ignore':
+      return 'Often ignore';
+    default:
+      return 'Snooze once';
+  }
+};
 
 interface ProfileScreenProps {
   userId: string;
@@ -62,6 +77,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
   const [summaryStyleDetailed, setSummaryStyleDetailed] = useState(false);
   const [dailyBriefingEnabled, setDailyBriefingEnabled] = useState(true);
+  const [preferenceSummary, setPreferenceSummary] = useState('15 min, Snooze once');
+  const [preferencesVisible, setPreferencesVisible] = useState(false);
 
   // Privacy Modal state
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
@@ -85,8 +102,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
     const mondayStart = userStore.getWeekStartsMonday(userId);
     setWeekStartsMonday(mondayStart);
-  };
 
+    const preferences = preferencesStore.get(userId);
+    setPreferenceSummary(
+      `${preferences.reminderLeadMinutes} min, ${getSnoozePreferenceLabel(preferences)}`
+    );
+  };
   const handleToggleTimeFormat = (value: boolean) => {
     setTimeFormat24h(value);
     userStore.set24HourFormat(userId, value);
@@ -201,6 +222,18 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     ]);
   };
 
+  if (preferencesVisible) {
+    return (
+      <PreferencesSettingsScreen
+        userId={userId}
+        onBack={() => setPreferencesVisible(false)}
+        onSaved={(_preferences: UserPreferences) => {
+          loadSettings();
+          onRefresh();
+        }}
+      />
+    );
+  }
   return (
     <ScrollView style={[styles.container, themed.container]} contentContainerStyle={styles.contentContainer}>
       {/* SVG Header Background */}
@@ -242,6 +275,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           {/* Preferences Group */}
           <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Preferences</Text>
           <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
+            <SettingItem
+              text="Scheduling & Reminder Preferences"
+              type="link"
+              valueText={preferenceSummary}
+              onPress={() => setPreferencesVisible(true)}
+            />
+            <View style={[styles.settingDivider, themed.settingDivider]} />
             <SettingItem
               text="24-Hour Time Format"
               type="toggle"

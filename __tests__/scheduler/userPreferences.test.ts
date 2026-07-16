@@ -2,6 +2,7 @@ import { db } from '../../src/storage/database';
 import { initDatabase } from '../../src/storage/dbInit';
 import { getReminderPreferences } from '../../src/scheduler/userPreferences';
 import { behaviorStore } from '../../src/storage/behaviorStore';
+import { getDefaultUserPreferences, preferencesStore } from '../../src/storage/preferencesStore';
 
 describe('userPreferences service', () => {
   beforeAll(async () => {
@@ -11,6 +12,7 @@ describe('userPreferences service', () => {
   beforeEach(() => {
     db.executeSync('DELETE FROM user_behavior_logs');
     db.executeSync('DELETE FROM ml_feature_snapshots');
+    db.executeSync('DELETE FROM user_preferences');
     db.executeSync('DELETE FROM users');
 
     db.executeSync(
@@ -54,5 +56,22 @@ describe('userPreferences service', () => {
     expect(prefs.leadTimeMinutes).toBe(60);
     expect(prefs.snoozeDurationMinutes).toBe(10); // ignore tendency maps to 10 min snooze
     expect(prefs.maxSnoozeCount).toBe(5); // ignore tendency maps to 5 snoozes
+  });
+
+  it('uses the editable SQLite preference row and reflects later updates', () => {
+    const defaults = getDefaultUserPreferences();
+    preferencesStore.save('user1', {
+      ...defaults,
+      reminderLeadMinutes: 30,
+      snoozeTendency: 'snooze_multiple',
+    });
+
+    expect(getReminderPreferences('user1')).toMatchObject({
+      leadTimeMinutes: 30,
+      maxSnoozeCount: 3,
+    });
+
+    preferencesStore.save('user1', { ...defaults, reminderLeadMinutes: 60, snoozeTendency: 'ignore' });
+    expect(getReminderPreferences('user1')).toMatchObject({ leadTimeMinutes: 60, maxSnoozeCount: 5 });
   });
 });

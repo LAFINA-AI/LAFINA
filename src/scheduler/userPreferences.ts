@@ -1,4 +1,4 @@
-import { behaviorStore } from '../storage';
+import { behaviorStore, preferencesStore } from '../storage';
 import { DEFAULT_REMINDER_LEAD, DEFAULT_SNOOZE_TENDENCY } from '../constants';
 
 export interface ReminderPreferences {
@@ -23,7 +23,21 @@ export const getReminderPreferences = (userId: string): ReminderPreferences => {
   const autoSnoozeDurationMinutes = 5;
 
   try {
-    // 1. Try to read from ML Feature Snapshots
+    // The editable SQLite row is the current source of truth.
+    const savedPreferences = preferencesStore.getStored(userId);
+    if (savedPreferences) {
+      const { snoozeDuration, maxSnoozes } = mapSnoozeBehavior(
+        savedPreferences.snoozeTendency
+      );
+      return {
+        leadTimeMinutes: savedPreferences.reminderLeadMinutes,
+        snoozeDurationMinutes: snoozeDuration,
+        maxSnoozeCount: maxSnoozes,
+        autoSnoozeDurationMinutes,
+      };
+    }
+
+    // Legacy fallback: try to read from ML feature snapshots.
     const snapshot = behaviorStore.getLatestFeatureSnapshot(userId, 'schedule_preference');
     if (snapshot && snapshot.featureVector) {
       const vector = JSON.parse(snapshot.featureVector);
@@ -43,7 +57,7 @@ export const getReminderPreferences = (userId: string): ReminderPreferences => {
       }
     }
 
-    // 2. Try to read from user behavior logs
+    // Final legacy fallback: read the original onboarding behavior logs.
     const logs = behaviorStore.getBehaviorLogs(userId, 'onboarding_response');
     const leadTimeLog = logs.find((l) => l.eventKey === 'preferred_reminder_lead_time');
     const snoozeLog = logs.find((l) => l.eventKey === 'reminder_response_tendency');

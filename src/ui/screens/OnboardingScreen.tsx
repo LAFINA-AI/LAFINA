@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Layout } from '../theme';
 import { userStore, behaviorStore } from '../../storage';
+import type { StudyPeakHour, SnoozeTendency, WeeklyClassCount, LongestClassGap } from '../../storage';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import type { ThemeColors } from '../contexts/ThemeContext';
@@ -34,21 +35,21 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
   const [sleepTime, setSleepTime] = useState('22:00');
 
   // Step 2: Study Habits
-  const [studyPeak, setStudyPeak] = useState<string[]>([]);
+  const [studyPeak, setStudyPeak] = useState<StudyPeakHour[]>([]);
   const [busiestDay, setBusiestDay] = useState('Monday');
 
   // Step 3: Task Preferences
   const [reminderLead, setReminderLead] = useState('15'); // in minutes
-  const [snoozeTendency, setSnoozeTendency] = useState('Snooze once');
+  const [snoozeTendency, setSnoozeTendency] = useState<SnoozeTendency>('snooze_once');
 
   // Step 4: Academic Info
-  const [classCount, setClassCount] = useState('4-6');
-  const [longestGap, setLongestGap] = useState('1 hour');
+  const [classCount, setClassCount] = useState<WeeklyClassCount>('4-6');
+  const [longestGap, setLongestGap] = useState<LongestClassGap>('1 hour');
 
   const { colors } = useTheme();
   const themed = useThemedStyles((c, d) => getOnboardThemedStyles(c, d));
 
-  const toggleStudyPeak = (value: string) => {
+  const toggleStudyPeak = (value: StudyPeakHour) => {
     if (studyPeak.includes(value)) {
       setStudyPeak(studyPeak.filter((p) => p !== value));
     } else {

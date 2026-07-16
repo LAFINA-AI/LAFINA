@@ -47,6 +47,24 @@ export const initDatabase = async (): Promise<void> => {
         )
       `);
 
+      // Create editable onboarding and reminder preferences table
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS user_preferences (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL UNIQUE,
+          wake_time TEXT NOT NULL,
+          sleep_time TEXT NOT NULL,
+          study_peak_hours TEXT NOT NULL,
+          busiest_day TEXT NOT NULL,
+          reminder_lead_minutes INTEGER NOT NULL,
+          snooze_tendency TEXT NOT NULL,
+          weekly_class_count TEXT NOT NULL,
+          longest_class_gap TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
       // Create remember_me table
       tx.executeSync(`
         CREATE TABLE IF NOT EXISTS remember_me (
@@ -60,7 +78,7 @@ export const initDatabase = async (): Promise<void> => {
       // Schema versioning and migration
       const versionResult = tx.executeSync('PRAGMA user_version');
       const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;
-      const TARGET_VERSION = 4; // Increment for each migration batch
+      const TARGET_VERSION = 5; // Increment for each migration batch
 
       if (currentVersion < TARGET_VERSION) {
         if (currentVersion < 1) {

@@ -130,6 +130,25 @@ export const remindersStore = {
       throw error;
     }
   },
+  /**
+   * Replaces a pending reminder trigger time without changing its status or snooze count.
+   */
+  updateReminderTriggerAt: (id: string, triggerAt: string): void => {
+    const triggerAtMs = new Date(triggerAt).getTime();
+    if (!Number.isFinite(triggerAtMs) || triggerAtMs <= Date.now()) {
+      throw new Error('Reminder trigger must be a valid future time.');
+    }
+    const now = new Date().toISOString();
+    try {
+      db.executeSync(
+        `UPDATE reminders SET trigger_at = ?, updated_at = ? WHERE id = ?`,
+        [triggerAt, now, id]
+      );
+    } catch (error) {
+      console.error('Error updating reminder trigger time:', error);
+      throw error;
+    }
+  },
 
   /**
    * Updates the status of a reminder.

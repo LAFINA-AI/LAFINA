@@ -16,7 +16,6 @@ import { chatStore } from '../../storage';
 import { LAFINA_LOGO_CHAT_HEADER_XML } from '../../assets/lafina_logo_chat_header_xml';
 import type { ChatMessage } from '../../storage';
 import { runLocalLlmChat } from '../../ai';
-import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import type { ThemeColors } from '../contexts/ThemeContext';
 import { generateId } from '../../utils';
@@ -41,7 +40,6 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
-  const { colors } = useTheme();
   const themed = useThemedStyles((c) => getChatThemedStyles(c));
 
   useEffect(() => {

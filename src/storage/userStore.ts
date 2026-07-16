@@ -29,11 +29,40 @@ try {
 
 export const userStore = {
   /**
-   * Creates a guest session (no DB user row needed).
-   * Guest users can access all offline features.
+   * Creates or restores the persistent offline guest account.
+   * Persisting the row allows onboarding and preferences to survive app restarts.
    */
   createGuestUser: (): User => {
-    const guest: User = {
+    const now = new Date().toISOString();
+    try {
+      db.executeSync(
+        `INSERT OR IGNORE INTO users (
+           id, username, email, role, is_new_user, time_format_24h,
+           week_starts_monday, dark_mode, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [GUEST_USER_ID, GUEST_USERNAME, null, 'guest', 1, 0, 0, 0, now, now]
+      );
+      const result = db.executeSync('SELECT * FROM users WHERE id = ?', [GUEST_USER_ID]);
+      if (result.rows && result.rows.length > 0) {
+        const row = result.rows[0];
+        return {
+          id: row.id,
+          username: row.username,
+          email: row.email,
+          role: row.role,
+          isNewUser: row.is_new_user === 1,
+          timeFormat24h: row.time_format_24h === 1,
+          weekStartsMonday: row.week_starts_monday === 1,
+          darkModeEnabled: row.dark_mode === 1,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      }
+    } catch (error) {
+      console.error('Error creating guest user:', error);
+    }
+
+    return {
       id: GUEST_USER_ID,
       username: GUEST_USERNAME,
       email: null,
@@ -42,10 +71,9 @@ export const userStore = {
       timeFormat24h: false,
       weekStartsMonday: false,
       darkModeEnabled: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     };
-    return guest;
   },
 
   /**
