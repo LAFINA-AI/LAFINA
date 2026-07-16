@@ -4,6 +4,7 @@ import type { Note } from '../../../../storage';
 import { notesStore, tasksStore } from '../../../../storage';
 import { FilterType } from '../types';
 import { generateId } from '../../../../utils';
+import { registerCustomCategoryColor } from '../../../theme/categoryColors';
 
 // Enable LayoutAnimation on Android
 if (UIManager.setLayoutAnimationEnabledExperimental) {
@@ -50,6 +51,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
   const [isVoice, setIsVoice] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
 
   // Drag state
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -71,7 +73,25 @@ export const useNotesData = (options: UseNotesDataOptions) => {
   const loadNotes = useCallback(() => {
     const data = notesStore.getAll(userId);
     setNotes(data);
+    const cats = notesStore.getCustomCategories(userId);
+    cats.forEach((c) => {
+      registerCustomCategoryColor(c.name, c.color);
+    });
+    setCustomCategories(cats.map((c) => c.name));
   }, [userId]);
+
+  const addCategory = useCallback((name: string, color: string) => {
+    if (!name.trim()) return;
+    const normalizedName = name.trim();
+    const standard = ['Work', 'Personal', 'Health', 'Learning'];
+    if (standard.includes(normalizedName) || customCategories.includes(normalizedName)) {
+      Alert.alert('Duplicate Category', 'This category already exists.');
+      return;
+    }
+    notesStore.addCustomCategory(userId, normalizedName, color);
+    registerCustomCategoryColor(normalizedName, color);
+    loadNotes();
+  }, [userId, customCategories, loadNotes]);
 
   useEffect(() => {
     loadNotes();
@@ -365,6 +385,27 @@ export const useNotesData = (options: UseNotesDataOptions) => {
     }, 1500);
   }, [noteBody, noteTitle, noteCategory, userId, onRefresh]);
 
+  const deleteCategory = useCallback((name: string) => {
+    notesStore.deleteCustomCategory(userId, name);
+    loadNotes();
+  }, [userId, loadNotes]);
+
+  const updateCategory = useCallback((oldName: string, newName: string, color: string) => {
+    if (!newName.trim()) return;
+    const normalizedName = newName.trim();
+    const standard = ['Work', 'Personal', 'Health', 'Learning'];
+    if (normalizedName !== oldName && (standard.includes(normalizedName) || customCategories.includes(normalizedName))) {
+      Alert.alert('Duplicate Category', 'This category name already exists.');
+      return;
+    }
+    notesStore.updateCustomCategory(userId, oldName, normalizedName, color);
+    registerCustomCategoryColor(normalizedName, color);
+    loadNotes();
+    if (noteCategory === oldName) {
+      setNoteCategory(normalizedName);
+    }
+  }, [userId, customCategories, noteCategory, loadNotes]);
+
   const filtered = useMemo(() => getFilteredNotes(), [getFilteredNotes]);
 
   return {
@@ -372,7 +413,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
     notes, filtered, searchQuery, searchActive, selectedFilter, isGridView,
     // Editor
     editorVisible, editingNote, noteTitle, noteBody, noteCategory, noteTags,
-    isPinned, isVoice, imageUri, selection,
+    isPinned, isVoice, imageUri, selection, customCategories,
     // Drag
     activeDragId, isDragging, dragXRef, dragYRef, renderGen,
     // AI
@@ -385,6 +426,6 @@ export const useNotesData = (options: UseNotesDataOptions) => {
     loadNotes, onCardLayout, handleDragStart, handleDragMove, handleDragRelease,
     openNewNote, openEditNote, closeEditor,
     applyFormatting, saveNote, deleteNote,
-    triggerAiAction,
+    triggerAiAction, addCategory, deleteCategory, updateCategory,
   };
 };

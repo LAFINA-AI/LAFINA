@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../../theme';
 import { useTheme } from '../../contexts/ThemeContext';
 import { BookOpen, Clock, Activity, Award } from 'lucide-react-native';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 interface OnboardingStepProps {
   step: number;
@@ -76,6 +77,33 @@ export const OnboardingStep: React.FC<OnboardingStepProps> = ({
   const { colors } = useTheme();
   const themed = useThemedStyles();
 
+  const [showWakePicker, setShowWakePicker] = useState(false);
+  const [showSleepPicker, setShowSleepPicker] = useState(false);
+
+  const formatTo12Hour = (time24: string): string => {
+    if (!time24) return '';
+    const parts = time24.split(':');
+    if (parts.length < 2) return time24;
+    const hour = parseInt(parts[0], 10);
+    const minStr = parts[1];
+    if (isNaN(hour)) return time24;
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+    return `${displayHour}:${minStr} ${ampm}`;
+  };
+
+  const getTimeDate = (timeStr: string): Date => {
+    const [hours, minutes] = timeStr.split(':').map((s) => parseInt(s, 10));
+    const d = new Date();
+    d.setHours(hours);
+    d.setMinutes(minutes);
+    d.setSeconds(0);
+    return d;
+  };
+
+  const isWakeCustom = !wakeTimeOptions.includes(wakeTime);
+  const isSleepCustom = !sleepTimeOptions.includes(sleepTime);
+
   switch (step) {
     case 1:
       return (
@@ -99,11 +127,40 @@ export const OnboardingStep: React.FC<OnboardingStepProps> = ({
                 onPress={() => setWakeTime(time)}
               >
                 <Text style={[styles.chipText, themed.chipText, wakeTime === time && styles.activeChipText]}>
-                  {time}
+                  {formatTo12Hour(time)}
                 </Text>
               </TouchableOpacity>
             ))}
+            <TouchableOpacity
+              style={[
+                styles.chip,
+                themed.chip,
+                isWakeCustom && styles.activeChip,
+              ]}
+              onPress={() => setShowWakePicker(true)}
+            >
+              <Text style={[styles.chipText, themed.chipText, isWakeCustom && styles.activeChipText]}>
+                {isWakeCustom ? `Custom: ${formatTo12Hour(wakeTime)}` : 'Custom...'}
+              </Text>
+            </TouchableOpacity>
           </View>
+
+          {showWakePicker && (
+            <DateTimePicker
+              value={getTimeDate(wakeTime)}
+              mode="time"
+              display="default"
+              is24Hour={false}
+              onChange={(_event: DateTimePickerEvent, date?: Date) => {
+                setShowWakePicker(false);
+                if (date) {
+                  const hours = date.getHours().toString().padStart(2, '0');
+                  const minutes = date.getMinutes().toString().padStart(2, '0');
+                  setWakeTime(`${hours}:${minutes}`);
+                }
+              }}
+            />
+          )}
 
           <Text style={[styles.inputLabel, themed.inputLabel]}>Typical Sleep Time</Text>
           <View style={styles.chipContainer}>
@@ -118,11 +175,40 @@ export const OnboardingStep: React.FC<OnboardingStepProps> = ({
                 onPress={() => setSleepTime(time)}
               >
                 <Text style={[styles.chipText, themed.chipText, sleepTime === time && styles.activeChipText]}>
-                  {time}
+                  {formatTo12Hour(time)}
                 </Text>
               </TouchableOpacity>
             ))}
+            <TouchableOpacity
+              style={[
+                styles.chip,
+                themed.chip,
+                isSleepCustom && styles.activeChip,
+              ]}
+              onPress={() => setShowSleepPicker(true)}
+            >
+              <Text style={[styles.chipText, themed.chipText, isSleepCustom && styles.activeChipText]}>
+                {isSleepCustom ? `Custom: ${formatTo12Hour(sleepTime)}` : 'Custom...'}
+              </Text>
+            </TouchableOpacity>
           </View>
+
+          {showSleepPicker && (
+            <DateTimePicker
+              value={getTimeDate(sleepTime)}
+              mode="time"
+              display="default"
+              is24Hour={false}
+              onChange={(_event: DateTimePickerEvent, date?: Date) => {
+                setShowSleepPicker(false);
+                if (date) {
+                  const hours = date.getHours().toString().padStart(2, '0');
+                  const minutes = date.getMinutes().toString().padStart(2, '0');
+                  setSleepTime(`${hours}:${minutes}`);
+                }
+              }}
+            />
+          )}
         </View>
       );
     case 2:
@@ -285,7 +371,7 @@ export const OnboardingStep: React.FC<OnboardingStepProps> = ({
 
           <View style={[styles.summaryCard, themed.summaryCard]}>
             <Text style={[styles.summaryTitle, themed.summaryTitle]}>Configuration Baseline</Text>
-            <Text style={[styles.summaryItem, themed.summaryItem]}>• Sleep Cycle: {wakeTime} - {sleepTime}</Text>
+            <Text style={[styles.summaryItem, themed.summaryItem]}>• Sleep Cycle: {formatTo12Hour(wakeTime)} - {formatTo12Hour(sleepTime)}</Text>
             <Text style={[styles.summaryItem, themed.summaryItem]}>• Study Preference: {studyPeak.length > 0 ? studyPeak.join(', ') : 'Flexible'}</Text>
             <Text style={[styles.summaryItem, themed.summaryItem]}>• Reminder Lead: {reminderLead} minutes</Text>
             <Text style={[styles.summaryItem, themed.summaryItem]}>• Class Gap Slots: {longestGap}</Text>

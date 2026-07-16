@@ -8,7 +8,7 @@ export const initDatabase = async (): Promise<void> => {
   try {
     await db.transaction(async (tx: DatabaseTransaction) => {
       // Schema validation and automatic migration fallback
-      const tablesToCheck = ['notes', 'tasks', 'events', 'time_blocks', 'reminders'];
+      const tablesToCheck = ['notes', 'tasks', 'events', 'time_blocks', 'reminders', 'custom_categories'];
       tablesToCheck.forEach((tableName) => {
         try {
           const exists = tx.executeSync(
@@ -19,6 +19,9 @@ export const initDatabase = async (): Promise<void> => {
             tx.executeSync(`SELECT user_id FROM ${tableName} LIMIT 1`);
             if (tableName === 'notes') {
               tx.executeSync(`SELECT image_uri, sort_order FROM notes LIMIT 1`);
+            }
+            if (tableName === 'custom_categories') {
+              tx.executeSync(`SELECT color FROM custom_categories LIMIT 1`);
             }
           }
         } catch {
@@ -321,6 +324,18 @@ export const initDatabase = async (): Promise<void> => {
           computed_at TEXT NOT NULL,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
+
+      // Create custom_categories table
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS custom_categories (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          color TEXT NOT NULL,
+          created_at TEXT NOT NULL,
           FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
       `);

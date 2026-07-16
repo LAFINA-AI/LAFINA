@@ -7,7 +7,9 @@ import {
   TextInput,
   ScrollView,
   FlatList,
+  Alert,
 } from 'react-native';
+import { pick } from '@react-native-documents/picker';
 import { FileText, Plus, Search, Grid, List, X } from 'lucide-react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Colors, Shadows } from '../../theme';
@@ -51,9 +53,21 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
     );
   }, [data]);
 
-  const handleAttachImage = () => {
-    // In the real app this would show an image picker
-    data.setImageUri(null);
+  const handleAttachImage = async () => {
+    try {
+      const res = await pick({
+        type: ['image/*'],
+      });
+      if (res && res.length > 0 && res[0].uri) {
+        data.setImageUri(res[0].uri);
+      }
+    } catch (err: any) {
+      if (err && err.code === 'DOCUMENT_PICKER_CANCELED') {
+        return;
+      }
+      console.error('Failed to pick image:', err);
+      Alert.alert('Error', 'Failed to pick image from device.');
+    }
   };
 
   return (
@@ -155,6 +169,10 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
         onAttachImage={handleAttachImage}
         onRemoveImage={() => data.setImageUri(null)}
         onAiAction={data.triggerAiAction}
+        customCategories={data.customCategories}
+        onAddCategory={data.addCategory}
+        onDeleteCategory={data.deleteCategory}
+        onUpdateCategory={data.updateCategory}
       />
     </View>
   );

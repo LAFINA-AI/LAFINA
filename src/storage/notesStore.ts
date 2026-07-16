@@ -176,4 +176,61 @@ export const notesStore = {
       throw error;
     }
   },
+
+  getCustomCategories: (userId: string): { name: string; color: string }[] => {
+    try {
+      const result = db.executeSync(
+        `SELECT name, color FROM custom_categories WHERE user_id = ? ORDER BY created_at ASC`,
+        [userId]
+      );
+      return result.rows ? result.rows.map((row: any) => ({ name: row.name, color: row.color })) : [];
+    } catch (error) {
+      console.error('Error fetching custom categories:', error);
+      return [];
+    }
+  },
+
+  addCustomCategory: (userId: string, name: string, color: string): void => {
+    const id = 'cat_' + Math.random().toString(36).substr(2, 9);
+    const now = new Date().toISOString();
+    try {
+      db.executeSync(
+        `INSERT INTO custom_categories (id, user_id, name, color, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [id, userId, name, color, now]
+      );
+    } catch (error) {
+      console.error('Error inserting custom category:', error);
+      throw error;
+    }
+  },
+
+  deleteCustomCategory: (userId: string, name: string): void => {
+    try {
+      db.executeSync(
+        `DELETE FROM custom_categories WHERE user_id = ? AND name = ?`,
+        [userId, name]
+      );
+    } catch (error) {
+      console.error('Error deleting custom category:', error);
+      throw error;
+    }
+  },
+
+  updateCustomCategory: (userId: string, oldName: string, newName: string, color: string): void => {
+    try {
+      db.transaction(async (tx) => {
+        tx.executeSync(
+          `UPDATE custom_categories SET name = ?, color = ? WHERE user_id = ? AND name = ?`,
+          [newName, color, userId, oldName]
+        );
+        tx.executeSync(
+          `UPDATE notes SET category = ? WHERE user_id = ? AND category = ?`,
+          [newName, userId, oldName]
+        );
+      });
+    } catch (error) {
+      console.error('Error updating custom category:', error);
+      throw error;
+    }
+  },
 };

@@ -27,5 +27,15 @@ export const getCategoryColor = (cat?: string): string => {
   return CATEGORY_COLOR_MAP[cat.toLowerCase()] ?? DEFAULT_CATEGORY_COLOR;
 };
 
+/**
+ * Dynamically registers a color mapping for a custom category.
+ *
+ * @param name - The category name
+ * @param color - The hex color code
+ */
+export const registerCustomCategoryColor = (name: string, color: string) => {
+  CATEGORY_COLOR_MAP[name.toLowerCase()] = color;
+};
+
 /** All known category names, sorted alphabetically */
 export const CATEGORIES: Category[] = ['work', 'personal', 'health', 'learning'];

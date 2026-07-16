@@ -10,7 +10,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Plus, ChevronLeft, ChevronRight, ChevronDown, Upload, Download, Layers, Clock, CheckSquare, FileText } from 'lucide-react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Colors, Shadows } from '../../theme';
-import { getCategoryColor } from '../../theme/categoryColors';
+import { getCategoryColor, registerCustomCategoryColor } from '../../theme/categoryColors';
 import { useCalendarData } from './hooks/useCalendarData';
 import { useTimeBlockModal } from './hooks/useTimeBlockModal';
 import { useScheduleItemModal } from './hooks/useScheduleItemModal';
@@ -40,6 +40,53 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const [noteCategory, setNoteCategory] = useState('Personal');
   const [isPinned, setIsPinned] = useState(false);
   const [noteSelection, setNoteSelection] = useState({ start: 0, end: 0 });
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+
+  React.useEffect(() => {
+    try {
+      const cats = notesStore.getCustomCategories(userId);
+      cats.forEach((c) => {
+        registerCustomCategoryColor(c.name, c.color);
+      });
+      setCustomCategories(cats.map((c) => c.name));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [userId, noteModalVisible]);
+
+  const handleAddCategory = (name: string, color: string) => {
+    if (!name.trim()) return;
+    const normalizedName = name.trim();
+    const standard = ['Work', 'Personal', 'Health', 'Learning'];
+    if (standard.includes(normalizedName) || customCategories.includes(normalizedName)) {
+      return;
+    }
+    notesStore.addCustomCategory(userId, normalizedName, color);
+    registerCustomCategoryColor(normalizedName, color);
+    setCustomCategories([...customCategories, normalizedName]);
+  };
+
+  const handleDeleteCategory = (name: string) => {
+    notesStore.deleteCustomCategory(userId, name);
+    const cats = notesStore.getCustomCategories(userId);
+    setCustomCategories(cats.map(c => c.name));
+  };
+
+  const handleUpdateCategory = (oldName: string, newName: string, color: string) => {
+    if (!newName.trim()) return;
+    const normalizedName = newName.trim();
+    const standard = ['Work', 'Personal', 'Health', 'Learning'];
+    if (normalizedName !== oldName && (standard.includes(normalizedName) || customCategories.includes(normalizedName))) {
+      return;
+    }
+    notesStore.updateCustomCategory(userId, oldName, normalizedName, color);
+    registerCustomCategoryColor(normalizedName, color);
+    const cats = notesStore.getCustomCategories(userId);
+    setCustomCategories(cats.map(c => c.name));
+    if (noteCategory === oldName) {
+      setNoteCategory(normalizedName);
+    }
+  };
 
   const calendar = useCalendarData({
     userId,
@@ -416,6 +463,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
         onAttachImage={() => {}}
         onRemoveImage={() => {}}
         onAiAction={() => {}}
+        customCategories={customCategories}
+        onAddCategory={handleAddCategory}
+        onDeleteCategory={handleDeleteCategory}
+        onUpdateCategory={handleUpdateCategory}
       />
     </View>
   );

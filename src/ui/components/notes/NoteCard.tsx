@@ -18,10 +18,11 @@ const lafinaLogoGradient = require('../../../assets/lafina_logo_gradient_bg.png'
 const splashIcon = require('../../../assets/spash_icon.png');
 
 const getLocalImage = (uri: string | null) => {
+  if (!uri) return null;
   if (uri === 'lafina_default_logo') return lafinaDefaultLogo;
   if (uri === 'lafina_logo_gradient_bg') return lafinaLogoGradient;
   if (uri === 'spash_icon') return splashIcon;
-  return null;
+  return { uri };
 };
 
 const renderMarkdown = (text: string): React.ReactNode => {
