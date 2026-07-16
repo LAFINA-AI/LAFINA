@@ -4,9 +4,11 @@ import { initDatabase } from '../../src/storage/dbInit';
 import { remindersStore } from '../../src/storage/remindersStore';
 import {
   answerCall,
+  finishCallVoiceCapture,
   declineCall,
   disconnectCall,
   speakText,
+  startCallVoiceCapture,
 } from '../../src/scheduler/callDispatcher';
 import { behaviorStore } from '../../src/storage/behaviorStore';
 
@@ -37,6 +39,7 @@ jest.mock('react-native', () => {
 
   rn.NativeModules.LafinaCallSpeechToText = {
     transcribe: jest.fn().mockResolvedValue('acknowledge'),
+    stopListening: jest.fn().mockResolvedValue(true),
   };
 
   rn.NativeModules.LafinaIntentExtractor = {
@@ -142,6 +145,17 @@ describe('callDispatcher controller', () => {
     });
 
     await answerCall('rem_retry', 'user1');
+    expect(startCallVoiceCapture()).toBe(true);
+    await finishCallVoiceCapture();
+    expect(remindersStore.getReminderById('rem_retry')?.status).toBe('triggered');
+    expect(NativeModules.LafinaCallSpeechToText.transcribe).toHaveBeenCalledTimes(1);
+    expect(DeviceEventEmitter.emit).toHaveBeenCalledWith(
+      'LAFINA_CALL_STATE_CHANGE',
+      { state: 'connected' }
+    );
+
+    expect(startCallVoiceCapture()).toBe(true);
+    await finishCallVoiceCapture();
     await disconnected;
 
     expect(
@@ -152,7 +166,7 @@ describe('callDispatcher controller', () => {
     );
   });
 
-  it('connects, plays greeting, transcribes response, and acknowledges reminder', async () => {
+  it('waits for push-to-talk, then transcribes and acknowledges the reminder', async () => {
     const reminder = {
       id: 'rem_ack',
       userId: 'user1',
@@ -166,20 +180,20 @@ describe('callDispatcher controller', () => {
 
     remindersStore.insertReminder(reminder);
 
-    // Call answerCall, which will trigger the TTS play and conversation loop
     await answerCall('rem_ack', 'user1');
 
-    // Verify reminder is acknowledged in database
-    const updated = remindersStore.getReminderById('rem_ack');
-    expect(updated?.status).toBe('acknowledged');
-
-    // Verify audio was played
+    expect(remindersStore.getReminderById('rem_ack')?.status).toBe('triggered');
     expect(NativeModules.LafinaTTS.playAudio).toHaveBeenCalledWith('/cache/audio.wav');
-    
-    // Verify SpeechToText was run
-    expect(NativeModules.LafinaCallSpeechToText.transcribe).toHaveBeenCalled();
+    expect(NativeModules.LafinaCallSpeechToText.transcribe).not.toHaveBeenCalled();
 
-    // Verify final disconnect event was sent
+    expect(startCallVoiceCapture()).toBe(true);
+    expect(DeviceEventEmitter.emit).toHaveBeenCalledWith('LAFINA_CALL_STATE_CHANGE', {
+      state: 'listening',
+    });
+    await finishCallVoiceCapture();
+
+    expect(NativeModules.LafinaCallSpeechToText.stopListening).toHaveBeenCalled();
+    expect(remindersStore.getReminderById('rem_ack')?.status).toBe('acknowledged');
     expect(DeviceEventEmitter.emit).toHaveBeenCalledWith('LAFINA_CALL_STATE_CHANGE', {
       state: 'disconnected',
     });
@@ -204,6 +218,8 @@ describe('callDispatcher controller', () => {
     );
 
     await answerCall('rem_snooze', 'user1');
+    expect(startCallVoiceCapture()).toBe(true);
+    await finishCallVoiceCapture();
 
     const updated = remindersStore.getReminderById('rem_snooze');
     expect(updated?.status).toBe('snoozed');
@@ -214,6 +230,33 @@ describe('callDispatcher controller', () => {
     const timeDiff = new Date(updated?.triggerAt || '').getTime() - Date.now();
     expect(timeDiff).toBeGreaterThan(9 * 60 * 1000); // at least 9 minutes
     expect(timeDiff).toBeLessThan(11 * 60 * 1000); // at most 11 minutes
+  });
+
+  it('ignores a transcription that resolves after the call disconnects', async () => {
+    remindersStore.insertReminder({
+      id: 'rem_stale',
+      userId: 'user1',
+      task: 'Offline Systems Review',
+      description: null,
+      scheduledAt: new Date().toISOString(),
+      triggerAt: new Date().toISOString(),
+      status: 'pending',
+      preCastAudioPath: null,
+    });
+    let resolveCapture!: (transcript: string) => void;
+    const capturePromise = new Promise<string>((resolve) => {
+      resolveCapture = resolve;
+    });
+    NativeModules.LafinaCallSpeechToText.transcribe.mockReturnValueOnce(capturePromise);
+
+    await answerCall('rem_stale', 'user1');
+    expect(startCallVoiceCapture()).toBe(true);
+    const finishingCapture = finishCallVoiceCapture();
+    disconnectCall();
+    resolveCapture('acknowledge');
+    await finishingCapture;
+
+    expect(remindersStore.getReminderById('rem_stale')?.status).toBe('triggered');
   });
 
   it('declining a call triggers auto-snooze', async () => {

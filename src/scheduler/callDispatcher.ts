@@ -39,6 +39,16 @@ interface TranscriptionResult {
   transcript: string;
 }
 
+interface CallCaptureOutcome {
+  result: string | TranscriptionResult | null;
+  error: unknown | null;
+}
+
+interface ActiveCallCapture {
+  session: CallDispatcherSession;
+  outcome: Promise<CallCaptureOutcome>;
+}
+
 interface SpeechToTextModule {
   transcribe: (options: { language: 'en' }) => Promise<string | TranscriptionResult>;
   stopListening?: () => Promise<boolean>;
@@ -55,6 +65,7 @@ interface IntentExtractorModule {
 }
 
 let activeSession: CallDispatcherSession | null = null;
+let activeCallCapture: ActiveCallCapture | null = null;
 
 const ACKNOWLEDGE_CONFIRMATION = 'Great! Task acknowledged. Have a productive day.';
 
@@ -94,19 +105,23 @@ const getIntentExtractor = (): IntentExtractorModule | null => {
 const extractTranscript = (result: string | TranscriptionResult): string =>
   typeof result === 'string' ? result : result.transcript;
 
+const publishCallState = (state: CallState, text?: string): void => {
+  if (activeSession) activeSession.state = state;
+  const payload: { state: CallState; text?: string } = { state };
+  if (text !== undefined) payload.text = text;
+  DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', payload);
+};
+
 /**
  * Handles TTS playback from text while recovering the visible call state on failure.
  */
 export const speakText = async (text: string): Promise<void> => {
   try {
-    DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'speaking', text });
+    publishCallState('speaking', text);
     await speakTextWithTts(text);
   } catch (error) {
     console.error('[CallDispatcher] speakText error:', error);
-    DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', {
-      state: 'connected',
-      text: '',
-    });
+    publishCallState('connected', '');
   }
 };
 
@@ -127,7 +142,7 @@ export const answerCall = async (
     return;
   }
 
-  activeSession = {
+  const session: CallDispatcherSession = {
     reminderId,
     userId,
     task: reminder.task,
@@ -135,6 +150,8 @@ export const answerCall = async (
     snoozeCount: reminder.snoozeCount,
     retryCount: 0,
   };
+  activeSession = session;
+  activeCallCapture = null;
 
   await finishNativeIncomingCall(reminderId);
   remindersStore.updateReminderStatus(reminderId, 'triggered');
@@ -163,7 +180,7 @@ export const answerCall = async (
     await speakText(announcement);
   }
 
-  await runCallLoop();
+  if (activeSession === session) publishCallState('connected');
 };
 
 const quickMatchIntent = (
@@ -221,10 +238,6 @@ const resolveIntent = async (
   const extractor = getIntentExtractor();
   if (!extractor) return null;
 
-  DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', {
-    state: 'processing',
-    text: 'Processing...',
-  });
   const rawNluJson = await extractor.extractIntentJson({
     transcript,
     prompt: buildNluPrompt(transcript),
@@ -235,72 +248,139 @@ const resolveIntent = async (
   return parseNluJson(rawNluJson);
 };
 
-const runCallLoop = async (): Promise<void> => {
-  while (activeSession && activeSession.state !== 'disconnected') {
-    const session = activeSession;
-    const stt = getSTTModule();
-    if (!stt) {
-      await speakText(
-        'Sorry, offline speech recognition is unavailable. Please use the buttons on screen.'
-      );
+const returnToPushToTalk = async (
+  session: CallDispatcherSession,
+  message: string
+): Promise<void> => {
+  session.retryCount += 1;
+  if (session.retryCount >= 3) {
+    await autoSnoozeCall();
+    return;
+  }
+  await speakText(message);
+  if (activeSession === session) publishCallState('connected');
+};
+
+const processCallTranscript = async (
+  session: CallDispatcherSession,
+  transcript: string
+): Promise<void> => {
+  if (!transcript) {
+    await returnToPushToTalk(
+      session,
+      "I didn't catch that. Hold the microphone and say acknowledge or snooze."
+    );
+    return;
+  }
+
+  publishCallState('processing', 'Processing...');
+  try {
+    const preferences = getReminderPreferences(session.userId);
+    const result = await resolveIntent(transcript, preferences.snoozeDurationMinutes);
+
+    if (result?.intent === 'acknowledge') {
+      const action = await acknowledgeReminderAction(session.reminderId, session.userId);
+      await speakText(action.message);
+      if (action.ok) {
+        disconnectCall();
+      } else if (activeSession === session) {
+        publishCallState('connected');
+      }
       return;
     }
 
-    try {
-      DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', { state: 'listening' });
-      const transcript = extractTranscript(await stt.transcribe({ language: 'en' })).trim();
-      const preferences = getReminderPreferences(session.userId);
-
-      if (!transcript) {
-        session.retryCount += 1;
-        if (session.retryCount >= 3) break;
-        await speakText("I didn't catch that. Please say acknowledge or snooze.");
-        continue;
-      }
-
-      const result = await resolveIntent(
-        transcript,
-        preferences.snoozeDurationMinutes
+    if (result?.intent === 'snooze') {
+      const minutes = result.duration_minutes ?? preferences.snoozeDurationMinutes;
+      const action = await snoozeReminderAction(
+        session.reminderId,
+        session.userId,
+        minutes
       );
-      if (result?.intent === 'acknowledge') {
-        const action = await acknowledgeReminderAction(
-          session.reminderId,
-          session.userId
-        );
-        await speakText(action.message);
-        if (action.ok) {
-          disconnectCall();
-          return;
-        }
-      } else if (result?.intent === 'snooze') {
-        const minutes =
-          result.duration_minutes ?? preferences.snoozeDurationMinutes;
-        const action = await snoozeReminderAction(
-          session.reminderId,
-          session.userId,
-          minutes
-        );
-        await speakText(action.message);
-        if (action.ok) {
-          disconnectCall();
-          return;
-        }
-      } else {
-        session.retryCount += 1;
-        if (session.retryCount >= 3) break;
-        await speakText(
-          'Sorry, I can only acknowledge or snooze the reminder. Which would you like?'
-        );
+      await speakText(action.message);
+      if (action.ok) {
+        disconnectCall();
+      } else if (activeSession === session) {
+        publishCallState('connected');
       }
-    } catch (error) {
-      console.error('[CallDispatcher] Call loop error:', error);
-      session.retryCount += 1;
-      if (session.retryCount >= 3) break;
-      await speakText('Something went wrong. Please say acknowledge or snooze again.');
+      return;
     }
+
+    await returnToPushToTalk(
+      session,
+      'Sorry, I can only acknowledge or snooze the reminder. Hold the microphone and try again.'
+    );
+  } catch (error) {
+    console.error('[CallDispatcher] Voice response error:', error);
+    await returnToPushToTalk(
+      session,
+      'Something went wrong. Hold the microphone and say acknowledge or snooze again.'
+    );
+  }
+};
+
+/**
+ * Starts one offline Whisper.cpp capture for the active call on microphone press-in.
+ *
+ * @returns True when a new capture starts; otherwise false.
+ */
+export const startCallVoiceCapture = (): boolean => {
+  const session = activeSession;
+  if (!session || session.state !== 'connected' || activeCallCapture) return false;
+
+  const stt = getSTTModule();
+  if (!stt) {
+    speakText(
+      'Sorry, offline speech recognition is unavailable. Please use the buttons on screen.'
+    ).then(() => {
+      if (activeSession === session) publishCallState('connected');
+    }).catch(() => undefined);
+    return false;
   }
 
-  await autoSnoozeCall();
+  try {
+    publishCallState('listening');
+    const outcome = stt
+      .transcribe({ language: 'en' })
+      .then((result): CallCaptureOutcome => ({ result, error: null }))
+      .catch((error: unknown): CallCaptureOutcome => ({ result: null, error }));
+    activeCallCapture = { session, outcome };
+    return true;
+  } catch (error) {
+    console.error('[CallDispatcher] Could not start voice capture:', error);
+    publishCallState('connected');
+    return false;
+  }
+};
+
+/**
+ * Stops the active call capture on microphone release and processes its local transcript.
+ */
+export const finishCallVoiceCapture = async (): Promise<void> => {
+  const capture = activeCallCapture;
+  if (!capture) return;
+  activeCallCapture = null;
+
+  const stt = getSTTModule();
+  try {
+    await stt?.stopListening?.();
+  } catch (error) {
+    console.warn('[CallDispatcher] Could not stop voice capture cleanly:', error);
+  }
+
+  const outcome = await capture.outcome;
+  if (activeSession !== capture.session) return;
+
+  if (outcome.error || outcome.result === null) {
+    console.error('[CallDispatcher] Offline transcription failed:', outcome.error);
+    await returnToPushToTalk(
+      capture.session,
+      'Something went wrong. Hold the microphone and say acknowledge or snooze again.'
+    );
+    return;
+  }
+
+  const transcript = extractTranscript(outcome.result).trim();
+  await processCallTranscript(capture.session, transcript);
 };
 
 /**
@@ -373,9 +453,10 @@ export const manualAcknowledgeCall = async (
  */
 export const disconnectCall = (): void => {
   const stt = getSTTModule();
-  if (stt?.stopListening) {
+  if (activeCallCapture && stt?.stopListening) {
     void stt.stopListening().catch(() => undefined);
   }
+  activeCallCapture = null;
   if (activeSession) {
     activeSession.state = 'disconnected';
     activeSession = null;

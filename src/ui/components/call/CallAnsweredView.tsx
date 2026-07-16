@@ -1,8 +1,16 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Image } from 'react-native';
+import {
+  ActivityIndicator,
+  Animated,
+  Easing,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../../theme';
 import { PhoneOff, Check, Clock, Mic, Volume2, PhoneCall } from 'lucide-react-native';
-import { CallState } from '../../../scheduler';
+import type { CallState } from '../../../scheduler';
 import { useTheme } from '../../contexts/ThemeContext';
 
 interface CallAnsweredViewProps {
@@ -11,28 +19,34 @@ interface CallAnsweredViewProps {
   onSnooze: (minutes: number) => void;
   onAcknowledge: () => void;
   onDecline: () => void;
+  onMicPressIn: () => void;
+  onMicPressOut: () => void;
   transcript: string;
   reply: string;
 }
 
+/** Renders the connected call controls, including offline push-to-talk capture. */
 export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
   task,
   callState,
   onSnooze,
   onAcknowledge,
   onDecline,
+  onMicPressIn,
+  onMicPressOut,
   transcript,
   reply,
 }) => {
   const { isDarkMode, colors } = useTheme();
   const [pulse] = useState(new Animated.Value(1));
   const waveBars = useRef(Array.from({ length: 9 }, () => new Animated.Value(8))).current;
-  const waveIntervalRef = useRef<any>(null);
+  const waveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Pulsing mic animation
   useEffect(() => {
+    let pulseAnimation: Animated.CompositeAnimation | null = null;
     if (callState === 'listening') {
-      Animated.loop(
+      pulseAnimation = Animated.loop(
         Animated.sequence([
           Animated.timing(pulse, {
             toValue: 1.2,
@@ -47,10 +61,13 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
             useNativeDriver: true,
           }),
         ])
-      ).start();
+      );
+      pulseAnimation.start();
     } else {
       pulse.setValue(1);
     }
+
+    return () => pulseAnimation?.stop();
   }, [callState, pulse]);
 
   // Waveform bar animation
@@ -108,15 +125,12 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
     transcriptText: {
       color: colors.textSecondary,
     },
-    speakerInner: {
-      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
-      borderColor: colors.blue,
-    },
     snoozeBtnOutline: {
       backgroundColor: isDarkMode ? '#000000' : '#FFFFFF',
       borderColor: colors.blue,
     },
   };
+  const microphoneEnabled = callState === 'connected' || callState === 'listening';
 
   return (
     <View style={[styles.container, dynamicStyles.container]}>
@@ -133,6 +147,11 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
             <Mic size={18} color={colors.red} style={styles.statusIcon} />
             <Text style={[styles.statusText, dynamicStyles.statusText]}>Listening for you...</Text>
           </>
+        ) : callState === 'processing' ? (
+          <>
+            <Mic size={18} color={colors.yellow} style={styles.statusIcon} />
+            <Text style={[styles.statusText, dynamicStyles.statusText]}>Processing your response...</Text>
+          </>
         ) : (
           <>
             <PhoneCall size={18} color={colors.blue} style={styles.statusIcon} />
@@ -141,8 +160,46 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
         )}
       </View>
 
-      {/* Waveform Visualization when Listening */}
-      {callState === 'listening' ? (
+      {/* Push-to-talk stays mounted while listening so release is always captured. */}
+      <View style={styles.voiceCaptureArea}>
+        {callState === 'listening' && <View style={styles.listeningRing} />}
+        <TouchableOpacity
+          onPressIn={onMicPressIn}
+          onPressOut={onMicPressOut}
+          activeOpacity={0.8}
+          disabled={!microphoneEnabled}
+          accessibilityRole="button"
+          accessibilityLabel="Hold to speak"
+          accessibilityHint="Hold while speaking. Release to process your response."
+          accessibilityState={{ disabled: !microphoneEnabled }}
+        >
+          <Animated.View
+            style={[
+              styles.microphoneButton,
+              callState === 'listening' ? styles.microphoneButtonListening : styles.microphoneButtonIdle,
+              !microphoneEnabled && styles.microphoneButtonDisabled,
+              { transform: [{ scale: pulse }] },
+            ]}
+          >
+            {callState === 'processing' ? (
+              <ActivityIndicator size="large" color={colors.white} />
+            ) : callState === 'speaking' ? (
+              <Volume2 size={34} color={colors.white} />
+            ) : (
+              <Mic size={34} color={colors.white} />
+            )}
+          </Animated.View>
+        </TouchableOpacity>
+        <Text style={[styles.holdToTalkText, dynamicStyles.statusText]}>
+          {callState === 'listening'
+            ? 'Release to process your response'
+            : callState === 'connected'
+              ? 'Hold the microphone to respond'
+              : 'Please wait for LAFINA'}
+        </Text>
+      </View>
+
+      {callState === 'listening' && (
         <View style={styles.waveformContainer}>
           {waveBars.map((bar, i) => (
             <Animated.View
@@ -153,16 +210,6 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
               ]}
             />
           ))}
-        </View>
-      ) : (
-        <View style={styles.speakerGlowContainer}>
-          <Animated.View style={[styles.speakerCircle, dynamicStyles.speakerInner, { transform: [{ scale: pulse }] }]}>
-            <Image
-              source={require('../../../assets/lafina_app_logo.png')}
-              style={styles.avatarImage}
-              resizeMode="cover"
-            />
-          </Animated.View>
         </View>
       )}
 
@@ -175,7 +222,7 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
           </View>
         ) : null}
         
-        {callState === 'listening' ? (
+        {callState === 'listening' || transcript ? (
           <View style={styles.transcriptSection}>
             <Text style={[styles.boxTitle, dynamicStyles.boxTitleText]}>Your Speech:</Text>
             <Text style={[styles.transcriptText, dynamicStyles.transcriptText]}>
@@ -187,7 +234,7 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
 
       {/* Fallback Buttons */}
       <View style={styles.fallbackContainer}>
-        <Text style={styles.fallbackTitle}>Manual Actions (Voice Fallback):</Text>
+        <Text style={styles.fallbackTitle}>Or use manual actions:</Text>
         <View style={styles.buttonRow}>
           <TouchableOpacity style={[styles.actionBtn, styles.ackBtn]} onPress={onAcknowledge}>
             <Check size={20} color="#fff" style={styles.btnIcon} />
@@ -261,24 +308,42 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     marginHorizontal: 3,
   },
-  speakerGlowContainer: {
-    height: 120,
+  voiceCaptureArea: {
+    minHeight: 126,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  speakerCircle: {
+  listeningRing: {
+    position: 'absolute',
+    top: 3,
+    width: 102,
+    height: 102,
+    borderRadius: 51,
+    borderWidth: 2,
+    borderColor: Colors.red,
+  },
+  microphoneButton: {
     width: 90,
     height: 90,
     borderRadius: 45,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
     ...Shadows.card,
-    overflow: 'hidden',
   },
-  avatarImage: {
-    width: 90,
-    height: 90,
+  microphoneButtonIdle: {
+    backgroundColor: Colors.blue,
+  },
+  microphoneButtonListening: {
+    backgroundColor: Colors.red,
+  },
+  microphoneButtonDisabled: {
+    opacity: 0.45,
+  },
+  holdToTalkText: {
+    marginTop: 10,
+    fontFamily: Fonts.body,
+    fontSize: 13,
+    fontWeight: '600',
   },
   transcriptBox: {
     width: '100%',

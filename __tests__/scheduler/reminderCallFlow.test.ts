@@ -6,6 +6,8 @@ import {
   answerCall,
   checkAndTriggerReminders,
   disconnectCall,
+  finishCallVoiceCapture,
+  startCallVoiceCapture,
 } from '../../src/scheduler';
 
 jest.mock('react-native', () => {
@@ -80,6 +82,8 @@ describe('offline reminder call integration', () => {
       inferenceDurationMs: 800,
     });
     await answerCall('rem_offline_flow', userId);
+    expect(startCallVoiceCapture()).toBe(true);
+    await finishCallVoiceCapture();
 
     const snoozed = remindersStore.getReminderById('rem_offline_flow');
     expect(snoozed?.status).toBe('snoozed');
@@ -104,6 +108,8 @@ describe('offline reminder call integration', () => {
       inferenceDurationMs: 650,
     });
     await answerCall('rem_offline_flow', userId);
+    expect(startCallVoiceCapture()).toBe(true);
+    await finishCallVoiceCapture();
 
     expect(remindersStore.getReminderById('rem_offline_flow')?.status).toBe(
       'acknowledged'

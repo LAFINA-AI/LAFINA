@@ -204,8 +204,16 @@ class LafinaCallSpeechToTextModule(private val reactContext: ReactApplicationCon
     recorder.startRecording()
     try {
       while (!cancelled.get() && audio.size < maximumSamples) {
-        val read = recorder.read(frame, 0, frame.size)
-        if (read <= 0) continue
+        val read = try {
+          recorder.read(frame, 0, frame.size)
+        } catch (error: IllegalStateException) {
+          if (cancelled.get()) break
+          throw error
+        }
+        if (read <= 0) {
+          if (cancelled.get()) break
+          continue
+        }
         val normalized = FloatArray(FRAME_SIZE)
         for (index in 0 until read) {
           normalized[index] = frame[index] / 32768f

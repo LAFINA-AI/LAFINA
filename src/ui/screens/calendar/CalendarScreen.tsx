@@ -23,6 +23,7 @@ import type { Task } from '../../../storage';
 import { generateId } from '../../../utils';
 import { CalendarLayersModal } from '../../components/calendar/CalendarLayersModal';
 
+/** Renders the offline calendar workspace and its local scheduling actions. */
 export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   userId,
   refreshTrigger,
@@ -30,7 +31,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   viewMode: propViewMode,
   onViewModeChange: propOnViewModeChange,
 }) => {
-  const { colors, isDarkMode } = useTheme();
+  const { colors } = useTheme();
 
   const [fabMenuVisible, setFabMenuVisible] = useState(false);
   const [noteModalVisible, setNoteModalVisible] = useState(false);
@@ -98,66 +99,15 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header Row 1: Title & Date Navigation */}
-      {calendar.viewMode === 'month' ? (
-        <View style={styles.topHeaderContainer}>
-          <View style={styles.filipinoHeaderRow}>
-            {/* Left Year Box */}
-            <View style={[styles.yearBox, { backgroundColor: isDarkMode ? '#4D8CFF' : '#002C9C', borderColor: isDarkMode ? '#FF5C5C' : '#E50000' }]}>
-              <Text style={styles.yearBoxText}>{calendar.currentDate.getFullYear()}</Text>
-            </View>
-
-            {/* Middle Month Box */}
-            <TouchableOpacity
-              onPress={() => calendar.setShowDatePicker(true)}
-              style={[styles.monthBox, { borderColor: isDarkMode ? '#4D8CFF' : '#002C9C', backgroundColor: isDarkMode ? colors.cardBg : '#FFFFFF' }]}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.monthBoxText, { color: isDarkMode ? '#FF5C5C' : '#E50000' }]}>
-                {calendar.currentDate.toLocaleDateString('en-US', { month: 'long' }).toUpperCase()}
-              </Text>
-              <ChevronDown size={14} color={isDarkMode ? '#FF5C5C' : '#E50000'} style={styles.monthChevron} />
-            </TouchableOpacity>
-
-            {/* Right Year Box */}
-            <View style={[styles.yearBox, { backgroundColor: isDarkMode ? '#4D8CFF' : '#002C9C', borderColor: isDarkMode ? '#FF5C5C' : '#E50000' }]}>
-              <Text style={styles.yearBoxText}>{calendar.currentDate.getFullYear()}</Text>
-            </View>
-          </View>
-          
-          {/* Retro Nav Controls */}
-          <View style={styles.retroNavRow}>
-            <TouchableOpacity
-              onPress={calendar.handlePrevPress}
-              style={[styles.retroNavButton, { borderColor: isDarkMode ? '#FFFFFF' : '#000000' }]}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.retroNavText, { color: isDarkMode ? '#FFFFFF' : '#000000' }]}>◄ PREV</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={calendar.handleGoToToday}
-              style={[styles.retroTodayBtn, { borderColor: isDarkMode ? '#FF5C5C' : '#E50000', backgroundColor: isDarkMode ? '#2C1B18' : '#FFF0F0' }]}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.retroTodayText, { color: isDarkMode ? '#FF5C5C' : '#E50000' }]}>TODAY</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={calendar.handleNextPress}
-              style={[styles.retroNavButton, { borderColor: isDarkMode ? '#FFFFFF' : '#000000' }]}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.retroNavText, { color: isDarkMode ? '#FFFFFF' : '#000000' }]}>NEXT ►</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : (
+      {/* Shared date header for month, week, and day views. */}
         <View style={styles.topHeaderRow}>
           <TouchableOpacity
             onPress={() => calendar.setShowDatePicker(true)}
             style={styles.headerTitleContainer}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Choose calendar date"
+            accessibilityHint="Opens the date picker"
           >
             <Text
               style={[styles.headerTitle, { color: colors.textPrimary }]}
@@ -175,7 +125,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
               onPress={calendar.handlePrevPress}
               style={[styles.navButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
               activeOpacity={0.7}
-              accessibilityLabel="Previous"
+              accessibilityRole="button"
+              accessibilityLabel={`Previous ${calendar.viewMode}`}
             >
               <ChevronLeft size={16} color={colors.textPrimary} />
             </TouchableOpacity>
@@ -184,6 +135,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
               onPress={calendar.handleGoToToday}
               style={[styles.todayButton, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Go to today"
             >
               <Text style={[styles.todayButtonText, { color: colors.textPrimary }]}>Today</Text>
             </TouchableOpacity>
@@ -192,13 +145,13 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
               onPress={calendar.handleNextPress}
               style={[styles.navButton, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
               activeOpacity={0.7}
-              accessibilityLabel="Next"
+              accessibilityRole="button"
+              accessibilityLabel={`Next ${calendar.viewMode}`}
             >
               <ChevronRight size={16} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
         </View>
-      )}
 
       {calendar.showDatePicker && (
         <DateTimePicker
@@ -215,8 +168,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
         />
       )}
 
-      {/* Header Row 2: View Mode Switcher & Quick Actions */}
-      <View style={styles.subHeaderRow}>
+      {/* View mode and clearly labeled local calendar actions. */}
+      <View style={styles.subHeaderContainer}>
         <View style={[styles.toggleRow, { backgroundColor: colors.divider }]}>
           {(['month', 'week', 'day'] as ViewMode[]).map((mode) => (
             <TouchableOpacity
@@ -227,6 +180,9 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
                 calendar.viewMode === mode && { backgroundColor: colors.cardBg, ...Shadows.card },
               ]}
               onPress={() => calendar.setViewMode(mode)}
+              accessibilityRole="button"
+              accessibilityLabel={`${mode.charAt(0).toUpperCase() + mode.slice(1)} view`}
+              accessibilityState={{ selected: calendar.viewMode === mode }}
             >
               <Text style={[
                 styles.toggleText,
@@ -239,33 +195,42 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
           ))}
         </View>
 
-        <View style={styles.actionIconsRow}>
+        <View style={styles.actionButtonsRow}>
           <TouchableOpacity
             onPress={calendar.handleImportCalendar}
             onLongPress={calendar.startRemoveFlow}
-            style={[styles.iconButton, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
+            style={[styles.actionButton, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
             activeOpacity={0.7}
-            accessibilityLabel="Import Calendar"
+            accessibilityRole="button"
+            accessibilityLabel="Import calendar"
+            accessibilityHint="Imports a calendar file. Press and hold to remove an imported calendar."
           >
             <Upload size={16} color={colors.textPrimary} />
+            <Text style={[styles.actionButtonText, { color: colors.textPrimary }]}>Import</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={calendar.handleExportCalendar}
-            style={[styles.iconButton, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
+            style={[styles.actionButton, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
             activeOpacity={0.7}
-            accessibilityLabel="Export Calendar"
+            accessibilityRole="button"
+            accessibilityLabel="Export calendar"
+            accessibilityHint="Exports the visible local calendar"
           >
             <Download size={16} color={colors.textPrimary} />
+            <Text style={[styles.actionButtonText, { color: colors.textPrimary }]}>Export</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => calendar.setLayersModalVisible(true)}
-            style={[styles.iconButton, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
+            style={[styles.actionButton, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
             activeOpacity={0.7}
-            accessibilityLabel="Calendar Layers"
+            accessibilityRole="button"
+            accessibilityLabel="Manage calendars"
+            accessibilityHint="Shows calendar visibility and imported calendars"
           >
             <Layers size={16} color={colors.textPrimary} />
+            <Text style={[styles.actionButtonText, { color: colors.textPrimary }]}>Calendars</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -275,6 +240,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
         {calendar.viewMode === 'month' && (
           <MonthView
             currentDate={calendar.currentDate}
+            selectedDate={calendar.selectedDate}
             weekStartsMonday={calendar.weekStartsMonday}
             viewMode={calendar.viewMode}
             blocks={calendar.blocks}
@@ -460,6 +426,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 16,
+    paddingBottom: 100, // Account for floating bottom tab bar
   },
   topHeaderRow: {
     flexDirection: 'row',
@@ -505,18 +472,13 @@ const styles = StyleSheet.create({
     fontFamily: 'sans-serif',
     fontWeight: '600',
   },
-  subHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  subHeaderContainer: {
     marginBottom: 16,
   },
   toggleRow: {
-    flex: 1,
     flexDirection: 'row',
     borderRadius: 8,
     padding: 2,
-    marginRight: 10,
   },
   toggleBtn: {
     flex: 1,
@@ -528,94 +490,31 @@ const styles = StyleSheet.create({
     fontFamily: 'sans-serif',
     fontSize: 13,
   },
-  actionIconsRow: {
+  actionButtonsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 8,
+    marginHorizontal: -4,
   },
-  iconButton: {
-    padding: 8,
-    marginLeft: 8,
+  actionButton: {
+    flex: 1,
+    minHeight: 40,
+    flexDirection: 'row',
+    paddingHorizontal: 8,
+    marginHorizontal: 4,
     borderRadius: 8,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  actionButtonText: {
+    marginLeft: 6,
+    fontFamily: 'sans-serif-medium',
+    fontSize: 11,
+    fontWeight: '600',
+  },
   body: {
     flex: 1,
-  },
-  topHeaderContainer: {
-    marginBottom: 12,
-  },
-  filipinoHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'stretch',
-    height: 48,
-  },
-  yearBox: {
-    flex: 1,
-    maxWidth: 80,
-    borderWidth: 2,
-    borderRadius: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  yearBoxText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    fontFamily: 'sans-serif-condensed',
-  },
-  monthBox: {
-    flex: 2,
-    flexDirection: 'row',
-    borderWidth: 2,
-    borderRadius: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 6,
-  },
-  monthBoxText: {
-    fontSize: 18,
-    fontWeight: '900',
-    fontFamily: 'sans-serif-condensed',
-    letterSpacing: 1,
-  },
-  monthChevron: {
-    marginLeft: 6,
-  },
-  retroNavRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  retroNavButton: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderRadius: 4,
-    paddingVertical: 5,
-    alignItems: 'center',
-    marginHorizontal: 2,
-  },
-  retroNavText: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    fontFamily: 'sans-serif-medium',
-  },
-  retroTodayBtn: {
-    flex: 1.2,
-    borderWidth: 1.5,
-    borderRadius: 4,
-    paddingVertical: 5,
-    alignItems: 'center',
-    marginHorizontal: 2,
-  },
-  retroTodayText: {
-    fontSize: 11,
-    fontWeight: '900',
-    fontFamily: 'sans-serif-medium',
-    letterSpacing: 0.5,
   },
   fab: {
     position: 'absolute',

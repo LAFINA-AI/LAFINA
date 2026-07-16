@@ -18,8 +18,10 @@ import { CallAnsweredView } from '../components/call/CallAnsweredView';
 import {
   answerCall,
   declineCall,
+  finishCallVoiceCapture,
   manualAcknowledgeCall,
   manualSnoozeCall,
+  startCallVoiceCapture,
 } from '../../scheduler';
 import type { CallState, NativeCallAction } from '../../scheduler';
 import { useTheme } from '../contexts/ThemeContext';
@@ -33,6 +35,7 @@ interface IncomingCallScreenProps {
   initialAction?: NativeCallAction;
 }
 
+/** Renders and coordinates the offline incoming reminder call experience. */
 export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
   visible,
   reminderId,
@@ -143,6 +146,18 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
     await manualAcknowledgeCall(reminderId, userId);
   }, [reminderId, userId]);
 
+  const handleMicPressIn = useCallback((): void => {
+    setTranscript('');
+    startCallVoiceCapture();
+  }, []);
+
+  const handleMicPressOut = useCallback((): void => {
+    finishCallVoiceCapture().catch((error: unknown) => {
+      console.error('[CallScreen] Could not process voice response:', error);
+      setReply('Voice processing failed. Please hold the microphone and try again.');
+    });
+  }, []);
+
   useEffect(() => {
     if (!visible || !reminderId) return;
     const actionKey = reminderId + ':' + initialAction;
@@ -232,6 +247,8 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
             onSnooze={handleManualSnooze}
             onAcknowledge={handleManualAcknowledge}
             onDecline={handleDecline}
+            onMicPressIn={handleMicPressIn}
+            onMicPressOut={handleMicPressOut}
             transcript={transcript}
             reply={reply}
           />

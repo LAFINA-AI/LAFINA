@@ -57,14 +57,15 @@ export const WeekView: React.FC<WeekViewProps> = ({
                 key={i}
                 style={[
                   styles.datePill,
-                  { backgroundColor: 'transparent', ...Shadows.card },
+                  isSelected && { elevation: 6 },
                 ]}
               >
                 <TouchableOpacity
                   style={[
                     styles.pillTouchTarget,
-                    { backgroundColor: colors.cardBg },
-                    isSelected && { backgroundColor: colors.red },
+                    isSelected
+                      ? [styles.pillSelected, { backgroundColor: colors.cardBg }]
+                      : [styles.pillUnselected, { borderColor: colors.border }],
                     isToday && !isSelected && { borderColor: colors.red, borderWidth: 1.5 },
                   ]}
                   onPress={() => setSelectedDate(day)}
@@ -73,18 +74,21 @@ export const WeekView: React.FC<WeekViewProps> = ({
                   <Text style={[
                     styles.pillDayName,
                     { color: colors.textSecondary },
-                    isSelected && { color: colors.white },
+                    isSelected && { color: colors.textPrimary },
                   ]}>
                     {day.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 3)}
                   </Text>
                   <Text style={[
                     styles.pillDayNum,
-                    { color: colors.textPrimary },
-                    isSelected && { color: colors.white },
+                    { color: colors.textSecondary },
+                    isSelected && { color: colors.textPrimary },
                     isToday && !isSelected && { color: colors.red },
                   ]}>
                     {day.getDate()}
                   </Text>
+                  {isSelected && (
+                    <View style={styles.selectedPillUnderline} />
+                  )}
                 </TouchableOpacity>
               </View>
             );
@@ -202,10 +206,35 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollerContainer: { marginBottom: 16 },
   weekScroller: { paddingVertical: 4 },
-  datePill: { width: 50, height: 68, borderRadius: 25, marginRight: 10 },
-  pillTouchTarget: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', borderRadius: 25 },
-  pillDayName: { fontSize: 10, fontFamily: 'sans-serif' },
-  pillDayNum: { fontSize: 16, fontFamily: 'sans-serif', fontWeight: 'bold', marginTop: 4 },
+  datePill: { width: 56, height: 74, borderRadius: 16, marginRight: 8 },
+  pillTouchTarget: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+  },
+  pillSelected: {
+    borderWidth: 0,
+  },
+  pillUnselected: {
+    backgroundColor: 'transparent',
+  },
+  pillDayName: { fontSize: 12, fontFamily: 'sans-serif', fontWeight: 'normal' },
+  pillDayNum: { fontSize: 28, fontFamily: 'sans-serif', fontWeight: 'bold', marginTop: 2 },
+  selectedPillUnderline: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 16,
+    borderWidth: 5,
+    borderColor: 'transparent',
+    borderBottomColor: Colors.blue,
+  },
   overdueBanner: { borderRadius: 12, padding: 8, flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   overdueBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, marginRight: 8 },
   overdueBadgeText: { fontSize: 10, fontWeight: 'bold' },
