@@ -9,9 +9,11 @@ import {
   Alert,
   Keyboard,
 } from 'react-native';
-import { Trash2 } from 'lucide-react-native';
-import { Fonts } from '../theme';
+import { Trash2, Plus } from 'lucide-react-native';
+import { SvgXml } from 'react-native-svg';
+import { Fonts, Colors } from '../theme';
 import { chatStore } from '../../storage';
+import { LAFINA_LOGO_CHAT_HEADER_XML } from '../../assets/lafina_logo_chat_header_xml';
 import type { ChatMessage } from '../../storage';
 import { runLocalLlmChat } from '../../ai';
 import { useTheme } from '../contexts/ThemeContext';
@@ -141,14 +143,29 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       keyboardVerticalOffset={0}
     >
       {/* Header */}
-      <View style={[styles.header, themed.header]}>
-        <View>
-          <Text style={[styles.headerTitle, themed.headerTitle]}>LAFINA Assistant</Text>
-          <Text style={[styles.headerSubtitle, themed.headerSubtitle]}>Offline NLU Scheduler</Text>
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <SvgXml
+            xml={LAFINA_LOGO_CHAT_HEADER_XML}
+            width={38}
+            height={38}
+            style={styles.headerLogo}
+          />
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>LAFINA Assistant</Text>
+            <Text style={styles.headerSubtitle}>Offline NLU Scheduler</Text>
+          </View>
         </View>
-        <TouchableOpacity onPress={handleClearChat} style={styles.clearBtn}>
-          <Trash2 size={20} color={colors.red} />
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity onPress={handleClearChat} style={styles.headerIconBtn}>
+            <View style={styles.plusCircle}>
+              <Plus size={16} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleClearChat} style={styles.headerIconBtn}>
+            <Trash2 size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Message List */}
@@ -184,9 +201,6 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
 
 const getChatThemedStyles = (colors: ThemeColors) => ({
   container: { backgroundColor: colors.background },
-  header: { backgroundColor: colors.cardBg, borderBottomColor: colors.border },
-  headerTitle: { color: colors.textPrimary },
-  headerSubtitle: { color: colors.textSecondary },
   emptyText: { color: colors.textSecondary },
   exampleText: { color: colors.textMuted },
   assistantBubble: { backgroundColor: colors.cardBg, borderColor: colors.border },
@@ -205,20 +219,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 20,
     paddingBottom: 12,
-    borderBottomWidth: 1,
+    backgroundColor: Colors.blue,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerLogo: {
+    width: 38,
+    height: 38,
+    marginRight: 10,
+  },
+  headerTextContainer: {
+    flexDirection: 'column',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
     fontFamily: Fonts.heading,
+    color: '#FFFFFF',
   },
   headerSubtitle: {
     fontSize: 11,
     fontFamily: Fonts.body,
     marginTop: 2,
+    color: 'rgba(255, 255, 255, 0.85)',
   },
-  clearBtn: {
-    padding: 8,
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIconBtn: {
+    padding: 6,
+    marginLeft: 12,
+  },
+  plusCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   listContent: {
     padding: 16,
