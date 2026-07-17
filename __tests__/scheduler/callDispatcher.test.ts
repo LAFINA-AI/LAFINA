@@ -7,6 +7,7 @@ import {
   finishCallVoiceCapture,
   declineCall,
   disconnectCall,
+  manualSnoozeCall,
   speakText,
   startCallVoiceCapture,
 } from '../../src/scheduler/callDispatcher';
@@ -194,9 +195,16 @@ describe('callDispatcher controller', () => {
 
     expect(NativeModules.LafinaCallSpeechToText.stopListening).toHaveBeenCalled();
     expect(remindersStore.getReminderById('rem_ack')?.status).toBe('acknowledged');
-    expect(DeviceEventEmitter.emit).toHaveBeenCalledWith('LAFINA_CALL_STATE_CHANGE', {
-      state: 'disconnected',
-    });
+    expect(DeviceEventEmitter.emit).toHaveBeenCalledWith(
+      'LAFINA_CALL_STATE_CHANGE',
+      {
+        state: 'disconnected',
+        resolution: {
+          outcome: 'acknowledged',
+          message: 'Great! Task acknowledged. Have a productive day.',
+        },
+      }
+    );
   });
 
   it('connects and snoozes reminder according to NLU duration', async () => {
@@ -230,6 +238,40 @@ describe('callDispatcher controller', () => {
     const timeDiff = new Date(updated?.triggerAt || '').getTime() - Date.now();
     expect(timeDiff).toBeGreaterThan(9 * 60 * 1000); // at least 9 minutes
     expect(timeDiff).toBeLessThan(11 * 60 * 1000); // at most 11 minutes
+  });
+
+  it('speaks and emits the persisted manual snooze resolution', async () => {
+    remindersStore.insertReminder({
+      id: 'rem_manual_snooze',
+      userId: 'user1',
+      task: 'Review Project Notes',
+      description: null,
+      scheduledAt: new Date().toISOString(),
+      triggerAt: new Date().toISOString(),
+      status: 'pending',
+      preCastAudioPath: null,
+    });
+
+    await answerCall('rem_manual_snooze', 'user1');
+    emitMock.mockClear();
+    NativeModules.LafinaTTS.playAudio.mockClear();
+
+    await manualSnoozeCall('rem_manual_snooze', 'user1', 15);
+
+    expect(remindersStore.getReminderById('rem_manual_snooze')?.status).toBe(
+      'snoozed'
+    );
+    expect(NativeModules.LafinaTTS.playAudio).toHaveBeenCalled();
+    expect(DeviceEventEmitter.emit).toHaveBeenLastCalledWith(
+      'LAFINA_CALL_STATE_CHANGE',
+      {
+        state: 'disconnected',
+        resolution: {
+          outcome: 'snoozed',
+          message: 'Snoozed for 15 minutes.',
+        },
+      }
+    );
   });
 
   it('ignores a transcription that resolves after the call disconnects', async () => {

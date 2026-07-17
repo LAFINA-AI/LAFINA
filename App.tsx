@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   SafeAreaView,
   StatusBar,
@@ -64,6 +64,7 @@ function AppContent({
   const [callTask, setCallTask] = useState('');
   const [callAction, setCallAction] = useState<NativeCallAction>('call');
   const [calendarViewMode, setCalendarViewMode] = useState<ViewMode>('week');
+  const splashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { colors } = useTheme();
   const themed = useThemedStyles();
@@ -119,6 +120,11 @@ function AppContent({
       if (!payload) return;
       const reminder = remindersStore.getReminderById(payload.reminderId);
       if (!reminder || reminder.userId !== userId) return;
+      if (splashTimeoutRef.current) {
+        clearTimeout(splashTimeoutRef.current);
+        splashTimeoutRef.current = null;
+      }
+      setIsLoading(false);
       setCallReminderId(reminder.id);
       setCallTask(payload.task || reminder.task);
       setCallAction(payload.action);
@@ -167,7 +173,8 @@ function AppContent({
         }
 
         // Simulate a minor visual delay for the premium splash screen display
-        setTimeout(() => {
+        splashTimeoutRef.current = setTimeout(() => {
+          splashTimeoutRef.current = null;
           setIsLoading(false);
         }, SPLASH_DELAY_MS);
       } catch (error) {
@@ -176,6 +183,13 @@ function AppContent({
       }
     };
     setupApp();
+
+    return () => {
+      if (splashTimeoutRef.current) {
+        clearTimeout(splashTimeoutRef.current);
+        splashTimeoutRef.current = null;
+      }
+    };
   }, [setUserId]);
 
   const triggerRefresh = () => {

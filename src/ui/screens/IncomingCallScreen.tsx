@@ -1,30 +1,41 @@
-import React, { useCallback, useState, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  DeviceEventEmitter,
-  Vibration,
   Animated,
+  DeviceEventEmitter,
   Easing,
+  Image,
   Modal,
   PermissionsAndroid,
-  Image,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  Vibration,
+  View,
 } from 'react-native';
-import { Fonts, Shadows } from '../theme';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Phone, PhoneOff } from 'lucide-react-native';
 import { CallAnsweredView } from '../components/call/CallAnsweredView';
 import {
   answerCall,
   declineCall,
   finishCallVoiceCapture,
+  getReminderPreferences,
   manualAcknowledgeCall,
   manualSnoozeCall,
   startCallVoiceCapture,
 } from '../../scheduler';
-import type { CallState, NativeCallAction } from '../../scheduler';
+import type {
+  CallResolution,
+  CallState,
+  CallStateEvent,
+  NativeCallAction,
+} from '../../scheduler';
+import { CALL_RESULT_DELAY_MS } from '../../constants';
+import { Fonts, Shadows } from '../theme';
 import { useTheme } from '../contexts/ThemeContext';
+
+const lafinaLogo = require('../../assets/lafina_default_logo.png');
 
 interface IncomingCallScreenProps {
   visible: boolean;
@@ -35,7 +46,7 @@ interface IncomingCallScreenProps {
   initialAction?: NativeCallAction;
 }
 
-/** Renders and coordinates the offline incoming reminder call experience. */
+/** Renders and coordinates the complete offline reminder call experience. */
 export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
   visible,
   reminderId,
@@ -46,12 +57,51 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
 }) => {
   const { isDarkMode, colors } = useTheme();
   const [callState, setCallState] = useState<CallState>('ringing');
+  const [resolution, setResolution] = useState<CallResolution | null>(null);
+  const [snoozeMinutes, setSnoozeMinutes] = useState(5);
   const [transcript, setTranscript] = useState('');
   const [reply, setReply] = useState('');
   const ringAnim = useRef(new Animated.Value(1)).current;
+  const resultTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedActionRef = useRef('');
+  const closingRef = useRef(false);
 
-  // Ringing pulse animation. Native notifications own ringtone playback.
+  const clearResultTimeout = useCallback((): void => {
+    if (resultTimeoutRef.current) {
+      clearTimeout(resultTimeoutRef.current);
+      resultTimeoutRef.current = null;
+    }
+  }, []);
+
+  const resetPresentation = useCallback((): void => {
+    clearResultTimeout();
+    Vibration.cancel();
+    setCallState('ringing');
+    setResolution(null);
+    setTranscript('');
+    setReply('');
+    ringAnim.setValue(1);
+    processedActionRef.current = '';
+  }, [clearResultTimeout, ringAnim]);
+
+  const closeCallScreen = useCallback((): void => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    resetPresentation();
+    onClose();
+  }, [onClose, resetPresentation]);
+
+  useEffect(() => {
+    if (visible) {
+      closingRef.current = false;
+      resetPresentation();
+      setSnoozeMinutes(getReminderPreferences(userId).snoozeDurationMinutes);
+      return;
+    }
+
+    resetPresentation();
+  }, [reminderId, resetPresentation, userId, visible]);
+
   useEffect(() => {
     let animLoop: Animated.CompositeAnimation | null = null;
 
@@ -60,14 +110,14 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
       animLoop = Animated.loop(
         Animated.sequence([
           Animated.timing(ringAnim, {
-            toValue: 1.3,
-            duration: 1000,
+            toValue: 1.1,
+            duration: 900,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
           Animated.timing(ringAnim, {
-            toValue: 1.0,
-            duration: 1000,
+            toValue: 1,
+            duration: 900,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
@@ -85,65 +135,113 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
     };
   }, [visible, callState, ringAnim]);
 
-  // Subscribe to call dispatcher events
   useEffect(() => {
     if (!visible) return;
 
-    const stateSub = DeviceEventEmitter.addListener('LAFINA_CALL_STATE_CHANGE', (event) => {
-      console.log('[CallScreen] Received state change:', event);
-      if (event.state === 'disconnected') {
-        onClose();
-        setCallState('ringing');
-        setTranscript('');
-        setReply('');
-      } else {
+    const stateSub = DeviceEventEmitter.addListener(
+      'LAFINA_CALL_STATE_CHANGE',
+      (event: CallStateEvent) => {
+        if (event.state === 'disconnected') {
+          if (event.resolution) {
+            Vibration.cancel();
+            setCallState('disconnected');
+            setResolution(event.resolution);
+            setReply(event.resolution.message);
+            clearResultTimeout();
+            resultTimeoutRef.current = setTimeout(
+              closeCallScreen,
+              CALL_RESULT_DELAY_MS
+            );
+            return;
+          }
+
+          closeCallScreen();
+          return;
+        }
+
         setCallState(event.state);
         if (event.text !== undefined) {
           setReply(event.text);
         }
       }
-    });
+    );
 
-    const partialSub = DeviceEventEmitter.addListener('onSpeechPartialResult', (event) => {
-      setTranscript(event.transcript || '');
-    });
+    const partialSub = DeviceEventEmitter.addListener(
+      'onSpeechPartialResult',
+      (event: { transcript?: string }) => {
+        setTranscript(event.transcript || '');
+      }
+    );
 
-    const finalSub = DeviceEventEmitter.addListener('onSpeechFinalResult', (event) => {
-      setTranscript(event.transcript || '');
-    });
+    const finalSub = DeviceEventEmitter.addListener(
+      'onSpeechFinalResult',
+      (event: { transcript?: string }) => {
+        setTranscript(event.transcript || '');
+      }
+    );
 
     return () => {
       stateSub.remove();
       partialSub.remove();
       finalSub.remove();
     };
-  }, [visible, onClose]);
+  }, [clearResultTimeout, closeCallScreen, visible]);
 
   const handleAnswer = useCallback(async (): Promise<void> => {
     Vibration.cancel();
     setCallState('connected');
-    const microphonePermission = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
-    );
-    if (microphonePermission !== PermissionsAndroid.RESULTS.GRANTED) {
-      setReply('Microphone permission is unavailable. Please use the buttons below.');
-      return;
+
+    let microphoneGranted = false;
+    try {
+      const permission = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+      );
+      microphoneGranted = permission === PermissionsAndroid.RESULTS.GRANTED;
+    } catch (error) {
+      console.error('[CallScreen] Could not request microphone permission:', error);
     }
-    await answerCall(reminderId, userId);
+
+    try {
+      await answerCall(reminderId, userId);
+      if (!microphoneGranted) {
+        setReply('Microphone permission is unavailable. Use Acknowledge or Snooze below.');
+      }
+    } catch (error) {
+      console.error('[CallScreen] Could not answer reminder call:', error);
+      setReply('LAFINA could not start the voice call. Use the buttons below.');
+    }
   }, [reminderId, userId]);
 
   const handleDecline = useCallback(async (): Promise<void> => {
     Vibration.cancel();
-    await declineCall(reminderId, userId);
-    onClose();
-  }, [reminderId, userId, onClose]);
+    try {
+      await declineCall(reminderId, userId);
+    } catch (error) {
+      console.error('[CallScreen] Could not end reminder call:', error);
+    } finally {
+      closeCallScreen();
+    }
+  }, [closeCallScreen, reminderId, userId]);
 
-  const handleManualSnooze = useCallback(async (minutes: number): Promise<void> => {
-    await manualSnoozeCall(reminderId, userId, minutes);
-  }, [reminderId, userId]);
+  const handleManualSnooze = useCallback(
+    async (minutes: number): Promise<void> => {
+      try {
+        await manualSnoozeCall(reminderId, userId, minutes);
+      } catch (error) {
+        console.error('[CallScreen] Could not snooze reminder:', error);
+        setReply('LAFINA could not snooze this reminder. Please try again.');
+      }
+    },
+    [reminderId, userId]
+  );
 
   const handleManualAcknowledge = useCallback(async (): Promise<void> => {
-    await manualAcknowledgeCall(reminderId, userId);
+    try {
+      await manualAcknowledgeCall(reminderId, userId);
+    } catch (error) {
+      console.error('[CallScreen] Could not acknowledge reminder:', error);
+      setReply('LAFINA could not acknowledge this reminder. Please try again.');
+    }
   }, [reminderId, userId]);
 
   const handleMicPressIn = useCallback((): void => {
@@ -154,7 +252,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
   const handleMicPressOut = useCallback((): void => {
     finishCallVoiceCapture().catch((error: unknown) => {
       console.error('[CallScreen] Could not process voice response:', error);
-      setReply('Voice processing failed. Please hold the microphone and try again.');
+      setReply('Voice processing failed. Hold the microphone and try again.');
     });
   }, []);
 
@@ -163,6 +261,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
     const actionKey = reminderId + ':' + initialAction;
     if (processedActionRef.current === actionKey) return;
     processedActionRef.current = actionKey;
+
     if (initialAction === 'answer') void handleAnswer();
     if (initialAction === 'decline') void handleDecline();
   }, [visible, reminderId, initialAction, handleAnswer, handleDecline]);
@@ -175,68 +274,119 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
 
   if (!visible) return null;
 
-  const dynamicStyles = {
-    container: {
-      backgroundColor: isDarkMode ? '#000000' : '#FFFFFF',
+  const themed = {
+    container: { backgroundColor: colors.background },
+    primaryText: { color: colors.textPrimary },
+    secondaryText: { color: colors.textSecondary },
+    mutedText: { color: colors.textMuted },
+    badge: {
+      backgroundColor: isDarkMode
+        ? 'rgba(230, 0, 58, 0.16)'
+        : 'rgba(230, 0, 58, 0.08)',
+      borderColor: isDarkMode
+        ? 'rgba(230, 0, 58, 0.36)'
+        : 'rgba(230, 0, 58, 0.20)',
     },
-    titleText: {
-      color: colors.textPrimary,
-    },
-    subtitleText: {
-      color: colors.textSecondary,
-    },
-    avatarOuterRing: {
-      borderColor: colors.yellow,
-    },
-    avatarInnerRing: {
-      borderColor: colors.red,
-    },
-    avatarCenter: {
-      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
+    logoSurface: {
+      backgroundColor: isDarkMode
+        ? 'rgba(255, 255, 255, 0.05)'
+        : colors.cardBg,
       borderColor: colors.blue,
+    },
+    taskCard: {
+      backgroundColor: colors.cardBg,
+      borderColor: colors.border,
     },
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
-      <View style={[styles.container, dynamicStyles.container]}>
+    <Modal
+      visible={visible}
+      animationType="fade"
+      presentationStyle="fullScreen"
+      statusBarTranslucent={false}
+      onRequestClose={() => void handleDecline()}
+    >
+      <StatusBar
+        barStyle={colors.statusBarStyle}
+        backgroundColor={colors.background}
+      />
+      <SafeAreaView style={[styles.container, themed.container]}>
         {callState === 'ringing' ? (
           <View style={styles.ringingContainer}>
             <View style={styles.header}>
-              <Text style={[styles.callerName, dynamicStyles.titleText]}>LAFINA Reminder</Text>
-              <Text style={[styles.callType, dynamicStyles.subtitleText]}>Simulated Phone Call</Text>
+              <View style={[styles.badge, themed.badge]}>
+                <Text style={[styles.badgeText, { color: colors.blue }]}>
+                  INCOMING SCHEDULED CALL
+                </Text>
+              </View>
+              <Text style={[styles.callerName, themed.primaryText]}>
+                LAFINA Scheduler
+              </Text>
+              <Text style={[styles.callType, themed.secondaryText]}>
+                University Academic Assistant
+              </Text>
             </View>
 
             <View style={styles.middle}>
-              <Animated.View style={[styles.avatarRingOuter, dynamicStyles.avatarOuterRing, { transform: [{ scale: ringAnim }] }]}>
-                <View style={[styles.avatarRingInner, dynamicStyles.avatarInnerRing]}>
-                  <View style={[styles.avatarCircle, dynamicStyles.avatarCenter, { overflow: 'hidden' }]}>
+              <Animated.View
+                style={[
+                  styles.avatarRingOuter,
+                  { borderColor: colors.yellow, transform: [{ scale: ringAnim }] },
+                ]}
+              >
+                <View style={[styles.avatarRingInner, { borderColor: colors.red }]}>
+                  <View style={[styles.avatarCircle, themed.logoSurface]}>
                     <Image
-                      source={require('../../assets/lafina_app_logo.png')}
+                      source={lafinaLogo}
                       style={styles.avatarImage}
-                      resizeMode="cover"
+                      resizeMode="contain"
+                      accessibilityLabel="LAFINA logo"
                     />
                   </View>
                 </View>
               </Animated.View>
-              <Text style={[styles.taskText, dynamicStyles.titleText]}>Upcoming: {task || 'Academic Event'}</Text>
+
+              <View style={[styles.taskCard, themed.taskCard]}>
+                <Text style={[styles.taskLabel, themed.mutedText]}>REMINDER</Text>
+                <Text style={[styles.taskText, themed.primaryText]}>
+                  {task || 'Scheduled academic reminder'}
+                </Text>
+              </View>
             </View>
 
-            <View style={styles.actionRow}>
-              {/* Decline Button */}
-              <View style={styles.buttonCol}>
-                <TouchableOpacity style={[styles.circleBtn, styles.declineBtn]} onPress={handleDecline}>
-                  <PhoneOff size={28} color="#fff" />
-                </TouchableOpacity>
-                <Text style={[styles.btnLabel, dynamicStyles.subtitleText]}>Decline</Text>
-              </View>
+            <View style={styles.footer}>
+              <Text style={[styles.offlineLabel, themed.mutedText]}>
+                Offline reminder call
+              </Text>
+              <View style={styles.actionRow}>
+                <View style={styles.buttonColumn}>
+                  <TouchableOpacity
+                    style={[styles.circleButton, { backgroundColor: colors.error }]}
+                    onPress={() => void handleDecline()}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Decline reminder call"
+                    accessibilityHint="Ends this call and applies the automatic snooze policy."
+                  >
+                    <PhoneOff size={30} color={colors.white} />
+                  </TouchableOpacity>
+                  <Text style={[styles.buttonLabel, themed.secondaryText]}>Decline</Text>
+                </View>
 
-              {/* Answer Button */}
-              <View style={styles.buttonCol}>
-                <TouchableOpacity style={[styles.circleBtn, styles.answerBtn]} onPress={handleAnswer}>
-                  <Phone size={28} color="#fff" />
-                </TouchableOpacity>
-                <Text style={[styles.btnLabel, dynamicStyles.subtitleText]}>Answer</Text>
+                <View style={styles.buttonColumn}>
+                  <TouchableOpacity
+                    style={[styles.circleButton, { backgroundColor: colors.success }]}
+                    onPress={() => void handleAnswer()}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Answer reminder call"
+                    accessibilityHint="Answers LAFINA and opens the offline voice call."
+                  >
+                    <Phone size={30} color={colors.white} />
+                  </TouchableOpacity>
+                  <Text style={[styles.buttonLabel, themed.secondaryText]}>Answer</Text>
+                </View>
               </View>
             </View>
           </View>
@@ -244,6 +394,8 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
           <CallAnsweredView
             task={task}
             callState={callState}
+            resolution={resolution}
+            snoozeMinutes={snoozeMinutes}
             onSnooze={handleManualSnooze}
             onAcknowledge={handleManualAcknowledge}
             onDecline={handleDecline}
@@ -253,7 +405,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
             reply={reply}
           />
         )}
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 };
@@ -261,104 +413,136 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1E1E2F', // Clean premium dark blue/grey
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: '100%',
   },
   ringingContainer: {
     flex: 1,
     width: '100%',
     justifyContent: 'space-between',
-    paddingVertical: 60,
-    paddingHorizontal: 24,
     alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 34,
+    paddingBottom: 26,
   },
   header: {
     alignItems: 'center',
   },
+  badge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  badgeText: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+  },
   callerName: {
     fontFamily: Fonts.heading,
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: 30,
+    fontWeight: '800',
+    marginTop: 18,
+    textAlign: 'center',
   },
   callType: {
     fontFamily: Fonts.body,
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.5)',
-    marginTop: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
+    fontSize: 15,
+    marginTop: 7,
+    textAlign: 'center',
   },
   middle: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  avatarRingOuter: {
+    width: 194,
+    height: 194,
+    borderRadius: 97,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarRingOuter: {
+  avatarRingInner: {
     width: 170,
     height: 170,
     borderRadius: 85,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 30,
-  },
-  avatarRingInner: {
-    width: 154,
-    height: 154,
-    borderRadius: 77,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   avatarCircle: {
-    width: 138,
-    height: 138,
-    borderRadius: 69,
+    width: 146,
+    height: 146,
+    borderRadius: 73,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
+    overflow: 'hidden',
     ...Shadows.card,
   },
   avatarImage: {
-    width: 138,
-    height: 138,
+    width: 124,
+    height: 72,
+  },
+  taskCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    marginTop: 34,
+    ...Shadows.card,
+  },
+  taskLabel: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.3,
+    textAlign: 'center',
   },
   taskText: {
     fontFamily: Fonts.body,
-    fontSize: 18,
+    fontSize: 17,
+    fontWeight: '700',
+    lineHeight: 23,
     textAlign: 'center',
-    fontWeight: '600',
-    paddingHorizontal: 20,
+    marginTop: 6,
   },
-  actionRow: {
-    flexDirection: 'row',
+  footer: {
     width: '100%',
-    justifyContent: 'space-around',
-    paddingHorizontal: 20,
-  },
-  buttonCol: {
     alignItems: 'center',
   },
-  circleBtn: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+  offlineLabel: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 18,
+  },
+  actionRow: {
+    width: '100%',
+    maxWidth: 360,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  buttonColumn: {
+    alignItems: 'center',
+    minWidth: 110,
+  },
+  circleButton: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
     alignItems: 'center',
     justifyContent: 'center',
     ...Shadows.card,
   },
-  declineBtn: {
-    backgroundColor: '#E74C3C',
-  },
-  answerBtn: {
-    backgroundColor: '#2ECC71',
-  },
-  btnLabel: {
+  buttonLabel: {
     fontFamily: Fonts.body,
     fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.6)',
-    marginTop: 8,
-    fontWeight: '500',
+    fontWeight: '700',
+    marginTop: 10,
   },
 });

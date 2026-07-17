@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text } from 'react-native';
 import ReactTestRenderer from 'react-test-renderer';
+import type { CallResolution, CallState } from '../../src/scheduler';
 import { CallAnsweredView } from '../../src/ui/components/call/CallAnsweredView';
 
 jest.mock('../../src/ui/contexts/ThemeContext', () => ({
@@ -43,7 +44,43 @@ const getTextContent = (content: React.ReactNode): string => (
   )).join('')
 );
 
+const getRenderedText = (renderer: ReactTestRenderer.ReactTestRenderer): string => (
+  renderer.root
+    .findAllByType(Text)
+    .map(node => getTextContent(node.props.children))
+    .join(' ')
+);
+
+const renderCallView = (
+  callState: CallState,
+  resolution: CallResolution | null,
+  onSnooze: (minutes: number) => void = jest.fn()
+): React.ReactElement => (
+  <CallAnsweredView
+    task="Review algorithms"
+    callState={callState}
+    resolution={resolution}
+    snoozeMinutes={10}
+    onSnooze={onSnooze}
+    onAcknowledge={jest.fn()}
+    onDecline={jest.fn()}
+    onMicPressIn={jest.fn()}
+    onMicPressOut={jest.fn()}
+    transcript=""
+    reply=""
+  />
+);
+
 describe('answered call voice controls', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-07-17T10:30:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('provides an accessible hold-to-talk microphone', () => {
     const onMicPressIn = jest.fn();
     const onMicPressOut = jest.fn();
@@ -54,6 +91,8 @@ describe('answered call voice controls', () => {
         <CallAnsweredView
           task="Review algorithms"
           callState="connected"
+          resolution={null}
+          snoozeMinutes={5}
           onSnooze={jest.fn()}
           onAcknowledge={jest.fn()}
           onDecline={jest.fn()}
@@ -65,14 +104,11 @@ describe('answered call voice controls', () => {
       );
     });
 
-    const text = renderer.root.findAllByType(Text).map(
-      node => getTextContent(node.props.children),
-    );
     const microphone = renderer.root.find(
       node => node.props.accessibilityLabel === 'Hold to speak',
     );
 
-    expect(text).toContain('Hold the microphone to respond');
+    expect(getRenderedText(renderer)).toContain('Hold the microphone to respond');
     expect(microphone.props.accessibilityRole).toBe('button');
     expect(microphone.props.accessibilityHint).toContain('Release');
 
@@ -83,4 +119,74 @@ describe('answered call voice controls', () => {
 
     ReactTestRenderer.act(() => renderer.unmount());
   });
+
+  it('shows a running call timer and the configured compact snooze action', () => {
+    const onSnooze = jest.fn();
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+
+    ReactTestRenderer.act(() => {
+      renderer = ReactTestRenderer.create(
+        renderCallView('connected', null, onSnooze)
+      );
+    });
+    ReactTestRenderer.act(() => {
+      jest.advanceTimersByTime(2_100);
+    });
+
+    expect(getRenderedText(renderer)).toContain('00:02');
+    const snoozeButton = renderer.root.find(
+      node => node.props.accessibilityLabel === 'Snooze reminder for 10 minutes'
+    );
+    ReactTestRenderer.act(() => snoozeButton.props.onPress());
+    expect(onSnooze).toHaveBeenCalledWith(10);
+
+    ReactTestRenderer.act(() => renderer.unmount());
+  });
+
+  it('renders speaking, listening, and processing call states', () => {
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+
+    ReactTestRenderer.act(() => {
+      renderer = ReactTestRenderer.create(renderCallView('speaking', null));
+    });
+    expect(getRenderedText(renderer)).toContain('LAFINA is speaking...');
+
+    ReactTestRenderer.act(() => {
+      renderer.update(renderCallView('listening', null));
+    });
+    expect(getRenderedText(renderer)).toContain('Listening for your response...');
+
+    ReactTestRenderer.act(() => {
+      renderer.update(renderCallView('processing', null));
+    });
+    expect(getRenderedText(renderer)).toContain('Processing on this device...');
+
+    ReactTestRenderer.act(() => renderer.unmount());
+  });
+
+  it.each([
+    ['acknowledged', 'REMINDER ACKNOWLEDGED', 'Saved as complete.'],
+    ['snoozed', 'REMINDER SNOOZED', 'Snoozed for 10 minutes.'],
+    ['missed', 'REMINDER MISSED', 'Snooze limit reached.'],
+  ] as const)(
+    'renders the %s terminal result and disables call controls',
+    (outcome, title, message) => {
+      let renderer!: ReactTestRenderer.ReactTestRenderer;
+
+      ReactTestRenderer.act(() => {
+        renderer = ReactTestRenderer.create(
+          renderCallView('disconnected', { outcome, message })
+        );
+      });
+
+      expect(getRenderedText(renderer)).toContain(title);
+      expect(getRenderedText(renderer)).toContain(message);
+      const microphone = renderer.root.find(
+        node => node.props.accessibilityLabel === 'Hold to speak'
+      );
+      expect(microphone.props.accessibilityState.disabled).toBe(true);
+
+      ReactTestRenderer.act(() => renderer.unmount());
+    }
+  );
 });

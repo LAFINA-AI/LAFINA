@@ -36,6 +36,11 @@ export type {
   ReminderActionOutcome,
   ReminderActionResult,
 } from './reminderActions';
-export type { CallState } from './callDispatcher';
+export type {
+  CallResolution,
+  CallResolutionOutcome,
+  CallState,
+  CallStateEvent,
+} from './callDispatcher';
 export { refreshPendingReminderLeadTimes } from './reminderPreferenceSync';
 export type { ReminderPreferenceRefreshResult } from './reminderPreferenceSync';

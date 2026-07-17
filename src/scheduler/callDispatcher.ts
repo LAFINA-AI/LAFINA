@@ -16,6 +16,10 @@ import {
   autoSnoozeReminderAction,
   snoozeReminderAction,
 } from './reminderActions';
+import type {
+  ReminderActionOutcome,
+  ReminderActionResult,
+} from './reminderActions';
 import { finishNativeIncomingCall } from './reminderAlarm';
 
 export type CallState =
@@ -25,6 +29,19 @@ export type CallState =
   | 'listening'
   | 'processing'
   | 'disconnected';
+
+export type CallResolutionOutcome = Exclude<ReminderActionOutcome, 'rejected'>;
+
+export interface CallResolution {
+  outcome: CallResolutionOutcome;
+  message: string;
+}
+
+export interface CallStateEvent {
+  state: CallState;
+  text?: string;
+  resolution?: CallResolution;
+}
 
 interface CallDispatcherSession {
   reminderId: string;
@@ -107,9 +124,19 @@ const extractTranscript = (result: string | TranscriptionResult): string =>
 
 const publishCallState = (state: CallState, text?: string): void => {
   if (activeSession) activeSession.state = state;
-  const payload: { state: CallState; text?: string } = { state };
+  const payload: CallStateEvent = { state };
   if (text !== undefined) payload.text = text;
   DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', payload);
+};
+
+const resolutionFromAction = (
+  action: ReminderActionResult
+): CallResolution | undefined => {
+  if (!action.ok || action.outcome === 'rejected') return undefined;
+  return {
+    outcome: action.outcome,
+    message: action.message,
+  };
 };
 
 /**
@@ -282,7 +309,7 @@ const processCallTranscript = async (
       const action = await acknowledgeReminderAction(session.reminderId, session.userId);
       await speakText(action.message);
       if (action.ok) {
-        disconnectCall();
+        disconnectCall(resolutionFromAction(action));
       } else if (activeSession === session) {
         publishCallState('connected');
       }
@@ -298,7 +325,7 @@ const processCallTranscript = async (
       );
       await speakText(action.message);
       if (action.ok) {
-        disconnectCall();
+        disconnectCall(resolutionFromAction(action));
       } else if (activeSession === session) {
         publishCallState('connected');
       }
@@ -389,6 +416,7 @@ export const finishCallVoiceCapture = async (): Promise<void> => {
 export const autoSnoozeCall = async (): Promise<void> => {
   const session = activeSession;
   if (!session) return;
+  const showResolution = session.state !== 'ringing';
 
   const action = await autoSnoozeReminderAction(
     session.reminderId,
@@ -397,7 +425,7 @@ export const autoSnoozeCall = async (): Promise<void> => {
   if (session.state !== 'ringing') {
     await speakText(action.message);
   }
-  disconnectCall();
+  disconnectCall(showResolution ? resolutionFromAction(action) : undefined);
 };
 
 /**
@@ -432,8 +460,8 @@ export const manualSnoozeCall = async (
   minutes: number
 ): Promise<void> => {
   const action = await snoozeReminderAction(reminderId, userId, minutes);
-  if (!action.ok) await speakText(action.message);
-  if (action.ok) disconnectCall();
+  await speakText(action.message);
+  if (action.ok) disconnectCall(resolutionFromAction(action));
 };
 
 /**
@@ -444,14 +472,14 @@ export const manualAcknowledgeCall = async (
   userId: string
 ): Promise<void> => {
   const action = await acknowledgeReminderAction(reminderId, userId);
-  if (!action.ok) await speakText(action.message);
-  if (action.ok) disconnectCall();
+  await speakText(action.message);
+  if (action.ok) disconnectCall(resolutionFromAction(action));
 };
 
 /**
  * Stops the active call loop and publishes the terminal UI state.
  */
-export const disconnectCall = (): void => {
+export const disconnectCall = (resolution?: CallResolution): void => {
   const stt = getSTTModule();
   if (activeCallCapture && stt?.stopListening) {
     void stt.stopListening().catch(() => undefined);
@@ -460,8 +488,8 @@ export const disconnectCall = (): void => {
   if (activeSession) {
     activeSession.state = 'disconnected';
     activeSession = null;
-    DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', {
-      state: 'disconnected',
-    });
+    const event: CallStateEvent = { state: 'disconnected' };
+    if (resolution) event.resolution = resolution;
+    DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', event);
   }
 };

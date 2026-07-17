@@ -16,6 +16,9 @@ export const AI_PROCESSING_DELAY_MS = 600;
 /** Delay (ms) before auto-closing the voice success state */
 export const VOICE_SUCCESS_DELAY_MS = 2000;
 
+/** Delay (ms) before closing a resolved reminder call result state */
+export const CALL_RESULT_DELAY_MS = 1500;
+
 /** NLU parser processing delay (ms) */
 export const NLU_PARSER_DELAY_MS = 1500;
 

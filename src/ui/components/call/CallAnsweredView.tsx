@@ -1,21 +1,34 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Easing,
+  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Colors, Fonts, Layout, Shadows } from '../../theme';
-import { PhoneOff, Check, Clock, Mic, Volume2, PhoneCall } from 'lucide-react-native';
-import type { CallState } from '../../../scheduler';
+import {
+  AlertTriangle,
+  Check,
+  Clock,
+  Mic,
+  PhoneOff,
+  PhoneCall,
+  Volume2,
+} from 'lucide-react-native';
+import type { CallResolution, CallState } from '../../../scheduler';
+import { Fonts, Layout, Shadows } from '../../theme';
 import { useTheme } from '../../contexts/ThemeContext';
+
+const lafinaLogo = require('../../../assets/lafina_default_logo.png');
 
 interface CallAnsweredViewProps {
   task: string;
   callState: CallState;
+  resolution: CallResolution | null;
+  snoozeMinutes: number;
   onSnooze: (minutes: number) => void;
   onAcknowledge: () => void;
   onDecline: () => void;
@@ -25,10 +38,18 @@ interface CallAnsweredViewProps {
   reply: string;
 }
 
-/** Renders the connected call controls, including offline push-to-talk capture. */
+const formatCallDuration = (seconds: number): string => {
+  const minutes = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const remainingSeconds = (seconds % 60).toString().padStart(2, '0');
+  return minutes + ':' + remainingSeconds;
+};
+
+/** Renders the connected offline reminder call and its terminal result state. */
 export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
   task,
   callState,
+  resolution,
+  snoozeMinutes,
   onSnooze,
   onAcknowledge,
   onDecline,
@@ -38,25 +59,39 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
   reply,
 }) => {
   const { isDarkMode, colors } = useTheme();
-  const [pulse] = useState(new Animated.Value(1));
-  const waveBars = useRef(Array.from({ length: 9 }, () => new Animated.Value(8))).current;
-  const waveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const callStartedAtRef = useRef(Date.now());
+  const pulse = useRef(new Animated.Value(1)).current;
+  const wavePhaseRef = useRef(0);
+  const waveBars = useRef(
+    Array.from({ length: 11 }, (_, index) => new Animated.Value(10 + (index % 4) * 7))
+  ).current;
 
-  // Pulsing mic animation
+  useEffect(() => {
+    if (resolution) return;
+
+    const startedAt = callStartedAtRef.current;
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [resolution]);
+
   useEffect(() => {
     let pulseAnimation: Animated.CompositeAnimation | null = null;
-    if (callState === 'listening') {
+    if (callState === 'listening' && !resolution) {
       pulseAnimation = Animated.loop(
         Animated.sequence([
           Animated.timing(pulse, {
-            toValue: 1.2,
-            duration: 800,
+            toValue: 1.16,
+            duration: 700,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
           Animated.timing(pulse, {
-            toValue: 1.0,
-            duration: 800,
+            toValue: 1,
+            duration: 700,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
@@ -68,199 +103,308 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
     }
 
     return () => pulseAnimation?.stop();
-  }, [callState, pulse]);
+  }, [callState, pulse, resolution]);
 
-  // Waveform bar animation
   useEffect(() => {
-    if (callState === 'listening') {
-      waveIntervalRef.current = setInterval(() => {
-        waveBars.forEach((bar) => {
-          const randomHeight = Math.floor(Math.random() * 36) + 8;
-          Animated.timing(bar, {
-            toValue: randomHeight,
-            duration: 150,
-            easing: Easing.ease,
-            useNativeDriver: false,
-          }).start();
-        });
-      }, 180);
-    } else {
-      if (waveIntervalRef.current) {
-        clearInterval(waveIntervalRef.current);
-      }
-      waveBars.forEach((bar) => bar.setValue(8));
+    const waveformActive =
+      !resolution && (callState === 'speaking' || callState === 'listening');
+
+    if (!waveformActive) {
+      waveBars.forEach((bar, index) => bar.setValue(10 + (index % 4) * 7));
+      return;
     }
 
-    return () => {
-      if (waveIntervalRef.current) {
-        clearInterval(waveIntervalRef.current);
-      }
-    };
-  }, [callState, waveBars]);
+    const interval = setInterval(() => {
+      wavePhaseRef.current += 1;
+      waveBars.forEach((bar, index) => {
+        const nextHeight = 10 + ((index * 3 + wavePhaseRef.current * 2) % 6) * 7;
+        Animated.timing(bar, {
+          toValue: nextHeight,
+          duration: 180,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }).start();
+      });
+    }, 220);
 
-  // Map equalizer bar colors to brand colors (yellow -> red -> blue)
-  const getBarColor = (index: number) => {
-    if (index < 3) return colors.yellow;
-    if (index < 6) return colors.red;
+    return () => clearInterval(interval);
+  }, [callState, resolution, waveBars]);
+
+  const getBarColor = (index: number): string => {
+    if (index < 4) return colors.yellow;
+    if (index < 8) return colors.red;
     return colors.blue;
   };
 
-  const dynamicStyles = {
-    container: {
-      backgroundColor: isDarkMode ? '#000000' : '#FFFFFF',
+  const resolutionColor =
+    resolution?.outcome === 'missed'
+      ? colors.warning
+      : resolution?.outcome === 'snoozed'
+        ? colors.yellow
+        : colors.success;
+  const microphoneEnabled =
+    !resolution && (callState === 'connected' || callState === 'listening');
+  const controlsEnabled = resolution === null;
+
+  const themed = {
+    container: { backgroundColor: colors.background },
+    primaryText: { color: colors.textPrimary },
+    secondaryText: { color: colors.textSecondary },
+    mutedText: { color: colors.textMuted },
+    card: {
+      backgroundColor: colors.cardBg,
+      borderColor: colors.border,
     },
-    titleText: {
-      color: colors.textPrimary,
+    divider: { backgroundColor: colors.divider },
+    statusSurface: {
+      backgroundColor: isDarkMode
+        ? 'rgba(255, 255, 255, 0.06)'
+        : 'rgba(230, 0, 58, 0.06)',
+      borderColor: isDarkMode
+        ? 'rgba(255, 255, 255, 0.10)'
+        : 'rgba(230, 0, 58, 0.12)',
     },
-    statusText: {
-      color: colors.textSecondary,
-    },
-    transcriptBox: {
-      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
-      borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
-    },
-    boxTitleText: {
-      color: colors.textMuted,
-    },
-    transcriptText: {
-      color: colors.textSecondary,
-    },
-    snoozeBtnOutline: {
-      backgroundColor: isDarkMode ? '#000000' : '#FFFFFF',
-      borderColor: colors.blue,
+    compactAction: {
+      backgroundColor: colors.cardBg,
+      borderColor: colors.border,
     },
   };
-  const microphoneEnabled = callState === 'connected' || callState === 'listening';
 
-  return (
-    <View style={[styles.container, dynamicStyles.container]}>
-      <Text style={[styles.taskTitle, dynamicStyles.titleText]}>{task || 'Schedule Reminder'}</Text>
-      
-      <View style={styles.statusRow}>
-        {callState === 'speaking' ? (
-          <>
-            <Volume2 size={18} color={colors.yellow} style={styles.statusIcon} />
-            <Text style={[styles.statusText, dynamicStyles.statusText]}>LAFINA is speaking...</Text>
-          </>
-        ) : callState === 'listening' ? (
-          <>
-            <Mic size={18} color={colors.red} style={styles.statusIcon} />
-            <Text style={[styles.statusText, dynamicStyles.statusText]}>Listening for you...</Text>
-          </>
-        ) : callState === 'processing' ? (
-          <>
-            <Mic size={18} color={colors.yellow} style={styles.statusIcon} />
-            <Text style={[styles.statusText, dynamicStyles.statusText]}>Processing your response...</Text>
-          </>
+  const renderWaveform = (): React.ReactNode => (
+    <View style={styles.waveformContainer} accessibilityLabel="LAFINA voice activity">
+      {waveBars.map((bar, index) => (
+        <Animated.View
+          key={index}
+          style={[
+            styles.waveformBar,
+            { height: bar, backgroundColor: getBarColor(index) },
+          ]}
+        />
+      ))}
+    </View>
+  );
+
+  const renderStatusVisual = (): React.ReactNode => {
+    if (resolution) {
+      const title =
+        resolution.outcome === 'acknowledged'
+          ? 'REMINDER ACKNOWLEDGED'
+          : resolution.outcome === 'snoozed'
+            ? 'REMINDER SNOOZED'
+            : 'REMINDER MISSED';
+      const icon =
+        resolution.outcome === 'acknowledged' ? (
+          <Check size={42} color={resolutionColor} strokeWidth={2.4} />
+        ) : resolution.outcome === 'snoozed' ? (
+          <Clock size={40} color={resolutionColor} strokeWidth={2.2} />
         ) : (
-          <>
-            <PhoneCall size={18} color={colors.blue} style={styles.statusIcon} />
-            <Text style={[styles.statusText, dynamicStyles.statusText]}>Connected</Text>
-          </>
-        )}
-      </View>
+          <AlertTriangle size={40} color={resolutionColor} strokeWidth={2.2} />
+        );
 
-      {/* Push-to-talk stays mounted while listening so release is always captured. */}
-      <View style={styles.voiceCaptureArea}>
-        {callState === 'listening' && <View style={styles.listeningRing} />}
-        <TouchableOpacity
-          onPressIn={onMicPressIn}
-          onPressOut={onMicPressOut}
-          activeOpacity={0.8}
-          disabled={!microphoneEnabled}
-          accessibilityRole="button"
-          accessibilityLabel="Hold to speak"
-          accessibilityHint="Hold while speaking. Release to process your response."
-          accessibilityState={{ disabled: !microphoneEnabled }}
-        >
+      return (
+        <View style={styles.statusVisual}>
+          <View style={[styles.resultIcon, { borderColor: resolutionColor }]}>
+            {icon}
+          </View>
+          <Text style={[styles.resultTitle, { color: resolutionColor }]}>{title}</Text>
+          <Text style={[styles.resultMessage, themed.secondaryText]}>
+            {resolution.message}
+          </Text>
+        </View>
+      );
+    }
+
+    if (callState === 'speaking') {
+      return (
+        <View style={styles.statusVisual}>
+          {renderWaveform()}
+          <View style={styles.statusLabelRow}>
+            <Volume2 size={17} color={colors.blue} />
+            <Text style={[styles.statusLabel, { color: colors.blue }]}>
+              LAFINA is speaking...
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    if (callState === 'listening') {
+      return (
+        <View style={styles.statusVisual}>
           <Animated.View
             style={[
-              styles.microphoneButton,
-              callState === 'listening' ? styles.microphoneButtonListening : styles.microphoneButtonIdle,
-              !microphoneEnabled && styles.microphoneButtonDisabled,
+              styles.listeningSurface,
+              themed.statusSurface,
               { transform: [{ scale: pulse }] },
             ]}
           >
-            {callState === 'processing' ? (
-              <ActivityIndicator size="large" color={colors.white} />
-            ) : callState === 'speaking' ? (
-              <Volume2 size={34} color={colors.white} />
-            ) : (
-              <Mic size={34} color={colors.white} />
-            )}
+            <Mic size={38} color={colors.red} />
           </Animated.View>
-        </TouchableOpacity>
-        <Text style={[styles.holdToTalkText, dynamicStyles.statusText]}>
-          {callState === 'listening'
-            ? 'Release to process your response'
-            : callState === 'connected'
-              ? 'Hold the microphone to respond'
-              : 'Please wait for LAFINA'}
+          {renderWaveform()}
+          <Text style={[styles.statusLabel, { color: colors.red }]}>
+            Listening for your response...
+          </Text>
+        </View>
+      );
+    }
+
+    if (callState === 'processing') {
+      return (
+        <View style={styles.statusVisual}>
+          <View style={[styles.processingSurface, themed.statusSurface]}>
+            <ActivityIndicator size="large" color={colors.blue} />
+          </View>
+          <Text style={[styles.statusLabel, themed.secondaryText]}>
+            Processing on this device...
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.statusVisual}>
+        <View style={[styles.connectedSurface, themed.statusSurface]}>
+          <PhoneCall size={38} color={colors.blue} />
+        </View>
+        <Text style={[styles.statusLabel, themed.secondaryText]}>
+          Hold the microphone when you are ready
         </Text>
       </View>
+    );
+  };
 
-      {callState === 'listening' && (
-        <View style={styles.waveformContainer}>
-          {waveBars.map((bar, i) => (
-            <Animated.View
-              key={i}
-              style={[
-                styles.waveformBar,
-                { height: bar, backgroundColor: getBarColor(i) },
-              ]}
-            />
-          ))}
+  return (
+    <View style={[styles.container, themed.container]}>
+      <View style={styles.header}>
+        <Text style={[styles.eyebrow, themed.secondaryText]}>
+          ACTIVE SCHEDULED CALL
+        </Text>
+        <View style={styles.identityRow}>
+          <Image source={lafinaLogo} style={styles.headerLogo} resizeMode="contain" />
+          <Text style={[styles.assistantName, themed.primaryText]}>LAFINA Assistant</Text>
         </View>
-      )}
+        <View style={styles.connectionRow}>
+          <View style={[styles.connectionDot, { backgroundColor: colors.success }]} />
+          <Text style={[styles.duration, { color: colors.success }]}>
+            {formatCallDuration(elapsedSeconds)}
+          </Text>
+        </View>
+      </View>
 
-      {/* Live Transcript / Assistant Reply Box */}
-      <View style={[styles.transcriptBox, dynamicStyles.transcriptBox]}>
+      <View style={styles.visualArea}>{renderStatusVisual()}</View>
+
+      <View style={[styles.transcriptCard, themed.card]}>
+        <Text style={[styles.cardLabel, themed.mutedText]}>REMINDER</Text>
+        <Text style={[styles.taskText, themed.primaryText]}>
+          {task || 'Scheduled academic reminder'}
+        </Text>
+
         {reply ? (
-          <View>
-            <Text style={[styles.boxTitle, dynamicStyles.boxTitleText]}>LAFINA:</Text>
-            <Text style={[styles.replyText, dynamicStyles.titleText]}>{reply}</Text>
-          </View>
+          <>
+            <View style={[styles.cardDivider, themed.divider]} />
+            <Text style={[styles.cardLabel, themed.mutedText]}>LAFINA</Text>
+            <Text style={[styles.replyText, themed.primaryText]}>{reply}</Text>
+          </>
         ) : null}
-        
+
         {callState === 'listening' || transcript ? (
-          <View style={styles.transcriptSection}>
-            <Text style={[styles.boxTitle, dynamicStyles.boxTitleText]}>Your Speech:</Text>
-            <Text style={[styles.transcriptText, dynamicStyles.transcriptText]}>
-              {transcript ? `"${transcript}"` : 'Listening... (Speak "acknowledge" or "snooze")'}
+          <>
+            <View style={[styles.cardDivider, themed.divider]} />
+            <Text style={[styles.cardLabel, themed.mutedText]}>YOUR RESPONSE</Text>
+            <Text style={[styles.transcriptText, themed.secondaryText]}>
+              {transcript || 'Listening... Say "acknowledge" or "snooze".'}
+            </Text>
+          </>
+        ) : null}
+      </View>
+
+      <View style={styles.controls}>
+        <View style={styles.primaryControls}>
+          <View style={styles.controlColumn}>
+            <TouchableOpacity
+              onPressIn={onMicPressIn}
+              onPressOut={onMicPressOut}
+              activeOpacity={0.8}
+              disabled={!microphoneEnabled}
+              style={[
+                styles.roundControl,
+                { backgroundColor: callState === 'listening' ? colors.red : colors.blue },
+                !microphoneEnabled && styles.disabledControl,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Hold to speak"
+              accessibilityHint="Hold while speaking. Release to process your response."
+              accessibilityState={{ disabled: !microphoneEnabled }}
+            >
+              <Mic size={30} color={colors.white} />
+            </TouchableOpacity>
+            <Text style={[styles.controlLabel, themed.secondaryText]}>
+              {callState === 'listening'
+                ? 'Release to process your response'
+                : 'Hold the microphone to respond'}
             </Text>
           </View>
-        ) : null}
-      </View>
 
-      {/* Fallback Buttons */}
-      <View style={styles.fallbackContainer}>
-        <Text style={styles.fallbackTitle}>Or use manual actions:</Text>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={[styles.actionBtn, styles.ackBtn]} onPress={onAcknowledge}>
-            <Check size={20} color="#fff" style={styles.btnIcon} />
-            <Text style={styles.actionBtnText}>Acknowledge</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.actionBtn, styles.snoozeBtn]} onPress={() => onSnooze(5)}>
-            <Clock size={20} color="#fff" style={styles.btnIcon} />
-            <Text style={styles.actionBtnText}>Snooze 5m</Text>
-          </TouchableOpacity>
+          <View style={styles.controlColumn}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              disabled={!controlsEnabled}
+              onPress={onDecline}
+              style={[
+                styles.roundControl,
+                { backgroundColor: colors.error },
+                !controlsEnabled && styles.disabledControl,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="End reminder call"
+              accessibilityState={{ disabled: !controlsEnabled }}
+            >
+              <PhoneOff size={30} color={colors.white} />
+            </TouchableOpacity>
+            <Text style={[styles.controlLabel, themed.secondaryText]}>End call</Text>
+          </View>
         </View>
-        <View style={styles.buttonRow}>
+
+        <View style={styles.compactActions}>
           <TouchableOpacity
-            style={[styles.snoozeBtnOutline, dynamicStyles.snoozeBtnOutline]}
-            onPress={() => onSnooze(15)}
+            activeOpacity={0.75}
+            disabled={!controlsEnabled}
+            onPress={onAcknowledge}
+            style={[
+              styles.compactAction,
+              themed.compactAction,
+              !controlsEnabled && styles.disabledControl,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Acknowledge reminder"
+            accessibilityState={{ disabled: !controlsEnabled }}
           >
-            <Clock size={20} color={colors.blue} style={styles.btnIcon} />
-            <Text style={[styles.actionBtnText, { color: colors.blue }]}>Snooze 15m</Text>
+            <Check size={18} color={colors.success} />
+            <Text style={[styles.compactActionText, themed.primaryText]}>
+              Acknowledge
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.75}
+            disabled={!controlsEnabled}
+            onPress={() => onSnooze(snoozeMinutes)}
+            style={[
+              styles.compactAction,
+              themed.compactAction,
+              !controlsEnabled && styles.disabledControl,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={'Snooze reminder for ' + snoozeMinutes + ' minutes'}
+            accessibilityState={{ disabled: !controlsEnabled }}
+          >
+            <Clock size={18} color={colors.yellow} />
+            <Text style={[styles.compactActionText, themed.primaryText]}>
+              Snooze {snoozeMinutes}m
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
-
-      {/* Decline/End Call Button */}
-      <TouchableOpacity style={styles.declineButton} onPress={onDecline}>
-        <PhoneOff size={28} color="#fff" />
-      </TouchableOpacity>
     </View>
   );
 };
@@ -268,180 +412,227 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'space-around',
     width: '100%',
     paddingHorizontal: 24,
-    paddingVertical: 16,
+    paddingTop: 22,
+    paddingBottom: 20,
   },
-  taskTitle: {
-    fontFamily: Fonts.heading,
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#fff',
-    textAlign: 'center',
-    marginTop: 20,
+  header: {
+    alignItems: 'center',
   },
-  statusRow: {
+  eyebrow: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.6,
+  },
+  identityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    marginTop: 8,
   },
-  statusIcon: {
+  headerLogo: {
+    width: 42,
+    height: 24,
+    marginRight: 8,
+  },
+  assistantName: {
+    fontFamily: Fonts.heading,
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  connectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  connectionDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     marginRight: 6,
   },
-  statusText: {
+  duration: {
     fontFamily: Fonts.body,
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 13,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
-  waveformContainer: {
-    flexDirection: 'row',
-    height: 80,
+  visualArea: {
+    flex: 1,
+    minHeight: 180,
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 20,
+  },
+  statusVisual: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  waveformContainer: {
+    height: 74,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   waveformBar: {
-    width: 6,
-    backgroundColor: '#2ECC71',
+    width: 5,
     borderRadius: 3,
     marginHorizontal: 3,
   },
-  voiceCaptureArea: {
-    minHeight: 126,
-    justifyContent: 'center',
+  statusLabelRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 14,
   },
-  listeningRing: {
-    position: 'absolute',
-    top: 3,
-    width: 102,
-    height: 102,
-    borderRadius: 51,
-    borderWidth: 2,
-    borderColor: Colors.red,
-  },
-  microphoneButton: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Shadows.card,
-  },
-  microphoneButtonIdle: {
-    backgroundColor: Colors.blue,
-  },
-  microphoneButtonListening: {
-    backgroundColor: Colors.red,
-  },
-  microphoneButtonDisabled: {
-    opacity: 0.45,
-  },
-  holdToTalkText: {
-    marginTop: 10,
+  statusLabel: {
     fontFamily: Fonts.body,
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 6,
+    textAlign: 'center',
   },
-  transcriptBox: {
+  listeningSurface: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  processingSurface: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  connectedSurface: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  resultIcon: {
+    width: 98,
+    height: 98,
+    borderRadius: 49,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  resultTitle: {
+    fontFamily: Fonts.heading,
+    fontSize: 19,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textAlign: 'center',
+  },
+  resultMessage: {
+    fontFamily: Fonts.body,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginTop: 10,
+    paddingHorizontal: 20,
+  },
+  transcriptCard: {
     width: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
     borderRadius: Layout.borderRadiusCard,
     padding: 16,
-    minHeight: 110,
-    justifyContent: 'center',
+    minHeight: 104,
+    ...Shadows.card,
   },
-  boxTitle: {
+  cardLabel: {
     fontFamily: Fonts.body,
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: 'rgba(255, 255, 255, 0.4)',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  taskText: {
+    fontFamily: Fonts.body,
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 22,
+    marginTop: 5,
+  },
+  cardDivider: {
+    width: '100%',
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 12,
   },
   replyText: {
     fontFamily: Fonts.body,
-    fontSize: 15,
-    color: '#fff',
-    marginTop: 4,
+    fontSize: 14,
     lineHeight: 20,
-  },
-  transcriptSection: {
-    marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.05)',
-    paddingTop: 8,
+    marginTop: 4,
   },
   transcriptText: {
     fontFamily: Fonts.body,
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 13,
+    lineHeight: 18,
     fontStyle: 'italic',
-    marginTop: 2,
+    marginTop: 4,
   },
-  fallbackContainer: {
+  controls: {
     width: '100%',
+    marginTop: 18,
+  },
+  primaryControls: {
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    alignItems: 'flex-start',
+  },
+  controlColumn: {
+    width: 138,
     alignItems: 'center',
   },
-  fallbackTitle: {
+  roundControl: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadows.card,
+  },
+  controlLabel: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 8,
+    minHeight: 30,
+  },
+  compactActions: {
+    flexDirection: 'row',
+    marginTop: 10,
+  },
+  compactAction: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginHorizontal: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactActionText: {
     fontFamily: Fonts.body,
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.5)',
-    marginBottom: 10,
-    fontWeight: '500',
+    fontWeight: '700',
+    marginLeft: 7,
   },
-  buttonRow: {
-    flexDirection: 'row',
-    width: '100%',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    height: 48,
-    borderRadius: Layout.borderRadiusCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 6,
-    ...Shadows.card,
-  },
-  ackBtn: {
-    backgroundColor: '#2ECC71',
-  },
-  snoozeBtn: {
-    backgroundColor: Colors.blue,
-  },
-  snoozeBtnOutline: {
-    flex: 1,
-    flexDirection: 'row',
-    height: 48,
-    borderRadius: Layout.borderRadiusCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.blue,
-    marginHorizontal: 6,
-  },
-  actionBtnText: {
-    fontFamily: Fonts.body,
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  btnIcon: {
-    marginRight: 6,
-  },
-  declineButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#E74C3C',
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.card,
-    marginBottom: 16,
+  disabledControl: {
+    opacity: 0.38,
   },
 });
