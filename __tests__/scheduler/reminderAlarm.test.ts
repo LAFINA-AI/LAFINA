@@ -9,6 +9,8 @@ import {
   openFullScreenIntentSettings,
   reconcileReminderAlarms,
   scheduleReminderAlarm,
+  startActiveCallSession,
+  stopActiveCallSession,
 } from '../../src/scheduler/reminderAlarm';
 
 jest.mock('react-native', () => {
@@ -22,6 +24,8 @@ jest.mock('react-native', () => {
       action: 'answer',
     }),
     finishIncomingCall: jest.fn().mockResolvedValue(true),
+    startActiveCall: jest.fn().mockResolvedValue(true),
+    stopActiveCall: jest.fn().mockResolvedValue(true),
     getPermissionStatus: jest.fn().mockResolvedValue({
       canScheduleExactAlarms: true,
       canUseFullScreenIntent: true,
@@ -35,7 +39,11 @@ jest.mock('react-native', () => {
 
 const nativeReminder = NativeModules.LafinaReminder;
 
-const reminderAt = (id: string, triggerAt: string, status: Reminder['status']): Reminder => ({
+const reminderAt = (
+  id: string,
+  triggerAt: string,
+  status: Reminder['status'],
+): Reminder => ({
   id,
   userId: 'user_1',
   task: `Task ${id}`,
@@ -71,13 +79,19 @@ describe('reminderAlarm', () => {
       triggerAtMs: new Date(triggerAt).getTime(),
     });
     await expect(
-      scheduleReminderAlarm('rem_2', 'Past reminder', new Date(Date.now() - 1).toISOString())
+      scheduleReminderAlarm(
+        'rem_2',
+        'Past reminder',
+        new Date(Date.now() - 1).toISOString(),
+      ),
     ).rejects.toThrow('valid future time');
   });
 
   it('bridges cancellation, call cleanup, pending payloads, permissions, and settings', async () => {
     await cancelReminderAlarm('rem_1');
     await finishNativeIncomingCall('rem_1');
+    await startActiveCallSession('Review notes');
+    await stopActiveCallSession();
     await expect(consumePendingNativeCall()).resolves.toEqual({
       reminderId: 'rem_1',
       task: 'Review notes',
@@ -93,8 +107,12 @@ describe('reminderAlarm', () => {
 
     expect(nativeReminder.cancelAlarm).toHaveBeenCalledWith('rem_1');
     expect(nativeReminder.finishIncomingCall).toHaveBeenCalledWith('rem_1');
+    expect(nativeReminder.startActiveCall).toHaveBeenCalledWith('Review notes');
+    expect(nativeReminder.stopActiveCall).toHaveBeenCalledTimes(1);
     expect(nativeReminder.openExactAlarmSettings).toHaveBeenCalledTimes(1);
-    expect(nativeReminder.openFullScreenIntentSettings).toHaveBeenCalledTimes(1);
+    expect(nativeReminder.openFullScreenIntentSettings).toHaveBeenCalledTimes(
+      1,
+    );
   });
 
   it('reconciles only future pending or snoozed reminders', async () => {
@@ -109,10 +127,10 @@ describe('reminderAlarm', () => {
 
     expect(nativeReminder.scheduleExactAlarm).toHaveBeenCalledTimes(2);
     expect(nativeReminder.scheduleExactAlarm).toHaveBeenCalledWith(
-      expect.objectContaining({ reminderId: 'pending' })
+      expect.objectContaining({ reminderId: 'pending' }),
     );
     expect(nativeReminder.scheduleExactAlarm).toHaveBeenCalledWith(
-      expect.objectContaining({ reminderId: 'snoozed' })
+      expect.objectContaining({ reminderId: 'snoozed' }),
     );
   });
 });

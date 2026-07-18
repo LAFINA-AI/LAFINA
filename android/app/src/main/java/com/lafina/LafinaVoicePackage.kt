@@ -9,9 +9,7 @@ class LafinaVoicePackage : ReactPackage {
 
   override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
     return listOf(
-      LafinaVoiceInputModule(reactContext),
       LafinaSpeechToTextModule(reactContext),
-      LafinaCallSpeechToTextModule(reactContext),
       LafinaIntentExtractorModule(reactContext),
       LafinaTTSModule(reactContext),
       LafinaReminderModule(reactContext)

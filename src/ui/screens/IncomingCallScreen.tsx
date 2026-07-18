@@ -19,11 +19,9 @@ import { CallAnsweredView } from '../components/call/CallAnsweredView';
 import {
   answerCall,
   declineCall,
-  finishCallVoiceCapture,
   getReminderPreferences,
   manualAcknowledgeCall,
   manualSnoozeCall,
-  startCallVoiceCapture,
 } from '../../scheduler';
 import type {
   CallResolution,
@@ -121,7 +119,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
-        ])
+        ]),
       );
       animLoop.start();
     } else {
@@ -150,7 +148,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
             clearResultTimeout();
             resultTimeoutRef.current = setTimeout(
               closeCallScreen,
-              CALL_RESULT_DELAY_MS
+              CALL_RESULT_DELAY_MS,
             );
             return;
           }
@@ -163,21 +161,21 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
         if (event.text !== undefined) {
           setReply(event.text);
         }
-      }
+      },
     );
 
     const partialSub = DeviceEventEmitter.addListener(
       'onSpeechPartialResult',
       (event: { transcript?: string }) => {
         setTranscript(event.transcript || '');
-      }
+      },
     );
 
     const finalSub = DeviceEventEmitter.addListener(
       'onSpeechFinalResult',
       (event: { transcript?: string }) => {
         setTranscript(event.transcript || '');
-      }
+      },
     );
 
     return () => {
@@ -194,17 +192,22 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
     let microphoneGranted = false;
     try {
       const permission = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
       );
       microphoneGranted = permission === PermissionsAndroid.RESULTS.GRANTED;
     } catch (error) {
-      console.error('[CallScreen] Could not request microphone permission:', error);
+      console.error(
+        '[CallScreen] Could not request microphone permission:',
+        error,
+      );
     }
 
     try {
-      await answerCall(reminderId, userId);
+      await answerCall(reminderId, userId, microphoneGranted);
       if (!microphoneGranted) {
-        setReply('Microphone permission is unavailable. Use Acknowledge or Snooze below.');
+        setReply(
+          'Microphone permission is unavailable. Use Acknowledge or Snooze below.',
+        );
       }
     } catch (error) {
       console.error('[CallScreen] Could not answer reminder call:', error);
@@ -232,7 +235,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
         setReply('LAFINA could not snooze this reminder. Please try again.');
       }
     },
-    [reminderId, userId]
+    [reminderId, userId],
   );
 
   const handleManualAcknowledge = useCallback(async (): Promise<void> => {
@@ -243,18 +246,6 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
       setReply('LAFINA could not acknowledge this reminder. Please try again.');
     }
   }, [reminderId, userId]);
-
-  const handleMicPressIn = useCallback((): void => {
-    setTranscript('');
-    startCallVoiceCapture();
-  }, []);
-
-  const handleMicPressOut = useCallback((): void => {
-    finishCallVoiceCapture().catch((error: unknown) => {
-      console.error('[CallScreen] Could not process voice response:', error);
-      setReply('Voice processing failed. Hold the microphone and try again.');
-    });
-  }, []);
 
   useEffect(() => {
     if (!visible || !reminderId) return;
@@ -288,9 +279,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
         : 'rgba(230, 0, 58, 0.20)',
     },
     logoSurface: {
-      backgroundColor: isDarkMode
-        ? 'rgba(255, 255, 255, 0.05)'
-        : colors.cardBg,
+      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : colors.cardBg,
       borderColor: colors.blue,
     },
     taskCard: {
@@ -332,10 +321,15 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
               <Animated.View
                 style={[
                   styles.avatarRingOuter,
-                  { borderColor: colors.yellow, transform: [{ scale: ringAnim }] },
+                  {
+                    borderColor: colors.yellow,
+                    transform: [{ scale: ringAnim }],
+                  },
                 ]}
               >
-                <View style={[styles.avatarRingInner, { borderColor: colors.red }]}>
+                <View
+                  style={[styles.avatarRingInner, { borderColor: colors.red }]}
+                >
                   <View style={[styles.avatarCircle, themed.logoSurface]}>
                     <Image
                       source={lafinaLogo}
@@ -348,7 +342,9 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
               </Animated.View>
 
               <View style={[styles.taskCard, themed.taskCard]}>
-                <Text style={[styles.taskLabel, themed.mutedText]}>REMINDER</Text>
+                <Text style={[styles.taskLabel, themed.mutedText]}>
+                  REMINDER
+                </Text>
                 <Text style={[styles.taskText, themed.primaryText]}>
                   {task || 'Scheduled academic reminder'}
                 </Text>
@@ -362,7 +358,10 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
               <View style={styles.actionRow}>
                 <View style={styles.buttonColumn}>
                   <TouchableOpacity
-                    style={[styles.circleButton, { backgroundColor: colors.error }]}
+                    style={[
+                      styles.circleButton,
+                      { backgroundColor: colors.error },
+                    ]}
                     onPress={() => void handleDecline()}
                     activeOpacity={0.8}
                     accessibilityRole="button"
@@ -371,12 +370,17 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
                   >
                     <PhoneOff size={30} color={colors.white} />
                   </TouchableOpacity>
-                  <Text style={[styles.buttonLabel, themed.secondaryText]}>Decline</Text>
+                  <Text style={[styles.buttonLabel, themed.secondaryText]}>
+                    Decline
+                  </Text>
                 </View>
 
                 <View style={styles.buttonColumn}>
                   <TouchableOpacity
-                    style={[styles.circleButton, { backgroundColor: colors.success }]}
+                    style={[
+                      styles.circleButton,
+                      { backgroundColor: colors.success },
+                    ]}
                     onPress={() => void handleAnswer()}
                     activeOpacity={0.8}
                     accessibilityRole="button"
@@ -385,7 +389,9 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
                   >
                     <Phone size={30} color={colors.white} />
                   </TouchableOpacity>
-                  <Text style={[styles.buttonLabel, themed.secondaryText]}>Answer</Text>
+                  <Text style={[styles.buttonLabel, themed.secondaryText]}>
+                    Answer
+                  </Text>
                 </View>
               </View>
             </View>
@@ -399,8 +405,6 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
             onSnooze={handleManualSnooze}
             onAcknowledge={handleManualAcknowledge}
             onDecline={handleDecline}
-            onMicPressIn={handleMicPressIn}
-            onMicPressOut={handleMicPressOut}
             transcript={transcript}
             reply={reply}
           />

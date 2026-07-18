@@ -21,7 +21,10 @@ const formatLocalDate = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-const normalizeScheduleDate = (date: string | null, referenceDate: Date): string => {
+const normalizeScheduleDate = (
+  date: string | null,
+  referenceDate: Date,
+): string => {
   if (date === null) {
     return formatLocalDate(referenceDate);
   }
@@ -39,23 +42,40 @@ const parseTimeToMinutes = (time: string): number => {
 };
 
 const formatMinutesAsTime = (minutes: number): string => {
-  const normalizedMinutes = ((minutes % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+  const normalizedMinutes =
+    ((minutes % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
   const hours = Math.floor(normalizedMinutes / 60);
   const mins = normalizedMinutes % 60;
-  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+  return `${hours.toString().padStart(2, '0')}:${mins
+    .toString()
+    .padStart(2, '0')}`;
 };
 
 const resolveReply = (result: NluResult, fallback: string): string => {
   return result.reply.trim().length > 0 ? result.reply.trim() : fallback;
 };
 
-const mapRecurrenceToRRule = (recurrence: string | null | undefined): string | null => {
+const mapRecurrenceToRRule = (
+  recurrence: string | null | undefined,
+): string | null => {
   if (!recurrence || recurrence === 'none') return null;
   if (recurrence.startsWith('FREQ=')) return recurrence;
   const lower = recurrence.toLowerCase();
   if (lower.includes('daily') || lower.includes('day')) return 'FREQ=DAILY';
-  if (lower.includes('weekly') || lower.includes('week') || lower.includes('monday') || lower.includes('tuesday') || lower.includes('wednesday') || lower.includes('thursday') || lower.includes('friday') || lower.includes('saturday') || lower.includes('sunday')) return 'FREQ=WEEKLY';
-  if (lower.includes('monthly') || lower.includes('month')) return 'FREQ=MONTHLY';
+  if (
+    lower.includes('weekly') ||
+    lower.includes('week') ||
+    lower.includes('monday') ||
+    lower.includes('tuesday') ||
+    lower.includes('wednesday') ||
+    lower.includes('thursday') ||
+    lower.includes('friday') ||
+    lower.includes('saturday') ||
+    lower.includes('sunday')
+  )
+    return 'FREQ=WEEKLY';
+  if (lower.includes('monthly') || lower.includes('month'))
+    return 'FREQ=MONTHLY';
   if (lower.includes('yearly') || lower.includes('year')) return 'FREQ=YEARLY';
   return 'FREQ=WEEKLY';
 };
@@ -71,12 +91,15 @@ const mapRecurrenceToRRule = (recurrence: string | null | undefined): string | n
 export const applyNluScheduleResult = (
   result: NluResult,
   userId: string,
-  referenceDate: Date = new Date()
+  referenceDate: Date = new Date(),
 ): ScheduleApplicationResult => {
   if (result.intent !== 'schedule' || result.status !== 'success') {
     return {
       didUpdate: false,
-      reply: resolveReply(result, 'I need a little more detail before I can schedule that.'),
+      reply: resolveReply(
+        result,
+        'I need a little more detail before I can schedule that.',
+      ),
       createdItemType: null,
     };
   }
@@ -93,7 +116,12 @@ export const applyNluScheduleResult = (
   const date = normalizeScheduleDate(result.date, referenceDate);
   const recurrenceRule = mapRecurrenceToRRule(result.recurrence);
 
-  const createAutoReminder = (userId: string, task: string, eventDate: string, eventTime: string) => {
+  const createAutoReminder = (
+    userId: string,
+    task: string,
+    eventDate: string,
+    eventTime: string,
+  ) => {
     try {
       const reminderId = generateId('rem');
       const prefs = getReminderPreferences(userId);
@@ -103,8 +131,11 @@ export const applyNluScheduleResult = (
       if (isNaN(localScheduledDate.getTime())) return;
 
       const scheduledAt = localScheduledDate.toISOString();
-      const preferredTriggerMs = localScheduledDate.getTime() - leadTimeMinutes * 60 * 1000;
-      const triggerAt = new Date(Math.max(preferredTriggerMs, Date.now() + 1000)).toISOString();
+      const preferredTriggerMs =
+        localScheduledDate.getTime() - leadTimeMinutes * 60 * 1000;
+      const triggerAt = new Date(
+        Math.max(preferredTriggerMs, Date.now() + 1000),
+      ).toISOString();
 
       remindersStore.insertReminder({
         id: reminderId,
@@ -118,16 +149,19 @@ export const applyNluScheduleResult = (
       });
 
       // Register the persisted exact Android alarm used while the app is stopped.
-      void scheduleReminderAlarm(reminderId, task, triggerAt).catch((error: unknown) => {
-        console.error('Failed to schedule exact alarm natively:', error);
-      });
+      void scheduleReminderAlarm(reminderId, task, triggerAt).catch(
+        (error: unknown) => {
+          console.error('Failed to schedule exact alarm natively:', error);
+        },
+      );
 
       // Pre-cache announcement audio
-      const announcementText = `Hey! This is LAFINA. You scheduled "${task}". Would you like to acknowledge or snooze it?`;
-      preCacheReminderAudio(reminderId, announcementText).catch((err: unknown) => {
-        console.error('Failed to pre-cache reminder audio:', err);
-      });
-
+      const announcementText = `Hey! This is LAFINA. Your scheduled reminder is "${task}". Choose one of the two responses shown on screen at any time.`;
+      preCacheReminderAudio(reminderId, announcementText).catch(
+        (err: unknown) => {
+          console.error('Failed to pre-cache reminder audio:', err);
+        },
+      );
     } catch (error) {
       console.error('Failed to create auto reminder:', error);
     }
@@ -135,7 +169,9 @@ export const applyNluScheduleResult = (
 
   if (result.time !== null && result.duration_minutes !== null) {
     const startTime = result.time;
-    const endTime = formatMinutesAsTime(parseTimeToMinutes(startTime) + result.duration_minutes);
+    const endTime = formatMinutesAsTime(
+      parseTimeToMinutes(startTime) + result.duration_minutes,
+    );
 
     timeBlocksStore.insert({
       id: generateId('block'),
@@ -154,7 +190,10 @@ export const applyNluScheduleResult = (
 
     return {
       didUpdate: true,
-      reply: resolveReply(result, `I blocked ${startTime} to ${endTime} for "${title}".`),
+      reply: resolveReply(
+        result,
+        `I blocked ${startTime} to ${endTime} for "${title}".`,
+      ),
       createdItemType: 'time_block',
     };
   }
@@ -177,7 +216,10 @@ export const applyNluScheduleResult = (
 
   return {
     didUpdate: true,
-    reply: resolveReply(result, `Task "${title}" has been added to your schedule.`),
+    reply: resolveReply(
+      result,
+      `Task "${title}" has been added to your schedule.`,
+    ),
     createdItemType: 'task',
   };
 };

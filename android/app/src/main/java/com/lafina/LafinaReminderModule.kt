@@ -15,6 +15,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -95,6 +96,30 @@ class LafinaReminderModule(private val reactContext: ReactApplicationContext) :
       promise.resolve(true)
     } catch (e: Exception) {
       promise.reject("CALL_FINISH_ERROR", e.message, e)
+    }
+  }
+
+  @ReactMethod
+  fun startActiveCall(task: String, promise: Promise) {
+    try {
+      val intent = Intent(reactContext, LafinaReminderService::class.java).apply {
+        action = LafinaReminderService.ACTION_START_ACTIVE_CALL
+        putExtra(LafinaReminderService.EXTRA_TASK, task)
+      }
+      ContextCompat.startForegroundService(reactContext, intent)
+      promise.resolve(true)
+    } catch (e: Exception) {
+      promise.reject("ACTIVE_CALL_SERVICE_ERROR", e.message, e)
+    }
+  }
+
+  @ReactMethod
+  fun stopActiveCall(promise: Promise) {
+    try {
+      reactContext.stopService(Intent(reactContext, LafinaReminderService::class.java))
+      promise.resolve(true)
+    } catch (e: Exception) {
+      promise.reject("ACTIVE_CALL_SERVICE_ERROR", e.message, e)
     }
   }
 
@@ -220,14 +245,20 @@ class LafinaReminderModule(private val reactContext: ReactApplicationContext) :
         persist: Boolean
     ) {
       val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
-        throw SecurityException("Exact alarm access is not granted")
+      val canScheduleExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
+      if (canScheduleExact) {
+        alarmManager.setExactAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            triggerAtMs,
+            triggerPendingIntent(context, reminderId, task)
+        )
+      } else {
+        alarmManager.setAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            triggerAtMs,
+            triggerPendingIntent(context, reminderId, task)
+        )
       }
-      alarmManager.setExactAndAllowWhileIdle(
-          AlarmManager.RTC_WAKEUP,
-          triggerAtMs,
-          triggerPendingIntent(context, reminderId, task)
-      )
       if (persist) {
         val record = JSONObject()
             .put("reminderId", reminderId)
@@ -290,8 +321,6 @@ class LafinaReminderModule(private val reactContext: ReactApplicationContext) :
       createCallChannel(context)
       persistPendingCall(context, reminderId, task, ACTION_CALL)
       val fullScreenIntent = callActivityPendingIntent(context, reminderId, task, ACTION_CALL, 0)
-      val answerIntent = callActivityPendingIntent(context, reminderId, task, ACTION_ANSWER, 1)
-      val declineIntent = callActivityPendingIntent(context, reminderId, task, ACTION_DECLINE, 2)
       val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
       val notification = NotificationCompat.Builder(context, CALL_CHANNEL_ID)
           .setSmallIcon(android.R.drawable.sym_call_incoming)
@@ -306,8 +335,6 @@ class LafinaReminderModule(private val reactContext: ReactApplicationContext) :
           .setVibrate(longArrayOf(0, 1000, 1000, 1000, 1000))
           .setContentIntent(fullScreenIntent)
           .setFullScreenIntent(fullScreenIntent, true)
-          .addAction(android.R.drawable.sym_action_call, "Answer", answerIntent)
-          .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Decline", declineIntent)
           .build()
       notification.flags = notification.flags or Notification.FLAG_INSISTENT
       try {

@@ -6,32 +6,49 @@ import {
   answerCall,
   checkAndTriggerReminders,
   disconnectCall,
-  finishCallVoiceCapture,
-  startCallVoiceCapture,
 } from '../../src/scheduler';
 
 jest.mock('react-native', () => {
   const rn = jest.requireActual('react-native');
   rn.DeviceEventEmitter.emit = jest.fn();
+  rn.DeviceEventEmitter.addListener = jest.fn(() => ({ remove: jest.fn() }));
   rn.NativeModules.LafinaReminder = {
     scheduleExactAlarm: jest.fn().mockResolvedValue(true),
     cancelAlarm: jest.fn().mockResolvedValue(true),
     finishIncomingCall: jest.fn().mockResolvedValue(true),
+    startActiveCall: jest.fn().mockResolvedValue(true),
+    stopActiveCall: jest.fn().mockResolvedValue(true),
     consumePendingCall: jest.fn().mockResolvedValue(null),
   };
   rn.NativeModules.LafinaTTS = {
     synthesize: jest.fn().mockResolvedValue(true),
     playAudio: jest.fn().mockResolvedValue(true),
+    stopAudio: jest.fn().mockResolvedValue(true),
   };
-  rn.NativeModules.LafinaCallSpeechToText = {
-    transcribe: jest.fn(),
+  rn.NativeModules.LafinaSpeechToText = {
+    startListening: jest.fn(),
     stopListening: jest.fn().mockResolvedValue(true),
-  };
-  rn.NativeModules.LafinaIntentExtractor = {
-    extractIntentJson: jest.fn(),
+    cancelListening: jest.fn().mockResolvedValue(true),
   };
   return rn;
 });
+
+const speechResult = (transcript: string, captureId: string) => ({
+  captureId,
+  transcript,
+  speechDetected: true,
+  cancelled: false,
+  captureDurationMs: 1_500,
+  inferenceDurationMs: 700,
+});
+
+const nativeSpeechResult =
+  (transcript: string) => (options: { captureId: string }) =>
+    Promise.resolve(speechResult(transcript, options.captureId));
+
+const flushPromises = async (): Promise<void> => {
+  for (let index = 0; index < 100; index += 1) await Promise.resolve();
+};
 
 describe('offline reminder call integration', () => {
   const userId = 'offline_user';
@@ -48,7 +65,12 @@ describe('offline reminder call integration', () => {
     db.executeSync('DELETE FROM users');
     db.executeSync(
       'INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, ?, ?)',
-      [userId, 'Offline Student', new Date().toISOString(), new Date().toISOString()]
+      [
+        userId,
+        'Offline Student',
+        new Date().toISOString(),
+        new Date().toISOString(),
+      ],
     );
   });
 
@@ -57,7 +79,7 @@ describe('offline reminder call integration', () => {
     jest.useRealTimers();
   });
 
-  it('triggers, snoozes for ten minutes, reschedules, and acknowledges', async () => {
+  it('triggers, automatically snoozes, reschedules, and acknowledges offline', async () => {
     remindersStore.insertReminder({
       id: 'rem_offline_flow',
       userId,
@@ -72,50 +94,40 @@ describe('offline reminder call integration', () => {
     await checkAndTriggerReminders(userId);
     expect(DeviceEventEmitter.emit).toHaveBeenCalledWith(
       'LAFINA_CALL_TRIGGER',
-      expect.objectContaining({ reminderId: 'rem_offline_flow' })
+      expect.objectContaining({ reminderId: 'rem_offline_flow' }),
     );
 
-    NativeModules.LafinaCallSpeechToText.transcribe.mockResolvedValueOnce({
-      transcript: 'snooze 10 minutes',
-      speechDetected: true,
-      captureDurationMs: 2100,
-      inferenceDurationMs: 800,
-    });
-    await answerCall('rem_offline_flow', userId);
-    expect(startCallVoiceCapture()).toBe(true);
-    await finishCallVoiceCapture();
+    NativeModules.LafinaSpeechToText.startListening.mockImplementationOnce(
+      nativeSpeechResult('snooze 10'),
+    );
+    await answerCall('rem_offline_flow', userId, true);
+    await flushPromises();
 
     const snoozed = remindersStore.getReminderById('rem_offline_flow');
     expect(snoozed?.status).toBe('snoozed');
     expect(snoozed?.snoozeCount).toBe(1);
-    expect(NativeModules.LafinaReminder.scheduleExactAlarm).toHaveBeenCalledWith(
+    expect(
+      NativeModules.LafinaReminder.scheduleExactAlarm,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         reminderId: 'rem_offline_flow',
         task: 'Review algorithms',
-      })
+      }),
     );
 
     jest.setSystemTime(new Date(snoozed?.triggerAt ?? Date.now()));
     await checkAndTriggerReminders(userId);
-    expect(remindersStore.getReminderById('rem_offline_flow')?.status).toBe(
-      'triggered'
+    NativeModules.LafinaSpeechToText.startListening.mockImplementationOnce(
+      nativeSpeechResult('acknowledge'),
     );
-
-    NativeModules.LafinaCallSpeechToText.transcribe.mockResolvedValueOnce({
-      transcript: 'acknowledge',
-      speechDetected: true,
-      captureDurationMs: 1400,
-      inferenceDurationMs: 650,
-    });
-    await answerCall('rem_offline_flow', userId);
-    expect(startCallVoiceCapture()).toBe(true);
-    await finishCallVoiceCapture();
+    await answerCall('rem_offline_flow', userId, true);
+    await flushPromises();
 
     expect(remindersStore.getReminderById('rem_offline_flow')?.status).toBe(
-      'acknowledged'
+      'acknowledged',
     );
     expect(NativeModules.LafinaReminder.cancelAlarm).toHaveBeenCalledWith(
-      'rem_offline_flow'
+      'rem_offline_flow',
     );
   });
 });

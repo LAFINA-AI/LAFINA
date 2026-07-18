@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Easing,
   Keyboard,
-  NativeModules,
   DeviceEventEmitter,
   PermissionsAndroid,
 } from 'react-native';
@@ -21,7 +20,12 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import { NLU_PARSER_DELAY_MS, VOICE_SUCCESS_DELAY_MS } from '../../constants';
 import type { ThemeColors } from '../contexts/ThemeContext';
-
+import {
+  cancelOfflineSpeechCapture,
+  startOfflineSpeechCapture,
+  stopOfflineSpeechCapture,
+} from '../../ai/native/speechCapture';
+import type { OfflineSpeechCaptureHandle } from '../../ai/native/speechCapture';
 interface VoiceModalProps {
   visible: boolean;
   userId: string;
@@ -36,7 +40,11 @@ const PRESET_COMMANDS = [
   'Note: review pilot evaluation parameters',
 ];
 
-export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose }) => {
+export const VoiceModal: React.FC<VoiceModalProps> = ({
+  visible,
+  userId,
+  onClose,
+}) => {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [transcribedText, setTranscribedText] = useState('');
   const [debugText, setDebugText] = useState('');
@@ -46,19 +54,27 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
   // Animated values
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
-  
+
   // Waveform bars
-  const waveBars = useRef(Array.from({ length: 9 }, () => new Animated.Value(8))).current;
+  const waveBars = useRef(
+    Array.from({ length: 9 }, () => new Animated.Value(8)),
+  ).current;
   const waveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeCaptureRef = useRef(0);
+  const pressActiveRef = useRef(false);
   const microphoneRequestRef = useRef<Promise<boolean> | null>(null);
+  const speechCaptureRef = useRef<OfflineSpeechCaptureHandle | null>(null);
 
   const { colors } = useTheme();
   const themed = useThemedStyles((c, d) => getVoiceThemedStyles(c, d));
 
   const ensureMicrophonePermission = useCallback(async (): Promise<boolean> => {
     try {
-      if (await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO)) {
+      if (
+        await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+        )
+      ) {
         return true;
       }
 
@@ -67,10 +83,11 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
           {
             title: 'Microphone access',
-            message: 'LAFINA needs microphone access to transcribe scheduling commands.',
+            message:
+              'LAFINA needs microphone access to transcribe scheduling commands.',
             buttonPositive: 'Allow',
             buttonNegative: 'Not now',
-          }
+          },
         ).then(result => result === PermissionsAndroid.RESULTS.GRANTED);
       }
 
@@ -90,19 +107,29 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
   }, [ensureMicrophonePermission, visible]);
 
   useEffect(() => {
-    const partialSub = DeviceEventEmitter.addListener('onSpeechPartialResult', (e: { transcript?: string }) => {
-      if (e?.transcript) {
-        setDebugText(e.transcript);
-        setTranscribedText(`"${e.transcript}"`);
-      }
-    });
+    const partialSub = DeviceEventEmitter.addListener(
+      'onSpeechPartialResult',
+      (e: { captureId?: string; transcript?: string }) => {
+        if (e.captureId && e.captureId !== speechCaptureRef.current?.captureId)
+          return;
+        if (e?.transcript) {
+          setDebugText(e.transcript);
+          setTranscribedText(`"${e.transcript}"`);
+        }
+      },
+    );
 
-    const finalSub = DeviceEventEmitter.addListener('onSpeechFinalResult', (e: { transcript?: string }) => {
-      if (e?.transcript) {
-        setDebugText(e.transcript);
-        setTranscribedText(`"${e.transcript}"`);
-      }
-    });
+    const finalSub = DeviceEventEmitter.addListener(
+      'onSpeechFinalResult',
+      (e: { captureId?: string; transcript?: string }) => {
+        if (e.captureId && e.captureId !== speechCaptureRef.current?.captureId)
+          return;
+        if (e?.transcript) {
+          setDebugText(e.transcript);
+          setTranscribedText(`"${e.transcript}"`);
+        }
+      },
+    );
 
     return () => {
       partialSub.remove();
@@ -114,13 +141,13 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
     if (waveIntervalRef.current) {
       clearInterval(waveIntervalRef.current);
     }
-    waveBars.forEach((bar) => bar.setValue(8));
+    waveBars.forEach(bar => bar.setValue(8));
   }, [waveBars]);
 
   const startWaveform = useCallback(() => {
     stopWaveform();
     waveIntervalRef.current = setInterval(() => {
-      waveBars.forEach((bar) => {
+      waveBars.forEach(bar => {
         const randomHeight = Math.floor(Math.random() * 40) + 6;
         Animated.timing(bar, {
           toValue: randomHeight,
@@ -134,7 +161,11 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
 
   useEffect(() => {
     if (!visible) {
+      pressActiveRef.current = false;
       activeCaptureRef.current += 1;
+      const capture = speechCaptureRef.current;
+      speechCaptureRef.current = null;
+      if (capture) void cancelOfflineSpeechCapture(capture.captureId);
       setVoiceState('idle');
       setTranscribedText('');
       setDebugText('');
@@ -166,7 +197,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
             duration: 800,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       );
       animation.start();
     } else {
@@ -182,27 +213,52 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
     };
   }, [visible, voiceState, pulseAnim, startWaveform, stopWaveform]);
 
-  const triggerErrorShake = useCallback((nextState: VoiceState = 'idle') => {
-    setVoiceState('error');
-    Animated.sequence([
-      Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue: -10, duration: 50, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
-    ]).start(() => {
-      setTimeout(() => {
-        setVoiceState(nextState);
-      }, 1500);
-    });
-  }, [shakeAnim]);
+  const triggerErrorShake = useCallback(
+    (nextState: VoiceState = 'idle') => {
+      setVoiceState('error');
+      Animated.sequence([
+        Animated.timing(shakeAnim, {
+          toValue: 10,
+          duration: 50,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shakeAnim, {
+          toValue: -10,
+          duration: 50,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shakeAnim, {
+          toValue: 10,
+          duration: 50,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shakeAnim, {
+          toValue: 0,
+          duration: 50,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setTimeout(() => {
+          setVoiceState(nextState);
+        }, 1500);
+      });
+    },
+    [shakeAnim],
+  );
 
-  // Push-To-Talk: Press & Hold down mic button to speak
+  // Push-To-Talk: Press & Hold down mic button to speak.
   const handlePressIn = useCallback(async () => {
+    pressActiveRef.current = true;
     const captureId = activeCaptureRef.current + 1;
     activeCaptureRef.current = captureId;
 
     const hasPermission = await ensureMicrophonePermission();
-    if (activeCaptureRef.current !== captureId) return;
+    if (
+      activeCaptureRef.current !== captureId ||
+      !pressActiveRef.current
+    ) {
+      return;
+    }
     if (!hasPermission) {
       setTranscribedText('');
       setDebugText('Microphone access is required to transcribe speech.');
@@ -216,33 +272,41 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
     setAiReply('');
 
     try {
-      if (NativeModules.LafinaSpeechToText?.startListening) {
-        await NativeModules.LafinaSpeechToText.startListening();
-      }
-    } catch (err) {
-      console.error('Failed to start SpeechRecognizer on press in:', err);
-      setDebugText('Speech recognition could not start. Please try again.');
+      speechCaptureRef.current = startOfflineSpeechCapture({
+        mode: 'manual',
+        bargeIn: false,
+        context: 'main_mic',
+      });
+    } catch (error) {
+      console.error('Failed to start offline Whisper capture:', error);
+      setDebugText(
+        'Offline speech recognition could not start. Please try again.',
+      );
       triggerErrorShake('idle');
     }
   }, [ensureMicrophonePermission, triggerErrorShake]);
 
-  // Release mic button to stop recording and process speech
+  // Release the mic button to stop recording and process the shared Whisper result.
   const handlePressOut = useCallback(async () => {
-    const captureId = activeCaptureRef.current;
-    setVoiceState('processing');
-
-    try {
-      if (NativeModules.LafinaSpeechToText?.stopListening) {
-        await NativeModules.LafinaSpeechToText.stopListening();
-      }
-    } catch {
-      // Ignored
+    pressActiveRef.current = false;
+    const uiCaptureId = activeCaptureRef.current;
+    const capture = speechCaptureRef.current;
+    if (!capture) {
+      setVoiceState('idle');
+      return;
     }
 
-    setTimeout(() => {
-      if (activeCaptureRef.current !== captureId) return;
+    setVoiceState('processing');
+    try {
+      await stopOfflineSpeechCapture(capture.captureId);
+      const result = await capture.result;
+      if (speechCaptureRef.current?.captureId === capture.captureId) {
+        speechCaptureRef.current = null;
+      }
+      if (activeCaptureRef.current !== uiCaptureId) return;
 
-      const finalTranscript = debugText.trim();
+      const finalTranscript = result.transcript.trim();
+      setDebugText(finalTranscript);
       setTranscribedText(finalTranscript ? `"${finalTranscript}"` : '');
 
       if (!finalTranscript) {
@@ -251,25 +315,26 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
         return;
       }
 
-      try {
-        const reply = processCommand(finalTranscript, userId);
-        setAiReply(reply);
-        setVoiceState('success');
+      const reply = processCommand(finalTranscript, userId);
+      setAiReply(reply);
+      setVoiceState('success');
 
-        setTimeout(() => {
-          if (activeCaptureRef.current === captureId) {
-            onClose(true);
-            setVoiceState('idle');
-            setInputText('');
-          }
-        }, VOICE_SUCCESS_DELAY_MS);
-      } catch (err) {
-        console.error(err);
-        triggerErrorShake('idle');
+      setTimeout(() => {
+        if (activeCaptureRef.current === uiCaptureId) {
+          onClose(true);
+          setVoiceState('idle');
+          setInputText('');
+        }
+      }, VOICE_SUCCESS_DELAY_MS);
+    } catch (error) {
+      console.error('Failed to process offline Whisper capture:', error);
+      if (speechCaptureRef.current?.captureId === capture.captureId) {
+        speechCaptureRef.current = null;
       }
-    }, 400);
-  }, [debugText, onClose, triggerErrorShake, userId]);
-
+      setDebugText('Speech recognition could not finish. Please try again.');
+      triggerErrorShake('idle');
+    }
+  }, [onClose, triggerErrorShake, userId]);
   const handleCommandProcess = (command: string) => {
     if (!command.trim()) return;
     activeCaptureRef.current += 1;
@@ -283,13 +348,12 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
         const reply = processCommand(command, userId);
         setAiReply(reply);
         setVoiceState('success');
-        
+
         setTimeout(() => {
           onClose(true);
           setVoiceState('idle');
           setInputText('');
         }, VOICE_SUCCESS_DELAY_MS);
-
       } catch (err) {
         console.error(err);
         triggerErrorShake();
@@ -297,7 +361,8 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
     }, NLU_PARSER_DELAY_MS);
   };
 
-  const showFallbackControls = voiceState === 'idle' || voiceState === 'listening';
+  const showFallbackControls =
+    voiceState === 'idle' || voiceState === 'listening';
 
   return (
     <Modal
@@ -317,13 +382,20 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
           onPress={() => Keyboard.dismiss()}
         >
           {/* Close button */}
-          <TouchableOpacity style={[styles.closeButton, themed.closeButton]} onPress={() => onClose(false)}>
+          <TouchableOpacity
+            style={[styles.closeButton, themed.closeButton]}
+            onPress={() => onClose(false)}
+          >
             <X size={16} color={colors.textPrimary} />
           </TouchableOpacity>
 
           {/* Heading */}
-          <Text style={[styles.modalTitle, themed.modalTitle]}>LAFINA Voice Assistant</Text>
-          <Text style={styles.pushToTalkSubheading}>Hold the mic button below to talk</Text>
+          <Text style={[styles.modalTitle, themed.modalTitle]}>
+            LAFINA Voice Assistant
+          </Text>
+          <Text style={styles.pushToTalkSubheading}>
+            Hold the mic button below to talk
+          </Text>
 
           {/* Central Push-To-Talk Hold Button */}
           <View style={styles.animationArea}>
@@ -335,7 +407,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
                 ]}
               />
             )}
-            
+
             <TouchableOpacity
               activeOpacity={0.8}
               onPressIn={handlePressIn}
@@ -372,9 +444,14 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
 
           {/* Temporary Debug Transcription Display Box */}
           <View style={[styles.debugBox, themed.debugBox]}>
-            <Text style={styles.debugTitle}>🔍 [DEBUG] Live Transcribed Speech:</Text>
+            <Text style={styles.debugTitle}>
+              🔍 [DEBUG] Live Transcribed Speech:
+            </Text>
             <Text style={styles.debugText}>
-              {debugText ? `"${debugText}"` : transcribedText || '(Press and hold mic button above to speak)'}
+              {debugText
+                ? `"${debugText}"`
+                : transcribedText ||
+                  '(Press and hold mic button above to speak)'}
             </Text>
           </View>
 
@@ -399,7 +476,9 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
           {/* Simulated presets */}
           {showFallbackControls && (
             <View style={styles.presetsBlock}>
-              <Text style={[styles.presetsTitle, themed.presetsTitle]}>Try a simulated command:</Text>
+              <Text style={[styles.presetsTitle, themed.presetsTitle]}>
+                Try a simulated command:
+              </Text>
               <View style={styles.presetsRow}>
                 {PRESET_COMMANDS.slice(0, 3).map((cmd, i) => (
                   <TouchableOpacity
@@ -407,7 +486,12 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
                     style={[styles.presetChip, themed.presetChip]}
                     onPress={() => handleCommandProcess(cmd)}
                   >
-                    <Text style={[styles.presetChipText, themed.presetChipText]} numberOfLines={1}>{cmd}</Text>
+                    <Text
+                      style={[styles.presetChipText, themed.presetChipText]}
+                      numberOfLines={1}
+                    >
+                      {cmd}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -441,9 +525,18 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ visible, userId, onClose
 
 const getVoiceThemedStyles = (colors: ThemeColors, isDarkMode: boolean) => ({
   modalContent: { backgroundColor: colors.cardBg },
-  closeButton: { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' },
+  closeButton: {
+    backgroundColor: isDarkMode
+      ? 'rgba(255, 255, 255, 0.1)'
+      : 'rgba(0, 0, 0, 0.05)',
+  },
   modalTitle: { color: colors.textPrimary },
-  debugBox: { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)', borderColor: colors.border },
+  debugBox: {
+    backgroundColor: isDarkMode
+      ? 'rgba(255, 255, 255, 0.08)'
+      : 'rgba(0, 0, 0, 0.05)',
+    borderColor: colors.border,
+  },
   presetsTitle: { color: colors.textSecondary },
   presetChip: { backgroundColor: colors.inputBg },
   presetChipText: { color: colors.textPrimary },
@@ -556,7 +649,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     fontStyle: 'italic',
   },
-  
+
   // Presets styling
   presetsBlock: {
     width: '100%',

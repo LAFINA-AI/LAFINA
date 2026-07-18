@@ -18,6 +18,11 @@ set(GGML_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
 set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
 set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
 
+# Android debug builds default to unoptimized native code, which makes GGML
+# inference unusably slow on-device. Keep symbols while optimizing the native
+# Whisper/GGML targets created below.
+add_compile_options($<$<CONFIG:Debug>:-O3>)
+
 add_subdirectory(third_party/whisper.cpp whisper-build)
 
 add_library(lafina_whisper SHARED whisper_jni.cc)

@@ -30,6 +30,7 @@ class LafinaTTSModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
   private var activeMediaPlayer: MediaPlayer? = null
+  private var activePlaybackPromise: Promise? = null
   private var audioFocusRequest: AudioFocusRequest? = null
   private var ortEnv: OrtEnvironment? = null
   private var ortSession: OrtSession? = null
@@ -564,14 +565,15 @@ class LafinaTTSModule(private val reactContext: ReactApplicationContext) :
 
         Log.d("LafinaTTS", "Playing audio: $filePath (${audioFile.length()} bytes)")
 
-        // Stop any previous playback
-        releaseMediaPlayer()
+        // Settle any previous bridge call before starting the new playback owner.
+        interruptActivePlayback()
 
         val audioManager = reactContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         requestPlaybackFocus(audioManager)
 
         val mp = MediaPlayer()
         activeMediaPlayer = mp
+        activePlaybackPromise = promise
 
         val attrs = AudioAttributes.Builder()
           .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -595,51 +597,77 @@ class LafinaTTSModule(private val reactContext: ReactApplicationContext) :
             }
           } catch (e: Exception) {
             Log.e("LafinaTTS", "MediaPlayer start failed", e)
-            releaseMediaPlayer()
+            releasePlayer(player)
+            val failedPromise = if (activeMediaPlayer == player) activePlaybackPromise else null
+            if (activeMediaPlayer == player) {
+              activeMediaPlayer = null
+              activePlaybackPromise = null
+            }
             abandonPlaybackFocus(audioManager)
-            promise.reject("PLAY_ERROR", e.message, e)
+            failedPromise?.reject("PLAY_ERROR", e.message, e)
           }
         }
         mp.setOnCompletionListener { player ->
           Log.d("LafinaTTS", "Audio playback completed: $filePath")
-          try {
-            player.release()
-          } catch (_: Exception) {
-          }
+          releasePlayer(player)
+          val completion = if (activeMediaPlayer == player) activePlaybackPromise else null
           if (activeMediaPlayer == player) {
             activeMediaPlayer = null
+            activePlaybackPromise = null
           }
           abandonPlaybackFocus(audioManager)
-          promise.resolve(true)
+          completion?.resolve(true)
         }
         mp.setOnErrorListener { player, what, extra ->
           Log.e("LafinaTTS", "MediaPlayer error: what=$what, extra=$extra, file=$filePath")
-          try {
-            player.release()
-          } catch (_: Exception) {
-          }
+          releasePlayer(player)
+          val failedPromise = if (activeMediaPlayer == player) activePlaybackPromise else null
           if (activeMediaPlayer == player) {
             activeMediaPlayer = null
+            activePlaybackPromise = null
           }
           abandonPlaybackFocus(audioManager)
-          promise.reject("PLAY_ERROR", "MediaPlayer error: what=$what, extra=$extra")
+          failedPromise?.reject("PLAY_ERROR", "MediaPlayer error: what=$what, extra=$extra")
           true
         }
         mp.prepareAsync()
       } catch (e: Exception) {
         Log.e("LafinaTTS", "playAudio failed for $filePath", e)
-        releaseMediaPlayer()
-        promise.reject("PLAY_ERROR", e.message, e)
+        val failedPromise = activePlaybackPromise
+        releasePlayer(activeMediaPlayer)
+        activeMediaPlayer = null
+        activePlaybackPromise = null
+        if (failedPromise != null) {
+          failedPromise.reject("PLAY_ERROR", e.message, e)
+        } else {
+          promise.reject("PLAY_ERROR", e.message, e)
+        }
       }
     }
   }
 
-  private fun releaseMediaPlayer() {
-    activeMediaPlayer?.let {
+  @ReactMethod
+  fun stopAudio(promise: Promise) {
+    reactContext.runOnUiQueueThread {
+      interruptActivePlayback()
+      promise.resolve(true)
+    }
+  }
+
+  private fun interruptActivePlayback() {
+    val interruptedPromise = activePlaybackPromise
+    releasePlayer(activeMediaPlayer)
+    activeMediaPlayer = null
+    activePlaybackPromise = null
+    val audioManager = reactContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    abandonPlaybackFocus(audioManager)
+    interruptedPromise?.resolve(false)
+  }
+
+  private fun releasePlayer(player: MediaPlayer?) {
+    player?.let {
       try {
-        if (it.isPlaying) {
-          it.stop()
-        }
+        if (it.isPlaying) it.stop()
       } catch (_: Exception) {
       }
       try {
@@ -647,7 +675,6 @@ class LafinaTTSModule(private val reactContext: ReactApplicationContext) :
       } catch (_: Exception) {
       }
     }
-    activeMediaPlayer = null
   }
 
   private fun requestPlaybackFocus(audioManager: AudioManager) {

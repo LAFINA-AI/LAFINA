@@ -1,13 +1,15 @@
 export { getReminderPreferences } from './userPreferences';
 export type { ReminderPreferences } from './userPreferences';
-export { startSchedulerDaemon, stopSchedulerDaemon, checkAndTriggerReminders } from './reminderScheduler';
+export {
+  startSchedulerDaemon,
+  stopSchedulerDaemon,
+  checkAndTriggerReminders,
+} from './reminderScheduler';
 export {
   answerCall,
-  finishCallVoiceCapture,
   declineCall,
   disconnectCall,
   speakText,
-  startCallVoiceCapture,
   autoSnoozeCall,
   manualSnoozeCall,
   manualAcknowledgeCall,

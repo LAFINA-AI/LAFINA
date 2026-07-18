@@ -32,14 +32,14 @@ interface CallAnsweredViewProps {
   onSnooze: (minutes: number) => void;
   onAcknowledge: () => void;
   onDecline: () => void;
-  onMicPressIn: () => void;
-  onMicPressOut: () => void;
   transcript: string;
   reply: string;
 }
 
 const formatCallDuration = (seconds: number): string => {
-  const minutes = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const minutes = Math.floor(seconds / 60)
+    .toString()
+    .padStart(2, '0');
   const remainingSeconds = (seconds % 60).toString().padStart(2, '0');
   return minutes + ':' + remainingSeconds;
 };
@@ -53,8 +53,6 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
   onSnooze,
   onAcknowledge,
   onDecline,
-  onMicPressIn,
-  onMicPressOut,
   transcript,
   reply,
 }) => {
@@ -64,7 +62,10 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
   const pulse = useRef(new Animated.Value(1)).current;
   const wavePhaseRef = useRef(0);
   const waveBars = useRef(
-    Array.from({ length: 11 }, (_, index) => new Animated.Value(10 + (index % 4) * 7))
+    Array.from(
+      { length: 11 },
+      (_, index) => new Animated.Value(10 + (index % 4) * 7),
+    ),
   ).current;
 
   useEffect(() => {
@@ -95,7 +96,7 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
-        ])
+        ]),
       );
       pulseAnimation.start();
     } else {
@@ -107,7 +108,10 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
 
   useEffect(() => {
     const waveformActive =
-      !resolution && (callState === 'speaking' || callState === 'listening');
+      !resolution &&
+      (callState === 'speaking' ||
+        callState === 'speaking_listening' ||
+        callState === 'listening');
 
     if (!waveformActive) {
       waveBars.forEach((bar, index) => bar.setValue(10 + (index % 4) * 7));
@@ -117,7 +121,8 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
     const interval = setInterval(() => {
       wavePhaseRef.current += 1;
       waveBars.forEach((bar, index) => {
-        const nextHeight = 10 + ((index * 3 + wavePhaseRef.current * 2) % 6) * 7;
+        const nextHeight =
+          10 + ((index * 3 + wavePhaseRef.current * 2) % 6) * 7;
         Animated.timing(bar, {
           toValue: nextHeight,
           duration: 180,
@@ -140,10 +145,8 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
     resolution?.outcome === 'missed'
       ? colors.warning
       : resolution?.outcome === 'snoozed'
-        ? colors.yellow
-        : colors.success;
-  const microphoneEnabled =
-    !resolution && (callState === 'connected' || callState === 'listening');
+      ? colors.yellow
+      : colors.success;
   const controlsEnabled = resolution === null;
 
   const themed = {
@@ -171,7 +174,10 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
   };
 
   const renderWaveform = (): React.ReactNode => (
-    <View style={styles.waveformContainer} accessibilityLabel="LAFINA voice activity">
+    <View
+      style={styles.waveformContainer}
+      accessibilityLabel="LAFINA voice activity"
+    >
       {waveBars.map((bar, index) => (
         <Animated.View
           key={index}
@@ -190,8 +196,8 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
         resolution.outcome === 'acknowledged'
           ? 'REMINDER ACKNOWLEDGED'
           : resolution.outcome === 'snoozed'
-            ? 'REMINDER SNOOZED'
-            : 'REMINDER MISSED';
+          ? 'REMINDER SNOOZED'
+          : 'REMINDER MISSED';
       const icon =
         resolution.outcome === 'acknowledged' ? (
           <Check size={42} color={resolutionColor} strokeWidth={2.4} />
@@ -206,7 +212,9 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
           <View style={[styles.resultIcon, { borderColor: resolutionColor }]}>
             {icon}
           </View>
-          <Text style={[styles.resultTitle, { color: resolutionColor }]}>{title}</Text>
+          <Text style={[styles.resultTitle, { color: resolutionColor }]}>
+            {title}
+          </Text>
           <Text style={[styles.resultMessage, themed.secondaryText]}>
             {resolution.message}
           </Text>
@@ -214,14 +222,16 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
       );
     }
 
-    if (callState === 'speaking') {
+    if (callState === 'speaking' || callState === 'speaking_listening') {
       return (
         <View style={styles.statusVisual}>
           {renderWaveform()}
           <View style={styles.statusLabelRow}>
             <Volume2 size={17} color={colors.blue} />
             <Text style={[styles.statusLabel, { color: colors.blue }]}>
-              LAFINA is speaking...
+              {callState === 'speaking_listening'
+                ? 'LAFINA is speaking - you can respond now'
+                : 'LAFINA is speaking...'}
             </Text>
           </View>
         </View>
@@ -267,7 +277,7 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
           <PhoneCall size={38} color={colors.blue} />
         </View>
         <Text style={[styles.statusLabel, themed.secondaryText]}>
-          Hold the microphone when you are ready
+          Say Acknowledge or Snooze at any time
         </Text>
       </View>
     );
@@ -280,11 +290,19 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
           ACTIVE SCHEDULED CALL
         </Text>
         <View style={styles.identityRow}>
-          <Image source={lafinaLogo} style={styles.headerLogo} resizeMode="contain" />
-          <Text style={[styles.assistantName, themed.primaryText]}>LAFINA Assistant</Text>
+          <Image
+            source={lafinaLogo}
+            style={styles.headerLogo}
+            resizeMode="contain"
+          />
+          <Text style={[styles.assistantName, themed.primaryText]}>
+            LAFINA Assistant
+          </Text>
         </View>
         <View style={styles.connectionRow}>
-          <View style={[styles.connectionDot, { backgroundColor: colors.success }]} />
+          <View
+            style={[styles.connectionDot, { backgroundColor: colors.success }]}
+          />
           <Text style={[styles.duration, { color: colors.success }]}>
             {formatCallDuration(elapsedSeconds)}
           </Text>
@@ -310,7 +328,9 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
         {callState === 'listening' || transcript ? (
           <>
             <View style={[styles.cardDivider, themed.divider]} />
-            <Text style={[styles.cardLabel, themed.mutedText]}>YOUR RESPONSE</Text>
+            <Text style={[styles.cardLabel, themed.mutedText]}>
+              YOUR RESPONSE
+            </Text>
             <Text style={[styles.transcriptText, themed.secondaryText]}>
               {transcript || 'Listening... Say "acknowledge" or "snooze".'}
             </Text>
@@ -320,31 +340,6 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
 
       <View style={styles.controls}>
         <View style={styles.primaryControls}>
-          <View style={styles.controlColumn}>
-            <TouchableOpacity
-              onPressIn={onMicPressIn}
-              onPressOut={onMicPressOut}
-              activeOpacity={0.8}
-              disabled={!microphoneEnabled}
-              style={[
-                styles.roundControl,
-                { backgroundColor: callState === 'listening' ? colors.red : colors.blue },
-                !microphoneEnabled && styles.disabledControl,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Hold to speak"
-              accessibilityHint="Hold while speaking. Release to process your response."
-              accessibilityState={{ disabled: !microphoneEnabled }}
-            >
-              <Mic size={30} color={colors.white} />
-            </TouchableOpacity>
-            <Text style={[styles.controlLabel, themed.secondaryText]}>
-              {callState === 'listening'
-                ? 'Release to process your response'
-                : 'Hold the microphone to respond'}
-            </Text>
-          </View>
-
           <View style={styles.controlColumn}>
             <TouchableOpacity
               activeOpacity={0.8}
@@ -361,7 +356,9 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
             >
               <PhoneOff size={30} color={colors.white} />
             </TouchableOpacity>
-            <Text style={[styles.controlLabel, themed.secondaryText]}>End call</Text>
+            <Text style={[styles.controlLabel, themed.secondaryText]}>
+              End call
+            </Text>
           </View>
         </View>
 
@@ -395,7 +392,9 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
               !controlsEnabled && styles.disabledControl,
             ]}
             accessibilityRole="button"
-            accessibilityLabel={'Snooze reminder for ' + snoozeMinutes + ' minutes'}
+            accessibilityLabel={
+              'Snooze reminder for ' + snoozeMinutes + ' minutes'
+            }
             accessibilityState={{ disabled: !controlsEnabled }}
           >
             <Clock size={18} color={colors.yellow} />

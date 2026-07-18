@@ -5,6 +5,7 @@ import { remindersStore } from '../../storage';
 interface LafinaTTSModuleType {
   synthesize: (text: string, outputPath: string) => Promise<boolean>;
   playAudio?: (filePath: string) => Promise<boolean>;
+  stopAudio?: () => Promise<boolean>;
   resetInitError?: () => Promise<boolean>;
 }
 
@@ -46,10 +47,21 @@ export const playSpeechFile = async (filePath: string): Promise<boolean> => {
 };
 
 /**
+ * Stops active Kokoro playback, including a call announcement interrupted by user speech.
+ */
+export const stopSpeechPlayback = async (): Promise<void> => {
+  const nativeModule = getNativeTTSModule();
+  if (!nativeModule?.stopAudio) return;
+  await nativeModule.stopAudio();
+};
+/**
  * Generates a deterministic filename for a given text phrase using a simple FNV-like hash.
  */
 const getDeterministicFilename = (text: string): string => {
-  const clean = text.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const clean = text
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
   let hash = 0;
   for (let i = 0; i < clean.length; i++) {
     const char = clean.charCodeAt(i);
@@ -70,7 +82,9 @@ const getDeterministicFilename = (text: string): string => {
 export const synthesizeSpeech = async (text: string): Promise<string> => {
   const nativeModule = getNativeTTSModule();
   if (!nativeModule) {
-    throw new Error('Native TTS module is not available. Rebuild the Android app so LafinaTTS is linked.');
+    throw new Error(
+      'Native TTS module is not available. Rebuild the Android app so LafinaTTS is linked.',
+    );
   }
 
   const trimmed = text.trim();
@@ -93,16 +107,29 @@ export const synthesizeSpeech = async (text: string): Promise<string> => {
     // Check cache first
     const exists = await RNFS.exists(outputPath);
     if (exists) {
-      console.log(`[TTS Cache] Hit: "${trimmed.substring(0, 40)}${trimmed.length > 40 ? '...' : ''}" -> ${filename}`);
+      console.log(
+        `[TTS Cache] Hit: "${trimmed.substring(0, 40)}${
+          trimmed.length > 40 ? '...' : ''
+        }" -> ${filename}`,
+      );
       return outputPath;
     }
 
-    console.log(`[TTS Cache] Miss: Synthesizing: "${trimmed.substring(0, 40)}${trimmed.length > 40 ? '...' : ''}"`);
+    console.log(
+      `[TTS Cache] Miss: Synthesizing: "${trimmed.substring(0, 40)}${
+        trimmed.length > 40 ? '...' : ''
+      }"`,
+    );
 
     try {
       const success = await nativeModule.synthesize(trimmed, outputPath);
       if (!success) {
-        throw new Error(`TTS synthesis returned false for text: "${trimmed.substring(0, 60)}"`);
+        throw new Error(
+          `TTS synthesis returned false for text: "${trimmed.substring(
+            0,
+            60,
+          )}"`,
+        );
       }
     } catch (error) {
       // Clear sticky native init failures so the next attempt can reload models
@@ -155,7 +182,10 @@ export const speakTextWithTts = async (text: string): Promise<void> => {
  * @param text The text to pre-cache (usually the reminder announcement).
  * @returns Promise resolving to the path of the generated WAV file.
  */
-export const preCacheReminderAudio = async (reminderId: string, text: string): Promise<string> => {
+export const preCacheReminderAudio = async (
+  reminderId: string,
+  text: string,
+): Promise<string> => {
   const nativeModule = getNativeTTSModule();
   if (!nativeModule) {
     console.warn('Native TTS module not available; skipping pre-cache.');
@@ -167,7 +197,7 @@ export const preCacheReminderAudio = async (reminderId: string, text: string): P
     await RNFS.mkdir(cacheDir);
 
     const safeReminderId = reminderId.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const outputPath = `${cacheDir}/tts_${safeReminderId}.wav`;
+    const outputPath = `${cacheDir}/tts_v2_${safeReminderId}.wav`;
 
     const exists = await RNFS.exists(outputPath);
     if (exists) {
@@ -193,7 +223,7 @@ export const preCacheReminderAudio = async (reminderId: string, text: string): P
  * @param filePath Absolute reminder audio path, when one was generated.
  */
 export const deletePreCachedReminderAudio = async (
-  filePath: string | null
+  filePath: string | null,
 ): Promise<void> => {
   if (!filePath) return;
   try {

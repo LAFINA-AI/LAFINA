@@ -9,6 +9,12 @@
 
 namespace {
 constexpr const char *kTag = "LafinaWhisper";
+constexpr const char *kAcademicPrompt =
+    "Academic scheduling assistant. Common words include acknowledge, snooze, reminder, "
+    "schedule, assignment, class, exam, quiz, project, study, meeting, today, tomorrow, "
+    "morning, afternoon, evening, AM, and PM.";
+
+constexpr float kDisabledNoSpeechThreshold = 1.0f;
 
 size_t assetRead(void *context, void *output, size_t size) {
   return static_cast<size_t>(AAsset_read(static_cast<AAsset *>(context), output, size));
@@ -58,26 +64,52 @@ Java_com_lafina_LafinaWhisperBridge_transcribe(
   auto *context = reinterpret_cast<whisper_context *>(contextPointer);
   if (context == nullptr) return env->NewStringUTF("");
   const jsize sampleCount = env->GetArrayLength(samples);
+  if (sampleCount <= 0) return env->NewStringUTF("");
   jfloat *audio = env->GetFloatArrayElements(samples, nullptr);
+  if (audio == nullptr) return env->NewStringUTF("");
   whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
   params.language = "en";
   params.translate = false;
   params.no_context = true;
+  params.no_timestamps = true;
   params.single_segment = true;
   params.print_progress = false;
   params.print_realtime = false;
   params.print_timestamps = false;
   params.suppress_blank = true;
+  params.suppress_nst = true;
   params.temperature = 0.0f;
+  params.max_tokens = 96;
+  params.initial_prompt = kAcademicPrompt;
+  params.greedy.best_of = 1;
+  // Silero VAD has already gated and trimmed this audio. Whisper.cpp suppresses a
+  // segment only when no_speech_prob is strictly greater than this threshold and
+  // its average log probability is low, so 1.0 disables the redundant gate.
+  params.no_speech_thold = kDisabledNoSpeechThreshold;
   params.n_threads = std::clamp(static_cast<int>(requestedThreads), 1, 4);
   std::string transcript;
+  __android_log_print(
+      ANDROID_LOG_INFO,
+      kTag,
+      "Transcribing %d samples with %d threads",
+      static_cast<int>(sampleCount),
+      params.n_threads);
   const int result = whisper_full(context, params, audio, sampleCount);
   env->ReleaseFloatArrayElements(samples, audio, JNI_ABORT);
   if (result == 0) {
     const int segmentCount = whisper_full_n_segments(context);
     for (int index = 0; index < segmentCount; ++index) {
-      transcript += whisper_full_get_segment_text(context, index);
+      const std::string segment = trim(whisper_full_get_segment_text(context, index));
+      if (segment.empty()) continue;
+      if (!transcript.empty()) transcript += " ";
+      transcript += segment;
     }
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        kTag,
+        "Transcription completed with %d segments and %zu characters",
+        segmentCount,
+        transcript.size());
   } else {
     __android_log_print(ANDROID_LOG_ERROR, kTag, "whisper_full failed: %d", result);
   }

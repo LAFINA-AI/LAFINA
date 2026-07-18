@@ -6,11 +6,7 @@ import {
   Text,
 } from 'react-native';
 import ReactTestRenderer from 'react-test-renderer';
-import type {
-  CallStateEvent,
-  NativeCallAction,
-
-} from '../../src/scheduler';
+import type { CallStateEvent, NativeCallAction } from '../../src/scheduler';
 import { useTheme } from '../../src/ui/contexts/ThemeContext';
 import { IncomingCallScreen } from '../../src/ui/screens/IncomingCallScreen';
 
@@ -19,8 +15,10 @@ jest.mock('react-native/Libraries/Modal/Modal', () => ({
   default: ({
     visible,
     children,
-  }: { visible: boolean; children: React.ReactNode }) =>
-    visible ? children : null,
+  }: {
+    visible: boolean;
+    children: React.ReactNode;
+  }) => (visible ? children : null),
 }));
 
 jest.mock('../../src/ui/contexts/ThemeContext', () => ({
@@ -30,7 +28,6 @@ jest.mock('../../src/ui/contexts/ThemeContext', () => ({
 jest.mock('../../src/scheduler', () => ({
   answerCall: jest.fn().mockResolvedValue(undefined),
   declineCall: jest.fn().mockResolvedValue(undefined),
-  finishCallVoiceCapture: jest.fn().mockResolvedValue(undefined),
   getReminderPreferences: jest.fn(() => ({
     leadTimeMinutes: 15,
     snoozeDurationMinutes: 10,
@@ -39,7 +36,6 @@ jest.mock('../../src/scheduler', () => ({
   })),
   manualAcknowledgeCall: jest.fn().mockResolvedValue(undefined),
   manualSnoozeCall: jest.fn().mockResolvedValue(undefined),
-  startCallVoiceCapture: jest.fn(() => true),
 }));
 
 const schedulerMock = jest.requireMock('../../src/scheduler') as {
@@ -48,7 +44,6 @@ const schedulerMock = jest.requireMock('../../src/scheduler') as {
 };
 
 let stateListener: ((event: CallStateEvent) => void) | null = null;
-
 
 const useThemeMock = useTheme as jest.MockedFunction<typeof useTheme>;
 
@@ -64,7 +59,9 @@ const createTheme = (isDarkMode: boolean) => ({
     textSecondary: isDarkMode ? '#A0A0A0' : '#7A7A7A',
     textMuted: isDarkMode ? '#666666' : '#A0A0A0',
     border: isDarkMode ? '#2C2C2E' : '#E5E5E5',
-    statusBarStyle: isDarkMode ? 'light-content' as const : 'dark-content' as const,
+    statusBarStyle: isDarkMode
+      ? ('light-content' as const)
+      : ('dark-content' as const),
     red: '#F75A5A',
     blue: '#E6003A',
     yellow: '#C8A800',
@@ -84,23 +81,27 @@ const createTheme = (isDarkMode: boolean) => ({
   },
 });
 
-const getTextContent = (contentValue: React.ReactNode): string => (
-  React.Children.toArray(contentValue).map(child => (
-    typeof child === 'string' || typeof child === 'number' ? String(child) : ''
-  )).join('')
-);
+const getTextContent = (contentValue: React.ReactNode): string =>
+  React.Children.toArray(contentValue)
+    .map(child =>
+      typeof child === 'string' || typeof child === 'number'
+        ? String(child)
+        : '',
+    )
+    .join('');
 
-const getRenderedText = (renderer: ReactTestRenderer.ReactTestRenderer): string => (
+const getRenderedText = (
+  renderer: ReactTestRenderer.ReactTestRenderer,
+): string =>
   renderer.root
     .findAllByType(Text)
     .map(node => getTextContent(node.props.children))
-    .join(' ')
-);
+    .join(' ');
 
 const renderIncomingCall = (
   visible: boolean,
   onClose: () => void,
-  initialAction: NativeCallAction = 'call'
+  initialAction: NativeCallAction = 'call',
 ): React.ReactElement => (
   <IncomingCallScreen
     visible={visible}
@@ -136,7 +137,7 @@ describe('incoming reminder call presentation', () => {
     stateListener = null;
     addListenerSpy.mockImplementation(((
       eventType: string,
-      listener: (...args: unknown[]) => unknown
+      listener: (...args: unknown[]) => unknown,
     ) => {
       if (eventType === 'LAFINA_CALL_STATE_CHANGE') {
         stateListener = listener as (event: CallStateEvent) => void;
@@ -213,7 +214,7 @@ describe('incoming reminder call presentation', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
-        renderIncomingCall(true, onClose, 'answer')
+        renderIncomingCall(true, onClose, 'answer'),
       );
       await flushPromises();
     });
@@ -229,7 +230,9 @@ describe('incoming reminder call presentation', () => {
 
     expect(schedulerMock.answerCall).toHaveBeenCalledTimes(2);
     ReactTestRenderer.act(() => renderer.unmount());
-  });  it('shows the LAFINA call identity, reminder, accessible actions, and both theme backgrounds', () => {
+  });
+
+  it('shows the LAFINA call identity, reminder, accessible actions, and both theme backgrounds', () => {
     let renderer!: ReactTestRenderer.ReactTestRenderer;
 
     ReactTestRenderer.act(() => {
@@ -241,15 +244,21 @@ describe('incoming reminder call presentation', () => {
     expect(text).toContain('LAFINA Scheduler');
     expect(text).toContain('University Academic Assistant');
     expect(text).toContain('Compiler Design midterm');
-    expect(renderer.root.find(
-      node => node.props.accessibilityLabel === 'LAFINA logo'
-    )).toBeDefined();
-    expect(renderer.root.find(
-      node => node.props.accessibilityLabel === 'Answer reminder call'
-    )).toBeDefined();
-    expect(renderer.root.find(
-      node => node.props.accessibilityLabel === 'Decline reminder call'
-    )).toBeDefined();
+    expect(
+      renderer.root.find(
+        node => node.props.accessibilityLabel === 'LAFINA logo',
+      ),
+    ).toBeDefined();
+    expect(
+      renderer.root.find(
+        node => node.props.accessibilityLabel === 'Answer reminder call',
+      ),
+    ).toBeDefined();
+    expect(
+      renderer.root.find(
+        node => node.props.accessibilityLabel === 'Decline reminder call',
+      ),
+    ).toBeDefined();
 
     const hasLightBackground = renderer.root.findAll(node => {
       const flattened = StyleSheet.flatten(node.props.style);
@@ -278,31 +287,30 @@ describe('incoming reminder call presentation', () => {
       renderer = ReactTestRenderer.create(renderIncomingCall(true, onClose));
     });
     const answerButton = renderer.root.find(
-      node => node.props.accessibilityLabel === 'Answer reminder call'
+      node => node.props.accessibilityLabel === 'Answer reminder call',
     );
     ReactTestRenderer.act(() => answerButton.props.onPress());
     await ReactTestRenderer.act(flushPromises);
 
     expect(schedulerMock.answerCall).toHaveBeenCalledWith(
       'rem-call-ui',
-      'student-1'
+      'student-1',
+      true,
     );
     expect(getRenderedText(renderer)).toContain('ACTIVE SCHEDULED CALL');
 
     const endButton = renderer.root.find(
-      node => node.props.accessibilityLabel === 'End reminder call'
+      node => node.props.accessibilityLabel === 'End reminder call',
     );
     ReactTestRenderer.act(() => endButton.props.onPress());
     await ReactTestRenderer.act(flushPromises);
 
     expect(schedulerMock.declineCall).toHaveBeenCalledWith(
       'rem-call-ui',
-      'student-1'
+      'student-1',
     );
     expect(onClose).toHaveBeenCalledTimes(1);
 
     ReactTestRenderer.act(() => renderer.unmount());
   });
-
-
 });

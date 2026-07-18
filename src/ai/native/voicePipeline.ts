@@ -6,29 +6,12 @@ import { createFallbackNluResult, processCommand } from '../nlu/parser';
 import { applyNluScheduleResult } from '../nlu/scheduler';
 import type { CreatedScheduleItemType, NluResult } from '../nlu/types';
 import type { OfflineModelReference } from '../modelAssets';
-
-const MAX_RECORDING_DURATION_MS = 12_000;
-const SILENCE_TIMEOUT_MS = 1_200;
+import {
+  hasOfflineSpeechCapture,
+  startOfflineSpeechCapture,
+} from './speechCapture';
 const LLM_MAX_TOKENS = 220;
 const LLM_TEMPERATURE = 0;
-
-interface RecordUtteranceRequest {
-  vadModel: OfflineModelReference;
-  maxDurationMs: number;
-  silenceTimeoutMs: number;
-}
-
-interface RecordUtteranceResponse {
-  audioFilePath: string;
-  speechDetected: boolean;
-  durationMs: number;
-}
-
-interface TranscribeRequest {
-  audioFilePath: string;
-  model: OfflineModelReference;
-  language: 'en';
-}
 
 interface IntentExtractionRequest {
   transcript: string;
@@ -38,31 +21,11 @@ interface IntentExtractionRequest {
   maxTokens: number;
 }
 
-interface LafinaVoiceInputModule {
-  recordUtterance: (request: RecordUtteranceRequest) => Promise<RecordUtteranceResponse>;
-  stopRecording?: () => Promise<boolean>;
-}
-
-interface OfflineTranscriptionResult {
-  transcript: string;
-  speechDetected: boolean;
-  captureDurationMs: number;
-  inferenceDurationMs: number;
-}
-
-interface LafinaSpeechToTextModule {
-  transcribe: (
-    request: TranscribeRequest
-  ) => Promise<string | OfflineTranscriptionResult>;
-}
-
 interface LafinaIntentExtractorModule {
   extractIntentJson: (request: IntentExtractionRequest) => Promise<string>;
 }
 
 interface OfflineVoiceNativeModules {
-  LafinaVoiceInput?: LafinaVoiceInputModule;
-  LafinaSpeechToText?: LafinaSpeechToTextModule;
   LafinaIntentExtractor?: LafinaIntentExtractorModule;
 }
 
@@ -88,14 +51,19 @@ const getNativeVoiceModules = (): OfflineVoiceNativeModules => {
 
 const requestMicrophonePermission = async (): Promise<boolean> => {
   try {
-    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+    const result = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+    );
     return result === PermissionsAndroid.RESULTS.GRANTED;
   } catch {
     return false;
   }
 };
 
-const unavailableResult = (reply: string, errorCode: VoicePipelineErrorCode): VoicePipelineResult => ({
+const unavailableResult = (
+  reply: string,
+  errorCode: VoicePipelineErrorCode,
+): VoicePipelineResult => ({
   didUpdate: false,
   transcript: '',
   reply,
@@ -111,11 +79,7 @@ const unavailableResult = (reply: string, errorCode: VoicePipelineErrorCode): Vo
  */
 export const hasOfflineVoiceRuntime = (): boolean => {
   const modules = getNativeVoiceModules();
-  return Boolean(
-    modules.LafinaVoiceInput &&
-      modules.LafinaSpeechToText &&
-      modules.LafinaIntentExtractor
-  );
+  return hasOfflineSpeechCapture() && Boolean(modules.LafinaIntentExtractor);
 };
 
 /**
@@ -124,13 +88,15 @@ export const hasOfflineVoiceRuntime = (): boolean => {
  * @param userId Active local user ID that owns any created schedule item.
  * @returns The pipeline result, including transcript, reply, and storage update status.
  */
-export const runOfflineVoiceScheduling = async (userId: string): Promise<VoicePipelineResult> => {
+export const runOfflineVoiceScheduling = async (
+  userId: string,
+): Promise<VoicePipelineResult> => {
   const modules = getNativeVoiceModules();
 
-  if (!modules.LafinaVoiceInput || !modules.LafinaSpeechToText || !modules.LafinaIntentExtractor) {
+  if (!hasOfflineSpeechCapture() || !modules.LafinaIntentExtractor) {
     return unavailableResult(
       'Offline voice is not available in this build yet. You can type the command below for now.',
-      'native_runtime_unavailable'
+      'native_runtime_unavailable',
     );
   }
 
@@ -138,37 +104,28 @@ export const runOfflineVoiceScheduling = async (userId: string): Promise<VoicePi
   if (!hasPermission) {
     return unavailableResult(
       'Microphone permission is needed before I can listen for a schedule command.',
-      'permission_denied'
+      'permission_denied',
     );
   }
 
   try {
-    const utterance = await modules.LafinaVoiceInput.recordUtterance({
-      vadModel: AI_MODEL_ASSETS.vad,
-      maxDurationMs: MAX_RECORDING_DURATION_MS,
-      silenceTimeoutMs: SILENCE_TIMEOUT_MS,
+    const capture = startOfflineSpeechCapture({
+      mode: 'automatic',
+      bargeIn: false,
+      context: 'main_mic',
     });
-
-    if (!utterance.speechDetected) {
+    const transcription = await capture.result;
+    if (!transcription.speechDetected) {
       return unavailableResult(
         "I didn't hear speech clearly enough to schedule anything.",
-        'no_speech_detected'
+        'no_speech_detected',
       );
     }
-
-    const transcription = await modules.LafinaSpeechToText.transcribe({
-      audioFilePath: utterance.audioFilePath,
-      model: AI_MODEL_ASSETS.stt,
-      language: 'en',
-    });
-    const transcript = (
-      typeof transcription === 'string' ? transcription : transcription.transcript
-    ).trim();
-
+    const transcript = transcription.transcript.trim();
     if (transcript.length === 0) {
       return unavailableResult(
         "I couldn't transcribe that speech clearly enough to schedule it.",
-        'empty_transcript'
+        'empty_transcript',
       );
     }
 
@@ -195,7 +152,7 @@ export const runOfflineVoiceScheduling = async (userId: string): Promise<VoicePi
     console.error('Offline voice scheduling failed:', error);
     return unavailableResult(
       'Sorry, I could not process that speech command locally.',
-      'processing_failed'
+      'processing_failed',
     );
   }
 };
@@ -207,7 +164,10 @@ export const runOfflineVoiceScheduling = async (userId: string): Promise<VoicePi
  * @param userId Active user ID.
  * @returns Conversational reply generated by the local SmolLM2 LLM.
  */
-export const runLocalLlmChat = async (userText: string, userId: string): Promise<string> => {
+export const runLocalLlmChat = async (
+  userText: string,
+  userId: string,
+): Promise<string> => {
   const modules = getNativeVoiceModules();
   const deterministicResult = createFallbackNluResult(userText);
 

@@ -17,7 +17,7 @@ const insertUser = (userId: string): void => {
   const now = new Date().toISOString();
   db.executeSync(
     `INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-    [userId, userId, now, now]
+    [userId, userId, now, now],
   );
 };
 
@@ -38,7 +38,9 @@ describe('Voice Pipeline Integration', () => {
     const prompt = buildNluPrompt('Add task submit report by 5pm', refDate);
 
     expect(prompt).toContain('Today is 2026-07-06');
-    expect(prompt).toContain('"intent": "schedule | snooze | cancel | out_of_scope | acknowledge"');
+    expect(prompt).toContain(
+      '"intent": "schedule | snooze | cancel | out_of_scope | acknowledge"',
+    );
     expect(prompt).toContain('Transcript: "Add task submit report by 5pm"');
   });
 
@@ -48,7 +50,7 @@ describe('Voice Pipeline Integration', () => {
 
     const reply = await runLocalLlmChat(
       'schedule an event Thesis Defense at 3pm tomorrow',
-      userId
+      userId,
     );
     const tasks = tasksStore.getAllTasks(userId);
     const reminders = remindersStore.getAllReminders(userId);
@@ -67,31 +69,32 @@ describe('Voice Pipeline Integration', () => {
     const permissionSpy = jest
       .spyOn(PermissionsAndroid, 'request')
       .mockResolvedValue(PermissionsAndroid.RESULTS.GRANTED);
-    NativeModules.LafinaVoiceInput = {
-      recordUtterance: jest.fn().mockResolvedValue({
-        audioFilePath: 'captured-locally',
-        speechDetected: true,
-        durationMs: 1500,
-      }),
-    };
     NativeModules.LafinaSpeechToText = {
-      transcribe: jest.fn().mockResolvedValue({
-        transcript: 'schedule review session at 3 pm tomorrow',
-        speechDetected: true,
-        captureDurationMs: 1500,
-        inferenceDurationMs: 600,
-      }),
+      startListening: jest.fn(({ captureId }: { captureId: string }) =>
+        Promise.resolve({
+          captureId,
+          transcript: 'schedule review session at 3 pm tomorrow',
+          speechDetected: true,
+          cancelled: false,
+          captureDurationMs: 1500,
+          inferenceDurationMs: 600,
+        }),
+      ),
+      stopListening: jest.fn().mockResolvedValue(true),
+      cancelListening: jest.fn().mockResolvedValue(true),
     };
     NativeModules.LafinaIntentExtractor = {
-      extractIntentJson: jest.fn().mockResolvedValue(JSON.stringify({
-        intent: 'schedule',
-        task: 'Review session',
-        date: '2026-07-14',
-        time: '15:00',
-        duration_minutes: null,
-        status: 'success',
-        reply: 'Review session scheduled.',
-      })),
+      extractIntentJson: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          intent: 'schedule',
+          task: 'Review session',
+          date: '2026-07-14',
+          time: '15:00',
+          duration_minutes: null,
+          status: 'success',
+          reply: 'Review session scheduled.',
+        }),
+      ),
     };
 
     try {
@@ -103,7 +106,90 @@ describe('Voice Pipeline Integration', () => {
       });
     } finally {
       permissionSpy.mockRestore();
-      delete NativeModules.LafinaVoiceInput;
+      delete NativeModules.LafinaSpeechToText;
+      delete NativeModules.LafinaIntentExtractor;
+    }
+  });
+
+  it.each([
+    ['no speech', false, '', 'no_speech_detected'],
+    ['empty transcript', true, '   ', 'empty_transcript'],
+  ] as const)(
+    'returns %s without calling the intent extractor',
+    async (_caseName, speechDetected, transcript, expectedCode) => {
+      const permissionSpy = jest
+        .spyOn(PermissionsAndroid, 'request')
+        .mockResolvedValue(PermissionsAndroid.RESULTS.GRANTED);
+      const extractIntentJson = jest.fn();
+      NativeModules.LafinaSpeechToText = {
+        startListening: jest.fn(({ captureId }: { captureId: string }) =>
+          Promise.resolve({
+            captureId,
+            transcript,
+            speechDetected,
+            cancelled: false,
+            captureDurationMs: 1_500,
+            inferenceDurationMs: 500,
+          }),
+        ),
+        stopListening: jest.fn().mockResolvedValue(true),
+        cancelListening: jest.fn().mockResolvedValue(true),
+      };
+      NativeModules.LafinaIntentExtractor = { extractIntentJson };
+
+      try {
+        const result = await runOfflineVoiceScheduling('voice-error-user');
+        expect(result.errorCode).toBe(expectedCode);
+        expect(extractIntentJson).not.toHaveBeenCalled();
+      } finally {
+        permissionSpy.mockRestore();
+        delete NativeModules.LafinaSpeechToText;
+        delete NativeModules.LafinaIntentExtractor;
+      }
+    },
+  );
+
+  it('treats a microphone permission request failure as permission denied', async () => {
+    const permissionSpy = jest
+      .spyOn(PermissionsAndroid, 'request')
+      .mockRejectedValue(new Error('permission request failed'));
+    NativeModules.LafinaSpeechToText = {
+      startListening: jest.fn(),
+      stopListening: jest.fn(),
+      cancelListening: jest.fn(),
+    };
+    NativeModules.LafinaIntentExtractor = { extractIntentJson: jest.fn() };
+
+    try {
+      const result = await runOfflineVoiceScheduling('permission-user');
+      expect(result.errorCode).toBe('permission_denied');
+    } finally {
+      permissionSpy.mockRestore();
+      delete NativeModules.LafinaSpeechToText;
+      delete NativeModules.LafinaIntentExtractor;
+    }
+  });
+
+  it('returns processing_failed when the shared offline capture rejects', async () => {
+    const permissionSpy = jest
+      .spyOn(PermissionsAndroid, 'request')
+      .mockResolvedValue(PermissionsAndroid.RESULTS.GRANTED);
+    const consoleErrorSpy = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    NativeModules.LafinaSpeechToText = {
+      startListening: jest.fn().mockRejectedValue(new Error('capture failed')),
+      stopListening: jest.fn(),
+      cancelListening: jest.fn(),
+    };
+    NativeModules.LafinaIntentExtractor = { extractIntentJson: jest.fn() };
+
+    try {
+      const result = await runOfflineVoiceScheduling('processing-user');
+      expect(result.errorCode).toBe('processing_failed');
+    } finally {
+      permissionSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
       delete NativeModules.LafinaSpeechToText;
       delete NativeModules.LafinaIntentExtractor;
     }
@@ -119,6 +205,8 @@ describe('Voice Pipeline Integration', () => {
 
     expect(result.didUpdate).toBe(false);
     expect(result.errorCode).toBe('native_runtime_unavailable');
-    expect(result.reply).toContain('Offline voice is not available in this build yet');
+    expect(result.reply).toContain(
+      'Offline voice is not available in this build yet',
+    );
   });
 });

@@ -1,14 +1,46 @@
 import React from 'react';
-import {
-  ActivityIndicator,
-  NativeModules,
-} from 'react-native';
+import { ActivityIndicator, NativeModules } from 'react-native';
 import ReactTestRenderer from 'react-test-renderer';
 import App from '../App';
 import { db } from '../src/storage/database';
 import { initDatabase } from '../src/storage/dbInit';
 import { remindersStore } from '../src/storage/remindersStore';
 import { userStore } from '../src/storage/userStore';
+
+jest.mock('react-native/Libraries/Modal/Modal', () => ({
+  __esModule: true,
+  default: ({
+    visible,
+    children,
+  }: {
+    visible: boolean;
+    children: React.ReactNode;
+  }) => (visible ? children : null),
+}));
+
+jest.mock('react-native-safe-area-context', () => {
+  const reactModule = jest.requireActual('react') as typeof import('react');
+  const actual = jest.requireActual('react-native-safe-area-context');
+  return {
+    ...actual,
+    SafeAreaProvider: ({ children }: { children: React.ReactNode }) =>
+      reactModule.createElement(reactModule.Fragment, null, children),
+  };
+});
+
+jest.mock('../src/ui/screens/IncomingCallScreen', () => {
+  const reactModule = jest.requireActual('react') as typeof import('react');
+  return {
+    IncomingCallScreen: (props: {
+      visible: boolean;
+      reminderId: string;
+      initialAction: string;
+    }) =>
+      props.visible
+        ? reactModule.createElement('MockIncomingCallScreen', props)
+        : null,
+  };
+});
 
 interface MockReminderModule {
   consumePendingCall: jest.Mock;
@@ -85,12 +117,12 @@ describe('application startup', () => {
     expect(getRenderer().root.findAllByType(ActivityIndicator)).toHaveLength(0);
   });
 
-  it('bypasses the splash delay for a validated cold-start reminder call', async () => {
+  it('routes a tapped heads-up notification body to the incoming call screen', async () => {
     const userId = 'cold-start-user';
     const now = new Date().toISOString();
     db.executeSync(
       'INSERT INTO users (id, username, is_new_user, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-      [userId, 'Cold Start Student', 0, now, now]
+      [userId, 'Cold Start Student', 0, now, now],
     );
     userStore.setCurrentUser(userId);
     remindersStore.insertReminder({
@@ -119,6 +151,11 @@ describe('application startup', () => {
 
     expect(nativeReminder.consumePendingCall).toHaveBeenCalledTimes(1);
     expect(getRenderer().root.findAllByType(ActivityIndicator)).toHaveLength(0);
-
+    const incomingScreen = getRenderer().root.find(
+      node => (node.type as unknown) === 'MockIncomingCallScreen',
+    );
+    expect(incomingScreen.props.visible).toBe(true);
+    expect(incomingScreen.props.initialAction).toBe('call');
+    expect(incomingScreen.props.reminderId).toBe('rem-cold-start');
   });
 });
