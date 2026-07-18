@@ -104,7 +104,11 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
       </View>
 
       {/* Filters */}
-      <NoteFilters selectedFilter={data.selectedFilter} onFilterChange={data.setSelectedFilter} />
+      <NoteFilters
+        selectedFilter={data.selectedFilter}
+        onFilterChange={data.setSelectedFilter}
+        customCategories={data.customCategories}
+      />
 
       {/* Content */}
       {data.filtered.length === 0 ? (

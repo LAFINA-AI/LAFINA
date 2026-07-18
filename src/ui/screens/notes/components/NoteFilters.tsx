@@ -13,12 +13,18 @@ import { FilterType } from '../types';
 interface NoteFiltersProps {
   selectedFilter: FilterType;
   onFilterChange: (filter: FilterType) => void;
+  customCategories: string[];
 }
 
-const allFilters: FilterType[] = ['All', 'AI Transcribed', 'Personal', 'Work', 'Pinned'];
-
-export const NoteFilters: React.FC<NoteFiltersProps> = ({ selectedFilter, onFilterChange }) => {
+export const NoteFilters: React.FC<NoteFiltersProps> = ({
+  selectedFilter,
+  onFilterChange,
+  customCategories,
+}) => {
   const { colors } = useTheme();
+
+  const categories = ['Personal', 'Work', 'Health', 'Learning', ...customCategories];
+  const allFilters: FilterType[] = ['All', 'AI Transcribed', 'Pinned', ...categories];
 
   return (
     <View style={styles.filterContainer}>

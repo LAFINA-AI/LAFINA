@@ -1,5 +1,5 @@
 
-export type FilterType = 'All' | 'AI Transcribed' | 'Personal' | 'Work' | 'Pinned';
+export type FilterType = string;
 
 export interface NotesScreenProps {
   userId: string;
