@@ -11,8 +11,11 @@ import kotlin.math.max
 import kotlin.math.sqrt
 
 class LafinaWhisperFixtureInstrumentation : Instrumentation() {
+  private var commandMode = false
+
   override fun onCreate(arguments: Bundle?) {
     super.onCreate(arguments)
+    commandMode = arguments?.getString("commandMode")?.toBoolean() ?: false
     start()
   }
 
@@ -42,12 +45,18 @@ class LafinaWhisperFixtureInstrumentation : Instrumentation() {
       )
       require(contextPointer != 0L) { "Whisper model failed to load" }
       val inferenceStartedAt = SystemClock.elapsedRealtime()
-      val transcript = LafinaWhisperBridge.transcribe(contextPointer, samples, 4).trim()
+      val transcript = LafinaWhisperBridge.transcribe(
+        contextPointer,
+        samples,
+        4,
+        commandMode
+      ).trim()
       val inferenceDurationMs = SystemClock.elapsedRealtime() - inferenceStartedAt
       result.putInt("sampleCount", samples.size)
       result.putDouble("rms", sqrt(squaredSum / samples.size))
       result.putDouble("peakAmplitude", peakAmplitude.toDouble())
       result.putLong("inferenceDurationMs", inferenceDurationMs)
+      result.putString("commandMode", commandMode.toString())
       result.putString("transcript", transcript)
       if (transcript.isBlank()) {
         result.putString("status", "empty_transcript")

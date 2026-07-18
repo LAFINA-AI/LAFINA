@@ -37,7 +37,12 @@ object LafinaWhisperBridge {
   }
 
   external fun initContext(assetManager: android.content.res.AssetManager, assetPath: String): Long
-  external fun transcribe(contextPointer: Long, samples: FloatArray, threads: Int): String
+  external fun transcribe(
+    contextPointer: Long,
+    samples: FloatArray,
+    threads: Int,
+    commandMode: Boolean
+  ): String
   external fun freeContext(contextPointer: Long)
 }
 
@@ -203,10 +208,12 @@ class LafinaSpeechToTextModule(private val reactContext: ReactApplicationContext
           (captured.speechEndSample + WHISPER_SPEECH_MARGIN_SAMPLES)
             .coerceAtMost(captured.samples.size)
         val speechSamples = captured.samples.copyOfRange(speechWindowStart, speechWindowEnd)
+        val commandMode = false // Force false to disable audio_ctx=128 context truncation which causes JNI Whisper H.H.H.H hallucinations
         val transcript = LafinaWhisperBridge.transcribe(
           whisperContext,
           prepareForWhisper(speechSamples),
-          threads
+          threads,
+          commandMode
         ).trim()
         val inferenceDurationMs = System.currentTimeMillis() - inferenceStartedAt
         sendEvent("onSpeechFinalResult", Arguments.createMap().apply {
@@ -246,6 +253,7 @@ class LafinaSpeechToTextModule(private val reactContext: ReactApplicationContext
     bargeIn: Boolean,
     captureContext: String
   ): CapturedAudio {
+    val isReminderCall = captureContext == CONTEXT_REMINDER_CALL
     val minimumBuffer = AudioRecord.getMinBufferSize(
       SAMPLE_RATE,
       AudioFormat.CHANNEL_IN_MONO,
@@ -302,10 +310,10 @@ class LafinaSpeechToTextModule(private val reactContext: ReactApplicationContext
       captureContext == CONTEXT_REMINDER_CALL -> REMINDER_WAIT_FOR_SPEECH_SECONDS
       else -> MAIN_WAIT_FOR_SPEECH_SECONDS
     }
-    val speechLimitSeconds = if (mode == MODE_MANUAL) {
-      MANUAL_CAPTURE_LIMIT_SECONDS
-    } else {
-      MAX_UTTERANCE_SECONDS
+    val speechLimitSeconds = when {
+      mode == MODE_MANUAL -> MANUAL_CAPTURE_LIMIT_SECONDS
+      isReminderCall -> CALL_COMMAND_LIMIT_SECONDS
+      else -> MAX_UTTERANCE_SECONDS
     }
     val maximumWaitSamples = SAMPLE_RATE * waitSeconds
     val maximumSpeechSamples = SAMPLE_RATE * speechLimitSeconds
@@ -331,9 +339,20 @@ class LafinaSpeechToTextModule(private val reactContext: ReactApplicationContext
     var energyCandidateStartSample = -1
     var energyStartStreamSample = -1
     var energyEndStreamSample = -1
+    val silenceAfterSpeechMs =
+      if (isReminderCall) {
+        CALL_COMMAND_SILENCE_AFTER_SPEECH_MS
+      } else {
+        MAIN_SILENCE_AFTER_SPEECH_MS
+      }
     val silenceFramesRequired =
-      (SILENCE_AFTER_SPEECH_MS * SAMPLE_RATE) / (1000 * FRAME_SIZE)
-    val allowEnergyFallback = mode == MODE_AUTOMATIC && !bargeIn
+      (silenceAfterSpeechMs * SAMPLE_RATE) / (1000 * FRAME_SIZE)
+    val speechEvidenceFramesRequired =
+      if (isReminderCall) CALL_SPEECH_EVIDENCE_FRAMES else MIN_SPEECH_EVIDENCE_FRAMES
+    // VOICE_COMMUNICATION processing on some Redmi/MIUI devices attenuates short
+    // words enough for Silero to miss them. The call still has echo cancellation,
+    // so use the adaptive energy gate as a second, local KWS trigger.
+    val allowEnergyFallback = mode == MODE_AUTOMATIC && (!bargeIn || isReminderCall)
 
     fun appendAudio(samples: FloatArray, sampleCount: Int) {
       val writable = minOf(sampleCount, audio.size - audioSize)
@@ -401,11 +420,13 @@ class LafinaSpeechToTextModule(private val reactContext: ReactApplicationContext
         maxVadProbability = max(maxVadProbability, speechProbability)
         val energyThreshold = max(MIN_SPEECH_RMS, noiseFloorRms * ENERGY_NOISE_MULTIPLIER)
         val boundaryEnergyLooksLikeSpeech =
-          !bargeIn && rms >= energyThreshold && framePeak >= MIN_SPEECH_PEAK
+          (!bargeIn || isReminderCall) &&
+            rms >= energyThreshold &&
+            framePeak >= MIN_SPEECH_PEAK
         if (boundaryEnergyLooksLikeSpeech) {
           if (energyEvidenceFrames == 0) energyCandidateStartSample = streamFrameStart
           energyEvidenceFrames += 1
-          if (energyEvidenceFrames >= MIN_SPEECH_EVIDENCE_FRAMES) {
+          if (energyEvidenceFrames >= speechEvidenceFramesRequired) {
             if (energyStartStreamSample < 0) {
               energyStartStreamSample = energyCandidateStartSample
             }
@@ -433,7 +454,7 @@ class LafinaSpeechToTextModule(private val reactContext: ReactApplicationContext
                 (1f - NOISE_FLOOR_HISTORY) * boundedRms
             }
           }
-          if (speechEvidenceFrames >= MIN_SPEECH_EVIDENCE_FRAMES) {
+          if (speechEvidenceFrames >= speechEvidenceFramesRequired) {
             speechDetected = true
             startedThisFrame = true
             speechStartStreamSample =
@@ -624,13 +645,16 @@ class LafinaSpeechToTextModule(private val reactContext: ReactApplicationContext
     private const val MAIN_WAIT_FOR_SPEECH_SECONDS = 12
     private const val REMINDER_WAIT_FOR_SPEECH_SECONDS = 20
     private const val MAX_UTTERANCE_SECONDS = 15
+    private const val CALL_COMMAND_LIMIT_SECONDS = 2
     private const val MANUAL_CAPTURE_LIMIT_SECONDS = 30
-    private const val SILENCE_AFTER_SPEECH_MS = 1_200
+    private const val MAIN_SILENCE_AFTER_SPEECH_MS = 1_200
+    private const val CALL_COMMAND_SILENCE_AFTER_SPEECH_MS = 400
     private const val PRE_ROLL_SAMPLES = 4_800
     private const val VAD_START_THRESHOLD = 0.35f
     private const val VAD_END_THRESHOLD = 0.20f
     private const val VAD_NOISE_UPDATE_THRESHOLD = 0.15f
     private const val MIN_SPEECH_EVIDENCE_FRAMES = 3
+    private const val CALL_SPEECH_EVIDENCE_FRAMES = 2
     private const val INITIAL_NOISE_FLOOR_RMS = 0.003f
     private const val MAX_NOISE_FLOOR_RMS = 0.03f
     private const val NOISE_FLOOR_HISTORY = 0.95f

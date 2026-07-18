@@ -14,8 +14,12 @@ constexpr const char *kAcademicPrompt =
     "Snooze for ten minutes. Academic scheduling words include reminder, assignment, class, "
     "exam, quiz, project, study, meeting, today, tomorrow, morning, afternoon, evening, AM, "
     "and PM.";
+constexpr const char *kCallCommandPrompt =
+    "Acknowledged. Snoozed. Acknowledge. Snooze.";
 
 constexpr float kDisabledNoSpeechThreshold = 1.0f;
+constexpr int kCallCommandAudioContext = 128;
+constexpr int kCallCommandMaxTokens = 8;
 
 size_t assetRead(void *context, void *output, size_t size) {
   return static_cast<size_t>(AAsset_read(static_cast<AAsset *>(context), output, size));
@@ -61,7 +65,12 @@ Java_com_lafina_LafinaWhisperBridge_initContext(
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_lafina_LafinaWhisperBridge_transcribe(
-    JNIEnv *env, jobject, jlong contextPointer, jfloatArray samples, jint requestedThreads) {
+    JNIEnv *env,
+    jobject,
+    jlong contextPointer,
+    jfloatArray samples,
+    jint requestedThreads,
+    jboolean commandMode) {
   auto *context = reinterpret_cast<whisper_context *>(contextPointer);
   if (context == nullptr) return env->NewStringUTF("");
   const jsize sampleCount = env->GetArrayLength(samples);
@@ -80,8 +89,10 @@ Java_com_lafina_LafinaWhisperBridge_transcribe(
   params.suppress_blank = true;
   params.suppress_nst = true;
   params.temperature = 0.0f;
-  params.max_tokens = 96;
-  params.initial_prompt = kAcademicPrompt;
+  const bool isCommandMode = commandMode == JNI_TRUE;
+  params.max_tokens = isCommandMode ? kCallCommandMaxTokens : 96;
+  params.audio_ctx = isCommandMode ? kCallCommandAudioContext : 0;
+  params.initial_prompt = isCommandMode ? kCallCommandPrompt : kAcademicPrompt;
   params.greedy.best_of = 1;
   // Silero VAD has already gated and trimmed this audio. Whisper.cpp suppresses a
   // segment only when no_speech_prob is strictly greater than this threshold and
@@ -92,9 +103,11 @@ Java_com_lafina_LafinaWhisperBridge_transcribe(
   __android_log_print(
       ANDROID_LOG_INFO,
       kTag,
-      "Transcribing %d samples with %d threads",
+      "Transcribing %d samples with %d threads (commandMode=%d, audioCtx=%d)",
       static_cast<int>(sampleCount),
-      params.n_threads);
+      params.n_threads,
+      isCommandMode ? 1 : 0,
+      params.audio_ctx);
   const int result = whisper_full(context, params, audio, sampleCount);
   env->ReleaseFloatArrayElements(samples, audio, JNI_ABORT);
   if (result == 0) {

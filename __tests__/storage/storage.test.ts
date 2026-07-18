@@ -127,6 +127,43 @@ describe('Storage Layer', () => {
       blocks = timeBlocksStore.getAll('user1');
       expect(blocks.length).toBe(0);
     });
+
+    it('deletes corresponding reminders on time block deletion', () => {
+      db.executeSync(
+        `INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+        ['user_block_del', 'testuser', new Date().toISOString(), new Date().toISOString()]
+      );
+
+      // Insert block
+      timeBlocksStore.insert({
+        id: 'block_del',
+        userId: 'user_block_del',
+        title: 'Delete test block',
+        date: '2026-06-20',
+        startTime: '09:00',
+        endTime: '11:00',
+        color: '#E6003A',
+        category: 'Work',
+      });
+
+      // Insert matching pending reminder
+      db.executeSync(
+        `INSERT INTO reminders (id, user_id, task, scheduled_at, trigger_at, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['rem_block_del', 'user_block_del', 'Delete test block', new Date().toISOString(), new Date().toISOString(), 'pending', new Date().toISOString(), new Date().toISOString()]
+      );
+
+      // Delete block
+      timeBlocksStore.delete('block_del');
+
+      // Verify block is deleted
+      expect(timeBlocksStore.getAll('user_block_del').length).toBe(0);
+
+      // Verify reminder is soft-deleted
+      const rBlock = db.executeSync(`SELECT * FROM reminders WHERE id = 'rem_block_del'`).rows[0];
+      expect(rBlock).toBeDefined();
+      expect(rBlock.deleted_at).not.toBeNull();
+    });
   });
 
   describe('tasksStore', () => {
@@ -192,6 +229,72 @@ describe('Storage Layer', () => {
       // Event delete
       tasksStore.deleteEvent('event1');
       expect(tasksStore.getAllEvents('user1').length).toBe(0);
+    });
+
+    it('deletes corresponding reminders on task and event deletion', () => {
+      db.executeSync(
+        `INSERT INTO users (id, username, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+        ['user_del_test', 'testuser', new Date().toISOString(), new Date().toISOString()]
+      );
+
+      // Insert task
+      tasksStore.insertTask({
+        id: 'task_del',
+        userId: 'user_del_test',
+        title: 'Delete test task',
+        dueDate: '2026-06-20',
+        dueTime: '17:00',
+        isCompleted: false,
+        priority: 'High',
+        category: 'Work',
+        notes: 'Testing deletion',
+      });
+
+      // Insert matching pending reminder
+      db.executeSync(
+        `INSERT INTO reminders (id, user_id, task, scheduled_at, trigger_at, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['rem_task_del', 'user_del_test', 'Delete test task', new Date().toISOString(), new Date().toISOString(), 'pending', new Date().toISOString(), new Date().toISOString()]
+      );
+
+      // Delete task
+      tasksStore.deleteTask('task_del');
+
+      // Verify task is deleted
+      expect(tasksStore.getAllTasks('user_del_test').length).toBe(0);
+
+      // Verify reminder is soft-deleted
+      const rTask = db.executeSync(`SELECT * FROM reminders WHERE id = 'rem_task_del'`).rows[0];
+      expect(rTask).toBeDefined();
+      expect(rTask.deleted_at).not.toBeNull();
+
+      // Insert event
+      tasksStore.insertEvent({
+        id: 'event_del',
+        userId: 'user_del_test',
+        title: 'Delete test event',
+        date: '2026-06-21',
+        startTime: '10:00',
+        endTime: '11:00',
+      });
+
+      // Insert matching pending reminder
+      db.executeSync(
+        `INSERT INTO reminders (id, user_id, task, scheduled_at, trigger_at, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['rem_event_del', 'user_del_test', 'Delete test event', new Date().toISOString(), new Date().toISOString(), 'pending', new Date().toISOString(), new Date().toISOString()]
+      );
+
+      // Delete event
+      tasksStore.deleteEvent('event_del');
+
+      // Verify event is deleted
+      expect(tasksStore.getAllEvents('user_del_test').length).toBe(0);
+
+      // Verify reminder is soft-deleted
+      const rEvent = db.executeSync(`SELECT * FROM reminders WHERE id = 'rem_event_del'`).rows[0];
+      expect(rEvent).toBeDefined();
+      expect(rEvent.deleted_at).not.toBeNull();
     });
   });
 

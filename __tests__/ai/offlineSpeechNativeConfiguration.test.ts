@@ -47,6 +47,37 @@ describe('offline native speech configuration', () => {
     );
   });
 
+  it('uses a low-latency Whisper context for call commands', () => {
+    const bridgeSource = readProjectFile(
+      'android/app/src/main/cpp/whisper_jni.cc',
+    );
+    const captureSource = readProjectFile(
+      'android/app/src/main/java/com/lafina/LafinaOfflineSpeech.kt',
+    );
+
+    expect(bridgeSource).toContain(
+      'constexpr int kCallCommandAudioContext = 128;',
+    );
+    expect(bridgeSource).toContain(
+      'params.audio_ctx = isCommandMode ? kCallCommandAudioContext : 0;',
+    );
+    expect(bridgeSource).toContain(
+      'params.initial_prompt = isCommandMode ? kCallCommandPrompt : kAcademicPrompt;',
+    );
+    expect(captureSource).toContain(
+      'private const val CALL_COMMAND_SILENCE_AFTER_SPEECH_MS = 400',
+    );
+    expect(captureSource).toContain(
+      'isReminderCall -> CALL_COMMAND_LIMIT_SECONDS',
+    );
+    expect(captureSource).toContain(
+      'private const val CALL_SPEECH_EVIDENCE_FRAMES = 2',
+    );
+    expect(captureSource).toContain(
+      'mode == MODE_AUTOMATIC && (!bargeIn || isReminderCall)',
+    );
+  });
+
   it('trims to the VAD speech window before preparing audio for Whisper', () => {
     const captureSource = readProjectFile(
       'android/app/src/main/java/com/lafina/LafinaOfflineSpeech.kt',

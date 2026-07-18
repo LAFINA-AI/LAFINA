@@ -130,10 +130,49 @@ export const timeBlocksStore = {
     const now = new Date().toISOString();
     const executor = tx || db;
     try {
+      const blockRowResult = executor.executeSync(
+        `SELECT user_id, title FROM time_blocks WHERE id = ?`,
+        [id]
+      );
+      const blockRow = blockRowResult.rows?.[0];
+
       executor.executeSync(
         `UPDATE time_blocks SET deleted_at = ?, updated_at = ? WHERE id = ?`,
         [now, now, id]
       );
+
+      if (blockRow) {
+        const userId = blockRow.user_id;
+        const title = blockRow.title;
+        const remindersResult = executor.executeSync(
+          `SELECT id, precast_audio_path FROM reminders WHERE user_id = ? AND task = ? AND deleted_at IS NULL AND status IN ('pending', 'snoozed')`,
+          [userId, title]
+        );
+        const reminders = remindersResult.rows || [];
+
+        for (const r of reminders) {
+          executor.executeSync(
+            `UPDATE reminders SET deleted_at = ?, updated_at = ? WHERE id = ?`,
+            [now, now, r.id]
+          );
+
+          try {
+            const { cancelReminderAlarm } = require('../scheduler/reminderAlarm');
+            const { deletePreCachedReminderAudio } = require('../ai/tts/ttsService');
+            
+            cancelReminderAlarm(r.id).catch((err: any) =>
+              console.error(`[deleteTimeBlock] Failed to cancel alarm for reminder ${r.id}:`, err)
+            );
+            if (r.precast_audio_path) {
+              deletePreCachedReminderAudio(r.precast_audio_path).catch((err: any) =>
+                console.error(`[deleteTimeBlock] Failed to delete audio for reminder ${r.id}:`, err)
+              );
+            }
+          } catch (importErr) {
+            console.error('[deleteTimeBlock] Failed to import modules for reminder cleanup:', importErr);
+          }
+        }
+      }
     } catch (error) {
       console.error('Error deleting time block:', error);
       throw error;

@@ -4,6 +4,7 @@ import { initDatabase } from '../../src/storage/dbInit';
 import { remindersStore } from '../../src/storage/remindersStore';
 import {
   answerCall,
+  detectCallKeyword,
   declineCall,
   disconnectCall,
   manualAcknowledgeCall,
@@ -220,6 +221,34 @@ describe('callDispatcher hands-free controller', () => {
       await flushPromises();
 
       expect(remindersStore.getReminderById(id)?.status).toBe(expectedStatus);
+    },
+  );
+
+  it.each([
+    ['Acknowledge', 'acknowledge'],
+    ['I acknowledge this reminder', 'acknowledge'],
+    ['a knowledge', 'acknowledge'],
+    ['acknowleged', 'acknowledge'],
+    ['knowledge', 'acknowledge'],
+    ['knowledges', 'acknowledge'],
+    ['aknowledge', 'acknowledge'],
+    ['acknowlege', 'acknowledge'],
+    ['ac knowledge', 'acknowledge'],
+    ['knowleged', 'acknowledge'],
+    ['Snooze', 'snooze'],
+    ['please snoozed', 'snooze'],
+    ['snose', 'snooze'],
+  ] as const)(
+    'spots the call keyword in mobile STT output: %s',
+    (transcript, expectedIntent) => {
+      expect(detectCallKeyword(transcript)?.intent).toBe(expectedIntent);
+    },
+  );
+
+  it.each(['got it', 'dismiss', 'later', 'acknowledge or snooze'])(
+    'does not activate an unsupported or ambiguous command: %s',
+    transcript => {
+      expect(detectCallKeyword(transcript)).toBeNull();
     },
   );
 
