@@ -10,9 +10,10 @@
 namespace {
 constexpr const char *kTag = "LafinaWhisper";
 constexpr const char *kAcademicPrompt =
-    "Academic scheduling assistant. Common words include acknowledge, snooze, reminder, "
-    "schedule, assignment, class, exam, quiz, project, study, meeting, today, tomorrow, "
-    "morning, afternoon, evening, AM, and PM.";
+    "Set a schedule. Set a schedule at 4:15 PM today. Acknowledge. Acknowledged. Snooze. "
+    "Snooze for ten minutes. Academic scheduling words include reminder, assignment, class, "
+    "exam, quiz, project, study, meeting, today, tomorrow, morning, afternoon, evening, AM, "
+    "and PM.";
 
 constexpr float kDisabledNoSpeechThreshold = 1.0f;
 

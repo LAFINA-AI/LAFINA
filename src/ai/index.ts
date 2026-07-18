@@ -1,6 +1,6 @@
 export { parseNluJson } from './nlu/jsonParser';
 export { buildNluPrompt } from './nlu/prompt';
-export { createFallbackNluResult, processCommand } from './nlu/parser';
+export { createFallbackNluResult, processCommand, normalizeTranscript } from './nlu/parser';
 export { applyNluScheduleResult } from './nlu/scheduler';
 export { hasOfflineVoiceRuntime, runLocalLlmChat, runOfflineVoiceScheduling } from './native/voicePipeline';
 export {

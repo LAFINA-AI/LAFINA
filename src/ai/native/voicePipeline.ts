@@ -2,7 +2,7 @@ import { NativeModules, PermissionsAndroid } from 'react-native';
 import { AI_MODEL_ASSETS } from '../modelAssets';
 import { parseNluJson } from '../nlu/jsonParser';
 import { buildNluPrompt } from '../nlu/prompt';
-import { createFallbackNluResult, processCommand } from '../nlu/parser';
+import { createFallbackNluResult, processCommand, normalizeTranscript } from '../nlu/parser';
 import { applyNluScheduleResult } from '../nlu/scheduler';
 import type { CreatedScheduleItemType, NluResult } from '../nlu/types';
 import type { OfflineModelReference } from '../modelAssets';
@@ -121,7 +121,7 @@ export const runOfflineVoiceScheduling = async (
         'no_speech_detected',
       );
     }
-    const transcript = transcription.transcript.trim();
+    const transcript = normalizeTranscript(transcription.transcript.trim());
     if (transcript.length === 0) {
       return unavailableResult(
         "I couldn't transcribe that speech clearly enough to schedule it.",
@@ -129,15 +129,23 @@ export const runOfflineVoiceScheduling = async (
       );
     }
 
-    const rawNluJson = await modules.LafinaIntentExtractor.extractIntentJson({
-      transcript,
-      prompt: buildNluPrompt(transcript),
-      model: AI_MODEL_ASSETS.llm,
-      temperature: LLM_TEMPERATURE,
-      maxTokens: LLM_MAX_TOKENS,
-    });
-
-    const nluResult = parseNluJson(rawNluJson);
+    // Scheduling grammar is deterministic, so prefer it over a generated NLU
+    // result. This keeps compact times, dates, and titles stable even when the
+    // small local language model would otherwise invent or truncate a field.
+    const deterministicResult = createFallbackNluResult(transcript);
+    let nluResult: NluResult;
+    if (deterministicResult.intent === 'schedule') {
+      nluResult = deterministicResult;
+    } else {
+      const rawNluJson = await modules.LafinaIntentExtractor.extractIntentJson({
+        transcript,
+        prompt: buildNluPrompt(transcript),
+        model: AI_MODEL_ASSETS.llm,
+        temperature: LLM_TEMPERATURE,
+        maxTokens: LLM_MAX_TOKENS,
+      });
+      nluResult = parseNluJson(rawNluJson);
+    }
     const scheduleResult = applyNluScheduleResult(nluResult, userId);
 
     return {
@@ -169,7 +177,8 @@ export const runLocalLlmChat = async (
   userId: string,
 ): Promise<string> => {
   const modules = getNativeVoiceModules();
-  const deterministicResult = createFallbackNluResult(userText);
+  const normalizedUserText = normalizeTranscript(userText);
+  const deterministicResult = createFallbackNluResult(normalizedUserText);
 
   // Scheduling commands are handled deterministically first. This avoids an
   // unnecessary native-model round trip and keeps title/date extraction
@@ -181,8 +190,8 @@ export const runLocalLlmChat = async (
   if (modules.LafinaIntentExtractor) {
     try {
       const rawNluJson = await modules.LafinaIntentExtractor.extractIntentJson({
-        transcript: userText,
-        prompt: buildNluPrompt(userText),
+        transcript: normalizedUserText,
+        prompt: buildNluPrompt(normalizedUserText),
         model: AI_MODEL_ASSETS.llm,
         temperature: LLM_TEMPERATURE,
         maxTokens: LLM_MAX_TOKENS,
@@ -196,5 +205,5 @@ export const runLocalLlmChat = async (
     }
   }
 
-  return processCommand(userText, userId);
+  return processCommand(normalizedUserText, userId);
 };

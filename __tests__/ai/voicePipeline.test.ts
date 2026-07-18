@@ -1,7 +1,9 @@
 import { NativeModules, PermissionsAndroid } from 'react-native';
 import {
   buildNluPrompt,
+  createFallbackNluResult,
   hasOfflineVoiceRuntime,
+  normalizeTranscript,
   runLocalLlmChat,
   runOfflineVoiceScheduling,
 } from '../../src/ai';
@@ -10,7 +12,6 @@ import {
   initDatabase,
   remindersStore,
   tasksStore,
-  timeBlocksStore,
 } from '../../src/storage';
 
 const insertUser = (userId: string): void => {
@@ -42,6 +43,37 @@ describe('Voice Pipeline Integration', () => {
       '"intent": "schedule | snooze | cancel | out_of_scope | acknowledge"',
     );
     expect(prompt).toContain('Transcript: "Add task submit report by 5pm"');
+  });
+
+  it.each([
+    ['Set a schedule at 415pm today', 'Set a schedule at 4:15 pm today'],
+    ['Set a schedule at 4.15 p.m. today', 'Set a schedule at 4:15 pm today'],
+  ])('normalizes compact Whisper time text: %s', (transcript, normalized) => {
+    expect(normalizeTranscript(transcript)).toBe(normalized);
+  });
+
+  it('deterministically resolves compact times, explicit dates, and meaningful titles', () => {
+    const result = createFallbackNluResult(
+      'Set a schedule for thesis review on July 15 at 415pm',
+      new Date(2026, 6, 10, 8, 0),
+    );
+
+    expect(result).toMatchObject({
+      intent: 'schedule',
+      task: 'thesis review',
+      date: '2026-07-15',
+      time: '16:15',
+      status: 'success',
+    });
+  });
+
+  it('uses a safe generic title instead of isolated digits or letters', () => {
+    const result = createFallbackNluResult(
+      'Set a schedule for 5 at 4pm today',
+      new Date(2026, 6, 10, 8, 0),
+    );
+
+    expect(result.task).toBe('Scheduled Event');
   });
 
   it('uses deterministic title extraction first for typed scheduling chat', async () => {
@@ -105,6 +137,64 @@ describe('Voice Pipeline Integration', () => {
         errorCode: null,
       });
     } finally {
+      permissionSpy.mockRestore();
+      delete NativeModules.LafinaSpeechToText;
+      delete NativeModules.LafinaIntentExtractor;
+    }
+  });
+
+  it('uses deterministic schedule fields instead of generated random NLU fields', async () => {
+    const userId = 'deterministic_voice_user';
+    insertUser(userId);
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 6, 10, 8, 0));
+    const permissionSpy = jest
+      .spyOn(PermissionsAndroid, 'request')
+      .mockResolvedValue(PermissionsAndroid.RESULTS.GRANTED);
+    NativeModules.LafinaSpeechToText = {
+      startListening: jest.fn(({ captureId }: { captureId: string }) =>
+        Promise.resolve({
+          captureId,
+          transcript: 'Set a schedule for thesis review on July 15 at 415pm',
+          speechDetected: true,
+          cancelled: false,
+          captureDurationMs: 1_500,
+          inferenceDurationMs: 600,
+        }),
+      ),
+      stopListening: jest.fn().mockResolvedValue(true),
+      cancelListening: jest.fn().mockResolvedValue(true),
+    };
+    const extractIntentJson = jest.fn().mockResolvedValue(
+      JSON.stringify({
+        intent: 'schedule',
+        task: '5',
+        date: null,
+        time: null,
+        duration_minutes: null,
+        status: 'success',
+        reply: 'Scheduled.',
+      }),
+    );
+    NativeModules.LafinaIntentExtractor = { extractIntentJson };
+
+    try {
+      const result = await runOfflineVoiceScheduling(userId);
+      const tasks = tasksStore.getAllTasks(userId);
+
+      expect(extractIntentJson).not.toHaveBeenCalled();
+      expect(result.nluResult).toMatchObject({
+        task: 'thesis review',
+        date: '2026-07-15',
+        time: '16:15',
+      });
+      expect(tasks[0]).toMatchObject({
+        title: 'thesis review',
+        dueDate: '2026-07-15',
+        dueTime: '16:15',
+      });
+    } finally {
+      jest.useRealTimers();
       permissionSpy.mockRestore();
       delete NativeModules.LafinaSpeechToText;
       delete NativeModules.LafinaIntentExtractor;

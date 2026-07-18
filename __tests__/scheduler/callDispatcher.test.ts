@@ -203,6 +203,26 @@ describe('callDispatcher hands-free controller', () => {
     );
   });
 
+  it.each([
+    ['Acknowledged', 'acknowledged'],
+    ['Acknowledged.', 'acknowledged'],
+    ['Snoozed', 'snoozed'],
+  ] as const)(
+    'accepts the natural call response "%s"',
+    async (transcript, expectedStatus) => {
+      const id = `rem-natural-${expectedStatus}-${transcript.length}`;
+      insertReminder(id);
+      NativeModules.LafinaSpeechToText.startListening.mockImplementationOnce(
+        nativeSpeechResult(transcript),
+      );
+
+      await answerCall(id, 'user1', true);
+      await flushPromises();
+
+      expect(remindersStore.getReminderById(id)?.status).toBe(expectedStatus);
+    },
+  );
+
   it('rejects synonyms, automatically retries, then accepts an exact command', async () => {
     insertReminder('rem-strict');
     NativeModules.LafinaSpeechToText.startListening

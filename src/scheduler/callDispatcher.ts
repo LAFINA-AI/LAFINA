@@ -180,13 +180,15 @@ const normalizeCallCommand = (transcript: string): string =>
 const matchCallCommand = (transcript: string): CallCommand | null => {
   const normalized = normalizeCallCommand(transcript);
   if (
-    /^(?:please\s+)?acknowledge(?:\s+(?:it|this|reminder))?$/.test(normalized)
+    /^(?:please\s+)?acknowledge(?:d)?(?:\s+(?:it|this|reminder))?$/.test(
+      normalized,
+    )
   ) {
     return { intent: 'acknowledge', minutes: null };
   }
 
   const snoozeMatch = normalized.match(
-    /^(?:please\s+)?snooze(?:\s+(?:it|this|reminder))?(?:\s+(?:for\s+)?(\d{1,3})(?:\s*(?:minutes?|mins?))?)?$/,
+    /^(?:please\s+)?snooze(?:d)?(?:\s+(?:it|this|reminder))?(?:\s+(?:for\s+)?(\d{1,3})(?:\s*(?:minutes?|mins?))?)?$/,
   );
   if (!snoozeMatch) return null;
   if (!snoozeMatch[1]) return { intent: 'snooze', minutes: null };

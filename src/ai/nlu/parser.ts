@@ -7,6 +7,7 @@ import type { NluResult } from './types';
 const TIME_24H_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const TIME_RANGE_PATTERN =
   /(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:-|to|until)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i;
+const DEFAULT_SCHEDULE_TITLE = 'Scheduled Event';
 
 interface ParsedTimeRange {
   startTime: string;
@@ -38,11 +39,32 @@ const WEEKDAY_MAP: Record<string, number> = {
   saturday: 6, sat: 6,
 };
 
-const normalizeCommandText = (text: string): string => {
-  return text
+/**
+ * Normalizes transcription errors or shorthand formats, particularly inserting
+ * colons for hours and minutes in time expressions (e.g. "615 pm" -> "6:15 pm").
+ */
+export const normalizeTranscript = (text: string): string => {
+  // 1. Standardize a.m. / p.m. or a m / p m to am / pm (e.g., "p.m." -> "pm", "p m" -> "pm")
+  let cleaned = text
     .replace(/\b([ap])\s*\.?\s*m\b\.?/gi, '$1m')
+    .replace(/\b([01]?\d|2[0-3])\s*\.\s*([0-5]\d)\b/g, '$1:$2')
     .replace(/\s+/g, ' ')
     .trim();
+
+  // 2. Insert colon for the start of a range (e.g. "230 to 4:30 pm" -> "2:30 to 4:30 pm")
+  cleaned = cleaned.replace(
+    /\b(0?[1-9]|1[0-2])\s*([0-5][0-9])(?=\s*(?:to|until|-|through)\s*(?:0?[1-9]|1[0-2])(?::?[0-5][0-9])?\s*(?:am|pm)\b)/gi,
+    '$1:$2'
+  );
+
+  // 3. Insert colon for times with a meridiem (e.g. "615 pm" -> "6:15 pm")
+  cleaned = cleaned.replace(/\b(0?[1-9]|1[0-2])\s*([0-5][0-9])\s*(am|pm)\b/gi, '$1:$2 $3');
+
+  return cleaned;
+};
+
+const normalizeCommandText = (text: string): string => {
+  return normalizeTranscript(text);
 };
 
 const formatLocalDate = (date: Date): string => {
@@ -334,10 +356,13 @@ const cleanTaskTitle = (command: string): string => {
   // 6. Strip punctuation & whitespace
   title = title.replace(/^[.\s,]+|[.\s,]+$/g, '').replace(/\s+/g, ' ').trim();
 
-  if (!title) {
+  const titleWords = title.match(/[a-z]+(?:['-][a-z]+)*/gi) ?? [];
+  const hasUsefulTitle = titleWords.some(word => word.length >= 2);
+
+  if (!hasUsefulTitle) {
     if (/\bmeeting\b/i.test(command)) title = 'meeting';
     else if (/\bclass\b/i.test(command)) title = 'class';
-    else title = 'Scheduled Event';
+    else title = DEFAULT_SCHEDULE_TITLE;
   }
 
   return title;

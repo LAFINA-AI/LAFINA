@@ -3,6 +3,7 @@ import {
   createFallbackNluResult,
   parseNluJson,
   processCommand,
+  normalizeTranscript,
 } from '../../src/ai';
 import type { NluResult } from '../../src/ai';
 import { db, initDatabase, tasksStore, timeBlocksStore } from '../../src/storage';
@@ -291,5 +292,25 @@ describe('offline NLU scheduling', () => {
     expect(reply).toContain("Hey there! 👋 I'm LAFINA");
     expect(tasks).toHaveLength(0);
     expect(blocks).toHaveLength(0);
+  });
+
+  describe('normalizeTranscript', () => {
+    it('normalizes times without colons but with meridiem', () => {
+      expect(normalizeTranscript('Set a schedule at 615 pm')).toBe('Set a schedule at 6:15 pm');
+      expect(normalizeTranscript('at 6 15 pm')).toBe('at 6:15 pm');
+      expect(normalizeTranscript('study at 1030am')).toBe('study at 10:30 am');
+      expect(normalizeTranscript('meeting from 230 to 430 pm')).toBe('meeting from 2:30 to 4:30 pm');
+      expect(normalizeTranscript('class at 6:15 pm')).toBe('class at 6:15 pm');
+    });
+
+    it('successfully parses fallback scheduling commands containing uncoloned times', () => {
+      const result = createFallbackNluResult('schedule a meeting 615 pm on July 8th', MOCK_MONDAY_NOON);
+      expect(result).toMatchObject({
+        intent: 'schedule',
+        task: 'meeting',
+        date: '2026-07-08',
+        time: '18:15',
+      });
+    });
   });
 });
