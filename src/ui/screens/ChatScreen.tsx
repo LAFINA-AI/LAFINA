@@ -24,6 +24,8 @@ import { generateId } from '../../utils';
 import { ChatMessageItem } from '../components/chat/ChatMessageItem';
 import { ChatInput } from '../components/chat/ChatInput';
 
+import { onlineChatSkill } from '../../skills/onlineChatSkill';
+
 interface ChatScreenProps {
   userId: string;
   refreshTrigger: number;
@@ -38,6 +40,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [isOnlineMode, setIsOnlineMode] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const themed = useThemedStyles((c) => getChatThemedStyles(c));
@@ -95,8 +98,23 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     setMessages(tempMessages);
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
-    // 2. Process Command via SmolLM2 Local LLM Chatbot
-    const aiReply = await runLocalLlmChat(userText, userId);
+    let aiReply = '';
+    if (isOnlineMode) {
+      // Route through Online Assistant skill (DeepSeek-V4 Flash proxy)
+      const chatPayload = tempMessages.map((m) => ({
+        role: m.sender as 'user' | 'assistant',
+        content: m.content,
+      }));
+      const cloudRes = await onlineChatSkill.sendChatMessage(chatPayload);
+      if (cloudRes.status === 'success' && cloudRes.data) {
+        aiReply = cloudRes.data.reply;
+      } else {
+        aiReply = `[Cloud AI Error (${cloudRes.status})]: ${cloudRes.error || 'Unable to connect to online assistant.'}`;
+      }
+    } else {
+      // Process Command via SmolLM2 Local LLM Chatbot (100% offline)
+      aiReply = await runLocalLlmChat(userText, userId);
+    }
 
     // 3. Insert AI Response
     const aiMsgId = generateId('msg');
@@ -151,10 +169,18 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           />
           <View style={styles.headerTextContainer}>
             <Text style={styles.headerTitle}>LAFINA Assistant</Text>
-            <Text style={styles.headerSubtitle}>Offline NLU Scheduler</Text>
+            <Text style={styles.headerSubtitle}>
+              {isOnlineMode ? 'Explicit Online Assistant (DeepSeek-V4)' : 'Offline NLU Scheduler'}
+            </Text>
           </View>
         </View>
         <View style={styles.headerRight}>
+          <TouchableOpacity
+            onPress={() => setIsOnlineMode(!isOnlineMode)}
+            style={[styles.modeToggleBtn, isOnlineMode && styles.modeToggleActive]}
+          >
+            <Text style={styles.modeToggleText}>{isOnlineMode ? 'Online' : 'Offline'}</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleClearChat} style={styles.headerIconBtn}>
             <View style={styles.plusCircle}>
               <Plus size={16} color="#FFFFFF" />
@@ -283,5 +309,22 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     marginTop: 6,
     fontStyle: 'italic',
+  },
+  modeToggleBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    marginRight: 6,
+  },
+  modeToggleActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  modeToggleText: {
+    fontSize: 11,
+    fontFamily: Fonts.heading,
+    color: '#FFFFFF',
   },
 });

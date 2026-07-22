@@ -95,3 +95,55 @@ To learn more about React Native, take a look at the following resources:
 - [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
 - [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
 - [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+
+---
+
+# LAFINA Backend (FastAPI & PostgreSQL)
+
+LAFINA includes an offline-first FastAPI backend providing cloud account authentication, PostgreSQL synchronization, and DeepSeek-V4 Flash online assistant proxying.
+
+## Backend Prerequisites
+- Python 3.12+
+- PostgreSQL database (optional for local testing; SQLite in-memory fallback is used during pytest)
+
+## 1. Install Backend Dependencies
+From the repository root:
+```sh
+pip install -r backend/requirements.txt
+```
+
+## 2. Environment Variables Configuration
+Create a `.env` file in the root directory (or inside `backend/`):
+```env
+ENVIRONMENT=development
+DATABASE_URL=
+JWT_ISSUER=
+JWT_AUDIENCE=
+DEEPSEEK_API_KEY=your-deepseek-api-key
+```
+*(Note: If RS256 RSA keys are omitted in development, temporary keys are generated automatically on startup).*
+
+## 3. Database Migrations (PostgreSQL)
+Run Alembic migrations to apply PostgreSQL table schemas and Row-Level Security (RLS) policies:
+```sh
+python -m alembic -c backend/alembic.ini upgrade head
+```
+
+## 4. Run Development Server
+Start FastAPI server with auto-reload:
+```sh
+python -m uvicorn backend.app.main:app --reload --port 8000
+```
+Interactive OpenAPI documentation will be available at [http://localhost:8000/docs](http://localhost:8000/docs).
+
+## 5. Run Backend Tests & Linting
+Run the Pytest suite (covers Auth, RS256 JWT, Argon2id, Sync LWW ordering, and DeepSeek proxy):
+```sh
+python -m pytest backend/tests
+```
+
+Run Ruff linter check:
+```sh
+python -m ruff check backend
+```
+
