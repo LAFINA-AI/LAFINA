@@ -75,19 +75,19 @@
 
 ---
 
-### ☁️ Agent: Backend (Django)
-**Invoke when:** Building the Django REST Framework API, PostgreSQL models, Qdrant RAG pipeline, document generation, or cloud sync endpoints.
+### ☁️ Agent: Backend (FastAPI)
+**Invoke when:** Building the FastAPI API, PostgreSQL models, Qdrant RAG pipeline, document generation, or cloud sync endpoints.
 **Responsibilities:**
 - All code inside `backend/`
-- DRF serializers, views, URL routing
+- FastAPI routers, Pydantic schemas, endpoints
 - PostgreSQL models mirroring the SQLite schema
 - Qdrant vector store integration for RAG
 - Document generation (PDF/XLS/PPT)
 - Sync endpoints for bidirectional data replication
 
 **Rules:**
-- All API endpoints must require authentication (token-based)
-- All request data must go through DRF serializer validation — never trust raw request.data
+- All API endpoints must require authentication (token-based / OAuth2 / JWT)
+- All request data must go through Pydantic schema validation — never trust raw request parameters or body
 - Qdrant queries only run with confirmed internet connectivity
 - DeepSeek API key must come from environment variable — never hardcoded
 - Keep offline features completely separate from online features — no coupling

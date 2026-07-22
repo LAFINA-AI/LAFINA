@@ -28,7 +28,7 @@ call reminders that require a spoken acknowledgment to dismiss.
 | NLU | SmolLM2-135M-Instruct | Q4_K_M quantized, .gguf binary |
 | TTS | Kokoro-82M | On-device, offline |
 | AI runtime | llama.cpp + GGML | Via React Native native modules (JSI) |
-| Backend | Django REST Framework | Python 3.12+ |
+| Backend | FastAPI | Python 3.12+ |
 | Cloud DB | PostgreSQL | Remote sync only |
 | Cloud LLM | DeepSeek-V4 Flash | Online features only |
 | Vector DB | Qdrant | RAG pipeline, online only |
@@ -59,11 +59,11 @@ lafina/
 │   ├── storage/               ← SQLite schema, queries, migrations
 │   ├── scheduler/             ← Background daemon, job queue, trigger logic
 │   ├── sync/                  ← Cloud sync worker (online only)
-│   ├── cloud/                 ← Django API client, DeepSeek, Qdrant
+│   ├── cloud/                 ← FastAPI client, DeepSeek, Qdrant
 │   ├── skills/                ← LAFINA Skills Framework (online features)
 │   └── ml/                    ← EWMA, KNN, Random Forest behavioral layer
-├── backend/                   ← Django REST Framework project
-│   ├── api/                   ← DRF views, serializers, URLs
+├── backend/                   ← FastAPI project
+│   ├── api/                   ← FastAPI routes, Pydantic schemas, endpoints
 │   ├── rag/                   ← Qdrant integration, document ingestion
 │   └── docgen/                ← ReportLab, openpyxl, python-pptx
 ├── android/                   ← Android native modules (C++ bridges)
