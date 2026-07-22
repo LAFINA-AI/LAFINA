@@ -23,7 +23,9 @@ _dev_priv_pem, _dev_pub_pem = _generate_dev_rsa_pair()
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/lafina"
-    TEST_DATABASE_URL: Optional[str] = None
+    # Optional Admin Account Seeding from Environment Variables
+    ADMIN_EMAIL: Optional[str] = None
+    ADMIN_PASSWORD: Optional[str] = None
 
     # JWT RS256 Configuration
     JWT_PRIVATE_KEY: str = _dev_priv_pem

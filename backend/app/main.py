@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import get_settings
 from backend.app.database import engine, Base
 from backend.app.api.v1 import auth, sync, ai
+from backend.app.admin import setup_admin
 
 settings = get_settings()
 
@@ -15,8 +16,12 @@ async def lifespan(app: FastAPI):
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+
+        if settings.ADMIN_EMAIL and settings.ADMIN_PASSWORD:
+            from backend.scripts.create_admin import create_admin
+            await create_admin(settings.ADMIN_EMAIL, settings.ADMIN_PASSWORD)
     except Exception as e:
-        print(f"[Warning] Failed to auto-create tables on startup (PostgreSQL may be offline): {e}")
+        print(f"[Warning] Startup initialization note: {e}")
     yield
     await engine.dispose()
 
@@ -64,6 +69,9 @@ if settings.ENVIRONMENT == "development":
 app.include_router(auth.router)
 app.include_router(sync.router)
 app.include_router(ai.router)
+
+# Mount SQLAdmin UI (Prisma Studio equivalent)
+setup_admin(app, engine)
 
 @app.get("/v1/me", response_model=auth.UserProfileResponse, tags=["auth"])
 async def get_me_top_level(auth_data: tuple[auth.Account, auth.AuthSession] = Depends(auth.get_current_user_and_session)):

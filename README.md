@@ -123,20 +123,36 @@ DEEPSEEK_API_KEY=your-deepseek-api-key
 ```
 *(Note: If RS256 RSA keys are omitted in development, temporary keys are generated automatically on startup).*
 
-## 3. Database Migrations (PostgreSQL)
+## 3. Creating Admin Accounts (No Hardcoded Credentials)
+To create an admin account or promote an existing account without hardcoding passwords:
+
+**Option A: Using the Secure Admin CLI (Interactive Prompt)**
+```sh
+python -m backend.scripts.create_admin
+```
+*(Prompts interactively for `admin email` and `password` without storing or echoing them).*
+
+**Option B: Via Environment Variables in `.env`**
+```env
+ADMIN_EMAIL=youradmin@domain.com
+ADMIN_PASSWORD=your-secure-min-15-char-password
+```
+
+## 4. Database Migrations (PostgreSQL)
 Run Alembic migrations to apply PostgreSQL table schemas and Row-Level Security (RLS) policies:
 ```sh
 python -m alembic -c backend/alembic.ini upgrade head
 ```
 
-## 4. Run Development Server
+## 5. Run Development Server
 Start FastAPI server with auto-reload:
 ```sh
 python -m uvicorn backend.app.main:app --reload --port 8000
 ```
-Interactive OpenAPI documentation will be available at [http://localhost:8000/docs](http://localhost:8000/docs).
+- **OpenAPI Interactive Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **SQLAdmin Studio (Secure Admin UI)**: [http://localhost:8000/admin](http://localhost:8000/admin) (Requires logging in with an active account having `role == "admin"`).
 
-## 5. Run Backend Tests & Linting
+## 6. Run Backend Tests & Linting
 Run the Pytest suite (covers Auth, RS256 JWT, Argon2id, Sync LWW ordering, and DeepSeek proxy):
 ```sh
 python -m pytest backend/tests
