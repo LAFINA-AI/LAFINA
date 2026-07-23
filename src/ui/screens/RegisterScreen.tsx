@@ -80,8 +80,15 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
       // Attempt cloud registration if online
       try {
         const cloudRes = await authService.register(email.trim(), password);
-        if (cloudRes.status === 'validation_error' && cloudRes.error?.includes('already exists')) {
-          await authService.login(email.trim(), password);
+        if (cloudRes.status === 'success' && cloudRes.data) {
+          userStore.updateUserRole(userId, cloudRes.data.role);
+          userStore.saveSessionTokens(userId, cloudRes.data.access_token, cloudRes.data.refresh_token);
+        } else if (cloudRes.status === 'validation_error' && cloudRes.error?.includes('already exists')) {
+          const loginRes = await authService.login(email.trim(), password);
+          if (loginRes.status === 'success' && loginRes.data) {
+            userStore.updateUserRole(userId, loginRes.data.role);
+            userStore.saveSessionTokens(userId, loginRes.data.access_token, loginRes.data.refresh_token);
+          }
         }
         syncWorker.performSync().catch(err => {
           console.warn('[RegisterScreen] Background sync error:', err);

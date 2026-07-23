@@ -2,7 +2,7 @@ import secrets
 import pytest
 from httpx import AsyncClient, ASGITransport
 from backend.app.main import app
-from backend.app.database import AsyncSessionLocal
+from backend.tests.conftest import TestingSessionLocal
 from backend.app.models.account import Account
 from backend.app.security.auth import hash_password
 
@@ -12,7 +12,7 @@ async def test_admin_auth_protection(async_client: AsyncClient):
     dynamic_student_pass = f"student-secret-{secrets.token_hex(12)}"
 
     # Create test admin user and student user
-    async with AsyncSessionLocal() as db:
+    async with TestingSessionLocal() as db:
         admin_acc = Account(
             email="sysadmin@lafina.app",
             password_hash=hash_password(dynamic_admin_pass),

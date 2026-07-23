@@ -40,6 +40,14 @@ async def chat_proxy(
 ):
     account, _ = auth_data
     owner_id = account.id
+
+    # Enforce role-based entitlement for Online AI
+    if account.role not in ("student_pro", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Online AI requires a student_pro subscription. Please upgrade your account."
+        )
+
     now = datetime.now(timezone.utc)
     now_str = now.isoformat()
 

@@ -14,7 +14,7 @@ export const initDatabase = async (): Promise<void> => {
           username TEXT NOT NULL,
           email TEXT,
           password_hash TEXT,
-          role TEXT NOT NULL DEFAULT 'user',
+          role TEXT NOT NULL DEFAULT 'student',
           is_new_user INTEGER NOT NULL DEFAULT 1,
           time_format_24h INTEGER NOT NULL DEFAULT 0,
           week_starts_monday INTEGER NOT NULL DEFAULT 0,

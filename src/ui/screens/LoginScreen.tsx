@@ -90,8 +90,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         // Attempt cloud login if online; fallback to cloud registration if account doesn't exist in cloud DB
         try {
           const cloudLoginRes = await authService.login(email.trim(), password);
-          if (cloudLoginRes.status === 'validation_error' || cloudLoginRes.status === 'auth_required') {
-            await authService.register(email.trim(), password);
+          if (cloudLoginRes.status === 'success' && cloudLoginRes.data) {
+            userStore.updateUserRole(user.id, cloudLoginRes.data.role);
+            userStore.saveSessionTokens(user.id, cloudLoginRes.data.access_token, cloudLoginRes.data.refresh_token);
+          } else if (cloudLoginRes.status === 'validation_error' || cloudLoginRes.status === 'auth_required') {
+            const regRes = await authService.register(email.trim(), password);
+            if (regRes.status === 'success' && regRes.data) {
+              userStore.updateUserRole(user.id, regRes.data.role);
+              userStore.saveSessionTokens(user.id, regRes.data.access_token, regRes.data.refresh_token);
+            }
           }
           syncWorker.performSync().catch(err => {
             console.warn('[LoginScreen] Background sync error:', err);

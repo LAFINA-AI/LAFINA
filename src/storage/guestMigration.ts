@@ -41,7 +41,7 @@ export const guestMigration = {
       // 1. Insert or ignore new user entry for cloudUserId
       tx.executeSync(
         `INSERT OR IGNORE INTO users (id, username, email, password_hash, role, is_new_user, time_format_24h, week_starts_monday, dark_mode, created_at, updated_at)
-         VALUES (?, ?, ?, NULL, 'user', 0, 0, 0, 0, ?, ?)`,
+         VALUES (?, ?, ?, NULL, 'student', 0, 0, 0, 0, ?, ?)`,
         [cloudUserId, cloudEmail.split('@')[0], cloudEmail, now, now]
       );
 

@@ -6,9 +6,19 @@ from sqlalchemy.pool import StaticPool
 
 from backend.app.main import app
 from backend.app.database import Base, get_db
+from backend.app.models.account import Account  # noqa: F401
+from backend.app.models.session import AuthSession  # noqa: F401
+from backend.app.models.ai_usage import AIUsage  # noqa: F401
+from backend.app.models.recovery import RecoveryCode  # noqa: F401
+from backend.app.models.synchronized_content import (  # noqa: F401
+    ProfileSync, TasksSync, EventsSync, TimeBlocksSync,
+    RemindersSync, NotesSync, CustomCategoriesSync
+)
+from backend.app.models.mutations import IdempotentMutation  # noqa: F401
+from backend.app.models.change_feed import ChangeFeed  # noqa: F401
 
-# Use in-memory SQLite with aiosqlite for fast backend unit tests
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+# Use in-memory SQLite with aiosqlite (shared cache) for fast backend unit tests
+TEST_DATABASE_URL = "sqlite+aiosqlite:///file:memdb1?mode=memory&cache=shared&uri=true"
 
 test_engine = create_async_engine(
     TEST_DATABASE_URL,
@@ -23,6 +33,9 @@ TestingSessionLocal = async_sessionmaker(
     autocommit=False,
     autoflush=False
 )
+
+import backend.app.admin
+backend.app.admin.AsyncSessionLocal = TestingSessionLocal
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def setup_test_db():

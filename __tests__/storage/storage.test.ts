@@ -451,6 +451,20 @@ describe('Storage Layer', () => {
       expect(wrongEmail).toBeNull();
     });
 
+    it('updates the role on the matching local SQLite user', async () => {
+      const localUserId = await userStore.register(
+        'Student Pro User',
+        'student-pro@ustp.edu.ph',
+        'securepass'
+      );
+      const unrelatedCloudAccountId = '3ce7cc43-e4da-4b82-b4cd-070dbf7b8369';
+
+      userStore.updateUserRole(localUserId, 'student_pro');
+
+      expect(userStore.getUserById(localUserId)?.role).toBe('student_pro');
+      expect(userStore.getUserById(unrelatedCloudAccountId)).toBeNull();
+    });
+
     it('can manage user sessions', async () => {
       const userId = await userStore.register('Session User', 'session@ustp.edu.ph', 'password');
       

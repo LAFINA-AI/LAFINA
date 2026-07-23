@@ -11,6 +11,14 @@ export interface AuthResponseData {
   recovery_codes?: string[];
 }
 
+export interface UserProfileData {
+  id: string;
+  email: string;
+  role: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 export const authService = {
   register: async (email: string, password: string): Promise<CloudResult<AuthResponseData>> => {
     const res = await cloudClient.request<AuthResponseData>(
@@ -64,5 +72,9 @@ export const authService = {
     const res = await cloudClient.request<null>('/v1/auth/logout', { method: 'POST' }, true);
     cloudClient.setAccessToken(null);
     return res;
-  }
+  },
+
+  getMe: async (): Promise<CloudResult<UserProfileData>> => {
+    return await cloudClient.request<UserProfileData>('/v1/auth/me', { method: 'GET' }, true);
+  },
 };

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.config import get_settings
 from backend.app.database import engine, Base
+import backend.app.models  # noqa: F401
 from backend.app.api.v1 import auth, sync, ai
 from backend.app.admin import setup_admin
 

@@ -128,20 +128,50 @@ async def test_sync_batch_and_tampering_defense(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_online_ai_proxy(async_client: AsyncClient):
+    from backend.tests.conftest import TestingSessionLocal
+    from backend.app.models.account import Account
+    from sqlalchemy import select
+
+    password = "super-strong-lafina-passphrase-2026"
     reg_res = await async_client.post("/v1/auth/register", json={
         "email": "ai_user@ustp.edu.ph",
-        "password": "super-strong-lafina-passphrase-2026"
+        "password": password
     })
     token = reg_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    chat_res = await async_client.post("/v1/ai/chat", headers=headers, json={
+    # 1. Student role attempt should be rejected with 403 Forbidden
+    student_chat_res = await async_client.post("/v1/ai/chat", headers=headers, json={
         "requestId": "req-001",
         "messages": [
             {"role": "user", "content": "How do I organize my study schedule for midterms?"}
         ]
     })
-    assert chat_res.status_code == 200
-    chat_data = chat_res.json()
-    assert chat_data["requestId"] == "req-001"
+    assert student_chat_res.status_code == 403
+    assert "student_pro" in student_chat_res.json()["detail"]
+
+    # 2. Promote account role to student_pro in DB and log in to get updated JWT claim
+    async with TestingSessionLocal() as db:
+        stmt = select(Account).where(Account.email == "ai_user@ustp.edu.ph")
+        acc = (await db.execute(stmt)).scalar_one()
+        acc.role = "student_pro"
+        await db.commit()
+
+    login_res = await async_client.post("/v1/auth/login", json={
+        "email": "ai_user@ustp.edu.ph",
+        "password": password
+    })
+    pro_token = login_res.json()["access_token"]
+    pro_headers = {"Authorization": f"Bearer {pro_token}"}
+
+    # 3. student_pro request should succeed with 200 OK
+    pro_chat_res = await async_client.post("/v1/ai/chat", headers=pro_headers, json={
+        "requestId": "req-002",
+        "messages": [
+            {"role": "user", "content": "How do I organize my study schedule for midterms?"}
+        ]
+    })
+    assert pro_chat_res.status_code == 200
+    chat_data = pro_chat_res.json()
+    assert chat_data["requestId"] == "req-002"
     assert "[Online Assistant" in chat_data["reply"]

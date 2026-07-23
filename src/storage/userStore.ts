@@ -17,13 +17,21 @@ export interface User {
   updatedAt: string;
 }
 
-// Ensure active_session table exists
+// Ensure active_session table exists with auth token persistence columns
 try {
   db.executeSync(`
     CREATE TABLE IF NOT EXISTS active_session (
-      user_id TEXT PRIMARY KEY
+      user_id TEXT PRIMARY KEY,
+      access_token TEXT,
+      refresh_token TEXT
     )
   `);
+  try {
+    db.executeSync('ALTER TABLE active_session ADD COLUMN access_token TEXT');
+  } catch {}
+  try {
+    db.executeSync('ALTER TABLE active_session ADD COLUMN refresh_token TEXT');
+  } catch {}
 } catch (e) {
   console.error('Error creating active_session table:', e);
 }
@@ -102,7 +110,7 @@ export const userStore = {
     try {
       db.executeSync(
         `INSERT INTO users (id, username, email, password_hash, role, is_new_user, time_format_24h, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, username, email, hash, 'user', 1, 0, now, now]
+        [id, username, email, hash, 'student', 1, 0, now, now]
       );
       try {
         syncOutboxStore.enqueueMutation('profile', id, 'create', {
@@ -175,10 +183,14 @@ export const userStore = {
   /**
    * Sets the active user session.
    */
-  setCurrentUser: (userId: string): void => {
+  setCurrentUser: (userId: string, accessToken?: string | null, refreshToken?: string | null): void => {
     try {
       db.executeSync('DELETE FROM active_session');
-      db.executeSync('INSERT INTO active_session (user_id) VALUES (?)', [userId]);
+      db.executeSync('INSERT INTO active_session (user_id, access_token, refresh_token) VALUES (?, ?, ?)', [
+        userId,
+        accessToken || null,
+        refreshToken || null,
+      ]);
     } catch (error) {
       console.error('Error setting current user session:', error);
       throw error;
@@ -195,6 +207,47 @@ export const userStore = {
       console.error('Error clearing user session:', error);
       throw error;
     }
+  },
+
+  /**
+   * Persists access and refresh tokens for the active session.
+   */
+  saveSessionTokens: (userId: string, accessToken: string | null, refreshToken?: string | null): void => {
+    try {
+      if (refreshToken !== undefined) {
+        db.executeSync(
+          `UPDATE active_session SET access_token = ?, refresh_token = ? WHERE user_id = ?`,
+          [accessToken, refreshToken, userId]
+        );
+      } else {
+        db.executeSync(
+          `UPDATE active_session SET access_token = ? WHERE user_id = ?`,
+          [accessToken, userId]
+        );
+      }
+    } catch (e) {
+      console.error('Error saving session tokens:', e);
+    }
+  },
+
+  /**
+   * Retrieves active session user ID and persisted auth tokens.
+   */
+  getActiveSessionToken: (): { userId: string | null; accessToken: string | null; refreshToken: string | null } => {
+    try {
+      const res = db.executeSync('SELECT user_id, access_token, refresh_token FROM active_session LIMIT 1');
+      if (res.rows && res.rows.length > 0) {
+        const row = res.rows[0];
+        return {
+          userId: row.user_id || null,
+          accessToken: row.access_token || null,
+          refreshToken: row.refresh_token || null,
+        };
+      }
+    } catch (e) {
+      console.error('Error getting active session token:', e);
+    }
+    return { userId: null, accessToken: null, refreshToken: null };
   },
 
   /**
@@ -400,6 +453,21 @@ export const userStore = {
     } catch (error) {
       console.error('Error saving Remember Me setting:', error);
       throw error;
+    }
+  },
+
+  /**
+   * Updates the user's role in SQLite (e.g. from cloud login response).
+   */
+  updateUserRole: (userId: string, role: string): void => {
+    const now = new Date().toISOString();
+    try {
+      db.executeSync(
+        `UPDATE users SET role = ?, updated_at = ? WHERE id = ?`,
+        [role, now, userId]
+      );
+    } catch (error) {
+      console.error('Error updating user role:', error);
     }
   },
 };

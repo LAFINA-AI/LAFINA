@@ -1,6 +1,8 @@
 import { db, DatabaseTransaction } from '../storage/database';
 import { syncOutboxStore, OutboxItem } from '../storage/syncOutboxStore';
 import { cloudClient } from '../cloud/cloudClient';
+import { authService } from '../cloud/authService';
+import { userStore } from '../storage/userStore';
 import { syncState } from './syncState';
 
 export interface SyncBatchResponsePayload {
@@ -51,6 +53,20 @@ export const syncWorker = {
       }
 
       syncState.setStatus('Syncing');
+
+      // Refresh the active local user's role from the authenticated cloud account.
+      // Cloud account IDs and SQLite user IDs are intentionally independent.
+      try {
+        const meRes = await authService.getMe();
+        if (meRes.status === 'success' && meRes.data) {
+          const currentUser = userStore.getCurrentUser();
+          if (currentUser) {
+            userStore.updateUserRole(currentUser.id, meRes.data.role);
+          }
+        }
+      } catch (err) {
+        console.warn('[SyncWorker] Profile refresh note:', err);
+      }
 
       // 1. Fetch pending outbox mutations (max 100)
       const pendingMutations = syncOutboxStore.getPendingMutations(100);
