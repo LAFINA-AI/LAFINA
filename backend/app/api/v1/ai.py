@@ -2,10 +2,9 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Literal, Annotated
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-import httpx
 
 from backend.app.config import get_settings
 from backend.app.database import get_db
@@ -13,17 +12,29 @@ from backend.app.models.account import Account
 from backend.app.models.session import AuthSession
 from backend.app.models.ai_usage import AIUsage
 from backend.app.security.auth import get_current_user_and_session
+from backend.app.clients.deepseek import DeepSeekClient, DeepSeekError
 
 router = APIRouter(prefix="/v1/ai", tags=["ai"])
 settings = get_settings()
+
+
+def get_deepseek_client(request: Request) -> DeepSeekClient:
+    """Dependency helper providing the application-scoped DeepSeekClient."""
+    client: DeepSeekClient | None = getattr(request.app.state, "deepseek_client", None)
+    if client is None:
+        return DeepSeekClient(settings=settings)
+    return client
+
 
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(..., max_length=4090)
 
+
 class AIChatRequest(BaseModel):
     requestId: str = Field(default_factory=lambda: str(uuid.uuid4()))
     messages: list[ChatMessage] = Field(..., min_length=1, max_length=10)
+
 
 class AIChatResponse(BaseModel):
     requestId: str
@@ -32,16 +43,18 @@ class AIChatResponse(BaseModel):
     usage: dict
     createdAt: str
 
+
 @router.post("/chat", response_model=AIChatResponse)
 async def chat_proxy(
     req: AIChatRequest,
     auth_data: Annotated[tuple[Account, AuthSession], Depends(get_current_user_and_session)],
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    deepseek: DeepSeekClient = Depends(get_deepseek_client)
 ):
     account, _ = auth_data
     owner_id = account.id
 
-    # Enforce role-based entitlement for Online AI
+    # Enforce role-based entitlement for Online AI from live DB Account
     if account.role not in ("student_pro", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -85,64 +98,26 @@ async def chat_proxy(
             detail="Daily AI request quota reached (100 requests/day)."
         )
 
-    # Format messages for DeepSeek-V4 Flash API
     formatted_messages = [{"role": m.role, "content": m.content} for m in req.messages]
 
-    headers = {
-        "Authorization": f"Bearer {settings.DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    try:
+        reply_text, usage_data = await deepseek.chat_completion(
+            messages=formatted_messages,
+            user_id=str(account.id),
+            request_id=req.requestId
+        )
+    except DeepSeekError as err:
+        raise HTTPException(
+            status_code=err.status_code,
+            detail=err.message
+        )
 
-    body = {
-        "model": settings.DEEPSEEK_MODEL,
-        "messages": formatted_messages,
-        "max_tokens": 1024,
-        "temperature": 0.7
-    }
-
-    # If key is mock/dev key, return instant dev response
-    if settings.DEEPSEEK_API_KEY == "mock-deepseek-key-for-dev":
-        reply_text = f"[Online Assistant ({settings.DEEPSEEK_MODEL})]: Thank you for your question! Here is an online response to: '{req.messages[-1].content}'"
-        usage_data = {"prompt_tokens": total_chars // 4, "completion_tokens": len(reply_text) // 4, "total_tokens": (total_chars + len(reply_text)) // 4}
-    else:
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                res = await client.post(
-                    f"{settings.DEEPSEEK_BASE_URL}/chat/completions",
-                    headers=headers,
-                    json=body
-                )
-
-            if res.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"DeepSeek upstream server error: {res.status_code}"
-                )
-
-            data = res.json()
-            reply_text = data["choices"][0]["message"]["content"]
-            usage_data = data.get("usage", {})
-        except httpx.TimeoutException:
-            raise HTTPException(
-                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-                detail="DeepSeek AI assistant timed out. Please try again."
-            )
-        except Exception as e:
-            if isinstance(e, HTTPException):
-                raise e
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Failed to communicate with DeepSeek AI proxy: {str(e)}"
-            )
-
-    # Log AI usage
-    prompt_tokens = usage_data.get("prompt_tokens", total_chars // 4)
-    completion_tokens = usage_data.get("completion_tokens", len(reply_text) // 4)
+    # Record AI usage only after successful completion
     db.add(AIUsage(
         owner_id=owner_id,
         request_type="chat",
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
+        prompt_tokens=usage_data.get("prompt_tokens", 0),
+        completion_tokens=usage_data.get("completion_tokens", 0),
         created_at=now
     ))
     await db.commit()

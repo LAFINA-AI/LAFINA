@@ -205,8 +205,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           />
           <View style={styles.headerTextContainer}>
             <Text style={styles.headerTitle}>LAFINA Assistant</Text>
-            <Text style={styles.headerSubtitle}>
-              {isOnlineMode ? 'Explicit Online Assistant (DeepSeek-V4)' : 'Offline NLU Scheduler'}
+            <Text style={styles.headerSubtitle} numberOfLines={1} ellipsizeMode="tail">
+              {isOnlineMode ? 'Online Assistant (DeepSeek-V4)' : 'Offline NLU Scheduler'}
             </Text>
           </View>
         </View>
@@ -215,7 +215,9 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
             onPress={handleToggleOnline}
             style={[styles.modeToggleBtn, isOnlineMode && styles.modeToggleActive]}
           >
-            <Text style={styles.modeToggleText}>{isOnlineMode ? 'Online' : 'Offline'}</Text>
+            <Text style={[styles.modeToggleText, isOnlineMode && styles.modeToggleTextActive]}>
+              {isOnlineMode ? 'Online' : 'Offline'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleClearChat} style={styles.headerIconBtn}>
             <View style={styles.plusCircle}>

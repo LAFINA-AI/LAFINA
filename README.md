@@ -112,16 +112,28 @@ From the repository root:
 pip install -r backend/requirements.txt
 ```
 
-## 2. Environment Variables Configuration
+## 2. Environment Variables & Production Deployment
 Create a `.env` file in the root directory (or inside `backend/`):
 ```env
 ENVIRONMENT=development
-DATABASE_URL=
-JWT_ISSUER=
-JWT_AUDIENCE=
-DEEPSEEK_API_KEY=your-deepseek-api-key
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/lafina
+JWT_ISSUER=lafina-auth
+JWT_AUDIENCE=lafina-app
+DEEPSEEK_API_KEY=sk-your-deepseek-api-key
 ```
 *(Note: If RS256 RSA keys are omitted in development, temporary keys are generated automatically on startup).*
+
+### DeepSeek API Key Production Setup (Render)
+1. **Generate Key**: Create an API key through the official [DeepSeek Platform](https://platform.deepseek.com/).
+2. **Configure Environment Secret**: In your Render dashboard, navigate to Environment Variables and add `DEEPSEEK_API_KEY` as a secret environment variable.
+3. **Set Production Mode**: Set `ENVIRONMENT=production`. When `ENVIRONMENT=production`, backend startup will fail fast if `DEEPSEEK_API_KEY` is missing or set to a placeholder value.
+4. **Client Security Standard**: **NEVER** place the DeepSeek API key in React Native client configuration, source control, screenshots, logs, or client requests. The mobile app communicates strictly with the FastAPI `/v1/ai/chat` endpoint and never sees or receives provider credentials.
+5. **Key Rotation Procedure**:
+   - Create a new key on the DeepSeek Platform.
+   - Update the `DEEPSEEK_API_KEY` secret environment variable in Render.
+   - Redeploy the web service successfully.
+   - Revoke the previous key on the DeepSeek Platform.
+
 
 ## 3. Creating Admin Accounts (No Hardcoded Credentials)
 To create an admin account or promote an existing account without hardcoding passwords:

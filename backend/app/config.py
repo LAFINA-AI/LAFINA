@@ -1,4 +1,5 @@
 from typing import Optional
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
@@ -19,6 +20,16 @@ def _generate_dev_rsa_pair():
     return private_pem, public_pem
 
 _dev_priv_pem, _dev_pub_pem = _generate_dev_rsa_pair()
+
+INVALID_PLACEHOLDER_KEYS = {
+    "",
+    "mock-deepseek-key-for-dev",
+    "your-deepseek-api-key",
+    "sk-your-deepseek-api-key",
+    "placeholder",
+    "your_deepseek_api_key",
+    "change-me",
+}
 
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
@@ -48,9 +59,10 @@ class Settings(BaseSettings):
     MAX_AI_REQUESTS_PER_DAY: int = 100
 
     # DeepSeek API Configuration
-    DEEPSEEK_API_KEY: str = "mock-deepseek-key-for-dev"
-    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
+    DEEPSEEK_API_KEY: SecretStr | None = None
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-v4-flash"
+    DEEPSEEK_TIMEOUT_SECONDS: float = 120.0
 
     # Password blocklist (common passwords to reject)
     COMMON_PASSWORDS: set[str] = {
@@ -58,8 +70,35 @@ class Settings(BaseSettings):
         "administrator", "letmein123", "welcome123", "changeme123", "lafina12345"
     }
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    def get_deepseek_key_invalid_reason(self) -> str | None:
+        if self.DEEPSEEK_API_KEY is None:
+            return "DEEPSEEK_API_KEY environment variable is not set (None)"
+        raw_key = self.DEEPSEEK_API_KEY.get_secret_value().strip().strip("'\"")
+        if not raw_key:
+            return "DEEPSEEK_API_KEY is blank or empty"
+        if raw_key.lower() in INVALID_PLACEHOLDER_KEYS:
+            return f"DEEPSEEK_API_KEY is set to a placeholder value ('{raw_key}')"
+        return None
+
+    def is_deepseek_key_valid(self) -> bool:
+        return self.get_deepseek_key_invalid_reason() is None
+
+    @model_validator(mode="after")
+    def validate_deepseek_config(self) -> "Settings":
+        reason = self.get_deepseek_key_invalid_reason()
+        if self.ENVIRONMENT == "production" and reason is not None:
+            raise ValueError(
+                f"DEEPSEEK_API_KEY secret environment variable must be configured with a valid key in production ({reason})."
+            )
+        return self
+
+    model_config = SettingsConfigDict(
+        env_file=(".env", "backend/.env", "../.env"),
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
 @functools.lru_cache()
 def get_settings() -> Settings:
     return Settings()
+

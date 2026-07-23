@@ -176,10 +176,24 @@ async def test_sync_batch_and_tampering_defense(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_online_ai_proxy(async_client: AsyncClient):
+    from pydantic import SecretStr
+    from httpx import AsyncClient as HttpxAsyncClient, MockTransport, Response
+    from sqlalchemy import select, func
     from backend.tests.conftest import TestingSessionLocal
     from backend.app.models.account import Account
-    from sqlalchemy import select
+    from backend.app.models.ai_usage import AIUsage
+    from backend.app.config import Settings
+    from backend.app.clients.deepseek import DeepSeekClient
+    from backend.app.api.v1.ai import get_deepseek_client
+    from backend.app.main import app
 
+    # 1. Unauthenticated attempt should be rejected with 401
+    unauth_res = await async_client.post("/v1/ai/chat", json={
+        "messages": [{"role": "user", "content": "Hello?"}]
+    })
+    assert unauth_res.status_code == 401
+
+    # Register user
     password = "super-strong-lafina-passphrase-2026"
     reg_res = await async_client.post("/v1/auth/register", json={
         "email": "ai_user@ustp.edu.ph",
@@ -188,7 +202,7 @@ async def test_online_ai_proxy(async_client: AsyncClient):
     token = reg_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    # 1. Student role attempt should be rejected with 403 Forbidden
+    # 2. Student role attempt should be rejected with 403 Forbidden before provider call
     student_chat_res = await async_client.post("/v1/ai/chat", headers=headers, json={
         "requestId": "req-001",
         "messages": [
@@ -198,7 +212,7 @@ async def test_online_ai_proxy(async_client: AsyncClient):
     assert student_chat_res.status_code == 403
     assert "student_pro" in student_chat_res.json()["detail"]
 
-    # 2. Promote account role to student_pro in DB and log in to get updated JWT claim
+    # 3. Promote account role to student_pro in DB and log in to get updated JWT claim
     async with TestingSessionLocal() as db:
         stmt = select(Account).where(Account.email == "ai_user@ustp.edu.ph")
         acc = (await db.execute(stmt)).scalar_one()
@@ -212,7 +226,41 @@ async def test_online_ai_proxy(async_client: AsyncClient):
     pro_token = login_res.json()["access_token"]
     pro_headers = {"Authorization": f"Bearer {pro_token}"}
 
-    # 3. student_pro request should succeed with 200 OK
+    # 4. Without configured DEEPSEEK_API_KEY in dev environment, should return 503 Service Unavailable
+    unconfig_settings = Settings(ENVIRONMENT="development", DEEPSEEK_API_KEY=None)
+    unconfig_client = DeepSeekClient(settings=unconfig_settings)
+    app.dependency_overrides[get_deepseek_client] = lambda: unconfig_client
+
+    dev_chat_res = await async_client.post("/v1/ai/chat", headers=pro_headers, json={
+        "requestId": "req-unconfigured",
+        "messages": [{"role": "user", "content": "Test unconfigured key"}]
+    })
+    assert dev_chat_res.status_code == 503
+    assert "not configured" in dev_chat_res.json()["detail"]
+
+    # 5. Inject a mock DeepSeekClient returning successful response
+    mock_response_json = {
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "Here is your study plan: 1. Prioritize weak subjects."},
+                "finish_reason": "stop"
+            }
+        ],
+        "usage": {"prompt_tokens": 15, "completion_tokens": 10, "total_tokens": 25}
+    }
+    mock_transport = MockTransport(lambda req: Response(200, json=mock_response_json))
+    mock_httpx = HttpxAsyncClient(transport=mock_transport)
+    test_settings = Settings(
+        ENVIRONMENT="development",
+        DEEPSEEK_API_KEY=SecretStr("sk-test-valid-key")
+    )
+    mock_client = DeepSeekClient(settings=test_settings, client=mock_httpx)
+
+    app.dependency_overrides[get_deepseek_client] = lambda: mock_client
+
     pro_chat_res = await async_client.post("/v1/ai/chat", headers=pro_headers, json={
         "requestId": "req-002",
         "messages": [
@@ -222,4 +270,33 @@ async def test_online_ai_proxy(async_client: AsyncClient):
     assert pro_chat_res.status_code == 200
     chat_data = pro_chat_res.json()
     assert chat_data["requestId"] == "req-002"
-    assert "[Online Assistant" in chat_data["reply"]
+    assert "Prioritize weak subjects" in chat_data["reply"]
+    assert chat_data["model"] == "deepseek-v4-flash"
+    assert chat_data["usage"]["total_tokens"] == 25
+
+    # Verify AIUsage record created in DB
+    async with TestingSessionLocal() as db:
+        usage_stmt = select(func.count(AIUsage.id))
+        usage_count = (await db.execute(usage_stmt)).scalar()
+        assert usage_count == 1
+
+    # 6. Provider failure (e.g. 503 provider error) should NOT record AIUsage in DB
+    fail_transport = MockTransport(lambda req: Response(503, json={"error": "provider outage"}))
+    fail_httpx = HttpxAsyncClient(transport=fail_transport)
+    fail_client = DeepSeekClient(settings=test_settings, client=fail_httpx)
+
+    app.dependency_overrides[get_deepseek_client] = lambda: fail_client
+
+    fail_res = await async_client.post("/v1/ai/chat", headers=pro_headers, json={
+        "requestId": "req-fail",
+        "messages": [{"role": "user", "content": "Fail test"}]
+    })
+    assert fail_res.status_code == 503
+
+    # Confirm usage count remains 1 (no new record written on failure)
+    async with TestingSessionLocal() as db:
+        usage_count_after = (await db.execute(select(func.count(AIUsage.id)))).scalar()
+        assert usage_count_after == 1
+
+    app.dependency_overrides.pop(get_deepseek_client, None)
+

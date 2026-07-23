@@ -8,11 +8,17 @@ from backend.app.database import engine, Base
 import backend.app.models  # noqa: F401
 from backend.app.api.v1 import auth, sync, ai
 from backend.app.admin import setup_admin
+from backend.app.clients.deepseek import DeepSeekClient
 
 settings = get_settings()
+deepseek_client = DeepSeekClient(settings=settings)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Initialize DeepSeek HTTP client pool
+    await deepseek_client.start()
+    app.state.deepseek_client = deepseek_client
+
     # Auto-create tables in dev/test environment if PostgreSQL is available
     try:
         async with engine.begin() as conn:
@@ -24,7 +30,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[Warning] Startup initialization note: {e}")
     yield
+    await deepseek_client.close()
     await engine.dispose()
+
 
 app = FastAPI(
     title="LAFINA Cloud API",
