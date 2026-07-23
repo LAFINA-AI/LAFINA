@@ -10,21 +10,36 @@ async def test_healthz(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_register_and_login(async_client: AsyncClient):
-    # Reject short password (< 15 chars)
+    # Reject passwords shorter than the shared six-character minimum.
     short_res = await async_client.post("/v1/auth/register", json={
         "email": "student@ustp.edu.ph",
-        "password": "short"
+        "password": "12345"
     })
-    assert short_res.status_code == 422 or short_res.status_code == 400
+    assert short_res.status_code == 400
+    assert "at least 6 characters" in short_res.json()["detail"]
 
-    # Reject common password
-    common_res = await async_client.post("/v1/auth/register", json={
-        "email": "student@ustp.edu.ph",
-        "password": "password123"
+    # Accept exactly six characters.
+    six_res = await async_client.post("/v1/auth/register", json={
+        "email": "six@ustp.edu.ph",
+        "password": "abc123"
     })
-    assert common_res.status_code in (400, 422)
+    assert six_res.status_code == 201
 
-    # Valid registration (15+ chars, non-common)
+    # Reject passwords longer than 128 characters.
+    long_res = await async_client.post("/v1/auth/register", json={
+        "email": "long@ustp.edu.ph",
+        "password": "x" * 129
+    })
+    assert long_res.status_code == 400
+    assert "no more than 128 characters" in long_res.json()["detail"]
+
+    short_login_res = await async_client.post("/v1/auth/login", json={
+        "email": "six@ustp.edu.ph",
+        "password": "12345"
+    })
+    assert short_login_res.status_code == 400
+
+    # Valid registration.
     reg_res = await async_client.post("/v1/auth/register", json={
         "email": "student@ustp.edu.ph",
         "password": "super-strong-lafina-passphrase-2026"
@@ -35,9 +50,15 @@ async def test_register_and_login(async_client: AsyncClient):
     assert "refresh_token" in reg_data
     assert len(reg_data["recovery_codes"]) == 4
 
+    duplicate_res = await async_client.post("/v1/auth/register", json={
+        "email": "STUDENT@USTP.EDU.PH",
+        "password": "another-valid-password"
+    })
+    assert duplicate_res.status_code == 409
+
     # Login
     login_res = await async_client.post("/v1/auth/login", json={
-        "email": "student@ustp.edu.ph",
+        "email": "Student@USTP.EDU.PH",
         "password": "super-strong-lafina-passphrase-2026",
         "device_info": "Pixel 7 Android 14"
     })
@@ -66,6 +87,33 @@ async def test_register_and_login(async_client: AsyncClient):
     assert me_res.status_code == 200
     assert me_res.json()["email"] == "student@ustp.edu.ph"
     assert me_res.json()["role"] == "student"
+
+
+@pytest.mark.asyncio
+async def test_recovery_password_policy(async_client: AsyncClient):
+    short_res = await async_client.post("/v1/auth/recover", json={
+        "email": "missing@ustp.edu.ph",
+        "recovery_code": "MISSING",
+        "new_password": "12345"
+    })
+    assert short_res.status_code == 400
+    assert "at least 6 characters" in short_res.json()["detail"]
+
+    long_res = await async_client.post("/v1/auth/recover", json={
+        "email": "missing@ustp.edu.ph",
+        "recovery_code": "MISSING",
+        "new_password": "x" * 129
+    })
+    assert long_res.status_code == 400
+    assert "no more than 128 characters" in long_res.json()["detail"]
+
+    six_res = await async_client.post("/v1/auth/recover", json={
+        "email": "missing@ustp.edu.ph",
+        "recovery_code": "MISSING",
+        "new_password": "abc123"
+    })
+    assert six_res.status_code == 404
+
 
 @pytest.mark.asyncio
 async def test_sync_batch_and_tampering_defense(async_client: AsyncClient):

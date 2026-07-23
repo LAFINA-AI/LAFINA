@@ -1,7 +1,7 @@
 import { db, DatabaseTransaction } from '../storage/database';
 import { syncOutboxStore, OutboxItem } from '../storage/syncOutboxStore';
 import { cloudClient } from '../cloud/cloudClient';
-import { authService } from '../cloud/authService';
+import { accountLinkService } from '../cloud/accountLinkService';
 import { userStore } from '../storage/userStore';
 import { syncState } from './syncState';
 
@@ -57,12 +57,9 @@ export const syncWorker = {
       // Refresh the active local user's role from the authenticated cloud account.
       // Cloud account IDs and SQLite user IDs are intentionally independent.
       try {
-        const meRes = await authService.getMe();
-        if (meRes.status === 'success' && meRes.data) {
-          const currentUser = userStore.getCurrentUser();
-          if (currentUser) {
-            userStore.updateUserRole(currentUser.id, meRes.data.role);
-          }
+        const currentSession = userStore.getActiveSessionToken();
+        if (currentSession.userId) {
+          await accountLinkService.refreshCloudProfile(currentSession.userId);
         }
       } catch (err) {
         console.warn('[SyncWorker] Profile refresh note:', err);

@@ -1,4 +1,11 @@
 const SALT_PREFIX = 'lafina_salt_key_';
+export const MIN_PASSWORD_LENGTH = 6;
+export const MAX_PASSWORD_LENGTH = 128;
+
+export interface PasswordValidationResult {
+  isValid: boolean;
+  error: string | null;
+}
 
 /** Module-level caches for SHA-256 constants, initialized lazily */
 let hCache: number[] | undefined;
@@ -130,4 +137,30 @@ export const hashPassword = async (password: string): Promise<string> => {
 export const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
   const inputHash = await hashPassword(password);
   return inputHash === hash;
+};
+
+/**
+ * Normalizes an account email for case-insensitive local and cloud matching.
+ * @param email The user-entered email address.
+ */
+export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+
+/**
+ * Applies LAFINA's shared mobile password-length policy.
+ * @param password The user-entered password.
+ */
+export const validatePassword = (password: string): PasswordValidationResult => {
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return {
+      isValid: false,
+      error: 'Passwords must contain at least 6 characters.',
+    };
+  }
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    return {
+      isValid: false,
+      error: 'Passwords must contain no more than 128 characters.',
+    };
+  }
+  return { isValid: true, error: null };
 };

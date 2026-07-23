@@ -12,7 +12,7 @@ import {
 import { Trash2, Plus } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { Fonts, Colors } from '../theme';
-import { chatStore, userStore } from '../../storage';
+import { chatStore } from '../../storage';
 import { LAFINA_LOGO_CHAT_HEADER_XML } from '../../assets/lafina_logo_chat_header_xml';
 import type { ChatMessage } from '../../storage';
 import { runLocalLlmChat } from '../../ai';
@@ -25,7 +25,7 @@ import { ChatMessageItem } from '../components/chat/ChatMessageItem';
 import { ChatInput } from '../components/chat/ChatInput';
 
 import { onlineChatSkill } from '../../skills/onlineChatSkill';
-import { authService } from '../../cloud/authService';
+import { accountLinkService } from '../../cloud/accountLinkService';
 
 interface ChatScreenProps {
   userId: string;
@@ -70,34 +70,25 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
 
   const handleToggleOnline = async () => {
     if (!isOnlineMode) {
-      // Refresh the role for this SQLite user. The authenticated FastAPI account
-      // has a separate UUID, so its ID must not be used for the local update.
-      try {
-        const meRes = await authService.getMe();
-        if (meRes.status === 'success' && meRes.data) {
-          userStore.updateUserRole(userId, meRes.data.role);
-        }
-      } catch {
-        // Fallback to local storage if offline
-      }
-
-      const currentUser = userStore.getUserById(userId);
-      if (!currentUser || (currentUser.role !== 'student_pro' && currentUser.role !== 'admin')) {
+      const authorization = await accountLinkService.authorizeOnlineMode(userId);
+      if (authorization.status === 'student_pro_required') {
         Alert.alert(
           'Student Pro Required',
-          'This feature is available exclusively to Student Pro subscribers.\n\nOnline AI features are exclusive to Student Pro.\nUpgrade to Student Pro or sign in with your Student Pro account to continue.',
-          [
-            {
-              text: 'Continue with Offline Mode',
-              style: 'cancel',
-            },
-            {
-              text: 'Upgrade to Student Pro',
-              onPress: () => {
-                // Placeholder for future subscription purchase feature
-              },
-            },
-          ]
+          `${authorization.message}\n\nOffline Chat and offline scheduling remain available.`
+        );
+        return;
+      }
+      if (authorization.status !== 'success') {
+        const needsAuthentication = authorization.status === 'auth_required';
+        const unavailable = authorization.status === 'offline' ||
+          authorization.status === 'server_unavailable';
+        Alert.alert(
+          needsAuthentication
+            ? 'Cloud Authentication Required'
+            : unavailable ? 'Online Service Unavailable' : 'Online Mode Unavailable',
+          `${authorization.message}\n\n${needsAuthentication
+            ? 'Use Profile > Cloud Account to sign in or link FastAPI.'
+            : 'Offline Chat and offline scheduling remain available.'}`
         );
         return;
       }
@@ -138,27 +129,23 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
 
     let aiReply = '';
     if (isOnlineMode) {
-      const currentUser = userStore.getUserById(userId);
-      const isAuthorized = currentUser && (currentUser.role === 'student_pro' || currentUser.role === 'admin');
-
-      if (!isAuthorized) {
-        aiReply = '[Cloud AI Error]: Online AI features require a Student Pro subscription. Please upgrade your account or switch to Offline mode.';
+      // FastAPI is authoritative for entitlements and re-checks the live account
+      // role on every request, including SQLAdmin upgrades and downgrades.
+      const chatPayload = tempMessages.map((m) => ({
+        role: m.sender as 'user' | 'assistant',
+        content: m.content,
+      }));
+      const cloudRes = await onlineChatSkill.sendChatMessage(chatPayload);
+      if (cloudRes.status === 'success' && cloudRes.data) {
+        aiReply = cloudRes.data.reply;
+      } else if (cloudRes.status === 'subscription_required') {
+        setIsOnlineMode(false);
+        aiReply = `[Cloud AI Error]: ${cloudRes.error || 'Online AI requires a Student Pro subscription.'}`;
+      } else if (cloudRes.status === 'auth_required') {
+        setIsOnlineMode(false);
+        aiReply = '[Cloud AI Error (auth_required)]: Cloud session expired. Link or sign in again from Profile. Offline mode remains available.';
       } else {
-        // Route through Online Assistant skill (DeepSeek-V4 Flash proxy)
-        const chatPayload = tempMessages.map((m) => ({
-          role: m.sender as 'user' | 'assistant',
-          content: m.content,
-        }));
-        const cloudRes = await onlineChatSkill.sendChatMessage(chatPayload);
-        if (cloudRes.status === 'success' && cloudRes.data) {
-          aiReply = cloudRes.data.reply;
-        } else if (cloudRes.status === 'subscription_required') {
-          aiReply = `[Cloud AI Error]: ${cloudRes.error || 'Online AI requires a Student Pro subscription.'}`;
-        } else if (cloudRes.status === 'auth_required') {
-          aiReply = '[Cloud AI Error (auth_required)]: Authentication required. Please sign in with your Student Pro account.';
-        } else {
-          aiReply = `[Cloud AI Error (${cloudRes.status})]: ${cloudRes.error || 'Unable to connect to online assistant.'}`;
-        }
+        aiReply = `[Cloud AI Error (${cloudRes.status})]: ${cloudRes.error || 'Unable to connect to online assistant.'}`;
       }
     } else {
       // Process Command via SmolLM2 Local LLM Chatbot (100% offline)

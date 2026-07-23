@@ -1,9 +1,9 @@
 import secrets
 from datetime import datetime, timedelta, timezone
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from backend.app.config import get_settings
 from backend.app.database import get_db
@@ -12,7 +12,7 @@ from backend.app.models.session import AuthSession
 from backend.app.models.recovery import RecoveryCode
 from backend.app.security.auth import (
     hash_password, verify_password, create_access_token, generate_refresh_token,
-    hash_token, get_current_user_and_session, validate_password_strength
+    hash_token, get_current_user_and_session, normalize_email, validate_password_strength
 )
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
@@ -20,7 +20,7 @@ settings = get_settings()
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=15, max_length=128)
+    password: str
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -33,7 +33,7 @@ class RefreshRequest(BaseModel):
 class RecoverRequest(BaseModel):
     email: EmailStr
     recovery_code: str
-    new_password: str = Field(min_length=15, max_length=128)
+    new_password: str
 
 class AuthTokenResponse(BaseModel):
     access_token: str
@@ -54,13 +54,15 @@ class UserProfileResponse(BaseModel):
 
 @router.post("/register", response_model=AuthTokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    stmt = select(Account).where(Account.email == req.email.lower())
+    validate_password_strength(req.password)
+    normalized_email = normalize_email(str(req.email))
+    stmt = select(Account).where(func.lower(Account.email) == normalized_email)
     res = await db.execute(stmt)
     if res.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Account with this email already exists.")
 
     password_hash = hash_password(req.password)
-    account = Account(email=req.email.lower(), password_hash=password_hash, role="student")
+    account = Account(email=normalized_email, password_hash=password_hash, role="student")
     db.add(account)
     await db.flush()
 
@@ -97,7 +99,9 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login", response_model=AuthTokenResponse)
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
-    stmt = select(Account).where(Account.email == req.email.lower())
+    validate_password_strength(req.password)
+    normalized_email = normalize_email(str(req.email))
+    stmt = select(Account).where(func.lower(Account.email) == normalized_email)
     res = await db.execute(stmt)
     account = res.scalar_one_or_none()
 
@@ -197,7 +201,8 @@ async def logout(
 async def recover(req: RecoverRequest, db: AsyncSession = Depends(get_db)):
     validate_password_strength(req.new_password)
 
-    account_stmt = select(Account).where(Account.email == req.email.lower())
+    normalized_email = normalize_email(str(req.email))
+    account_stmt = select(Account).where(func.lower(Account.email) == normalized_email)
     account_res = await db.execute(account_stmt)
     account = account_res.scalar_one_or_none()
 

@@ -38,13 +38,16 @@ if __name__ == "__main__":
         password_input = sys.argv[2]
     elif len(sys.argv) == 2:
         email_input = sys.argv[1]
-        password_input = getpass.getpass("Enter admin password (min 15 chars): ")
+        password_input = getpass.getpass("Enter admin password (min 6 chars): ")
     else:
         email_input = input("Enter admin email: ")
-        password_input = getpass.getpass("Enter admin password (min 15 chars): ")
+        password_input = getpass.getpass("Enter admin password (min 6 chars): ")
 
-    if len(password_input) < 15:
-        print("[Error] Password must be at least 15 characters long.")
+    if len(password_input) < 6:
+        print("[Error] Passwords must contain at least 6 characters.")
+        sys.exit(1)
+    if len(password_input) > 128:
+        print("[Error] Passwords must contain no more than 128 characters.")
         sys.exit(1)
 
     asyncio.run(create_admin(email_input, password_input))

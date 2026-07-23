@@ -1,7 +1,15 @@
 export { db } from './database';
 export type { QueryResult, DatabaseTransaction } from './database';
 export { initDatabase } from './dbInit';
-export { hashPassword, verifyPassword } from './authUtils';
+export {
+  hashPassword,
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  normalizeEmail,
+  validatePassword,
+  verifyPassword,
+} from './authUtils';
+export type { PasswordValidationResult } from './authUtils';
 export { userStore } from './userStore';
 export type { User } from './userStore';
 export { tasksStore } from './tasksStore';

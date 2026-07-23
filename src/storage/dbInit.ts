@@ -19,6 +19,9 @@ export const initDatabase = async (): Promise<void> => {
           time_format_24h INTEGER NOT NULL DEFAULT 0,
           week_starts_monday INTEGER NOT NULL DEFAULT 0,
           dark_mode INTEGER NOT NULL DEFAULT 0,
+          cloud_account_id TEXT,
+          cloud_linked INTEGER NOT NULL DEFAULT 0,
+          cloud_linked_at TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
         )
@@ -58,6 +61,8 @@ export const initDatabase = async (): Promise<void> => {
       tx.executeSync(`
         CREATE TABLE IF NOT EXISTS active_session (
           user_id TEXT PRIMARY KEY,
+          access_token TEXT,
+          refresh_token TEXT,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -291,7 +296,7 @@ export const initDatabase = async (): Promise<void> => {
       // Versioned schema migrations
       const versionResult = tx.executeSync('PRAGMA user_version');
       const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;
-      const TARGET_VERSION = 6;
+      const TARGET_VERSION = 7;
 
       if (currentVersion < TARGET_VERSION) {
         if (currentVersion < 1) {
@@ -317,11 +322,19 @@ export const initDatabase = async (): Promise<void> => {
           try { tx.executeSync('ALTER TABLE active_session ADD COLUMN created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP'); } catch {}
           try { tx.executeSync('ALTER TABLE active_session ADD COLUMN updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP'); } catch {}
         }
+        if (currentVersion < 7) {
+          try { tx.executeSync('ALTER TABLE users ADD COLUMN cloud_account_id TEXT'); } catch {}
+          try { tx.executeSync('ALTER TABLE users ADD COLUMN cloud_linked INTEGER NOT NULL DEFAULT 0'); } catch {}
+          try { tx.executeSync('ALTER TABLE users ADD COLUMN cloud_linked_at TEXT'); } catch {}
+          try { tx.executeSync('ALTER TABLE active_session ADD COLUMN access_token TEXT'); } catch {}
+          try { tx.executeSync('ALTER TABLE active_session ADD COLUMN refresh_token TEXT'); } catch {}
+        }
+
 
         tx.executeSync(`PRAGMA user_version = ${TARGET_VERSION}`);
       }
     });
-    console.log('Database schema initialized successfully (version 6).');
+    console.log('Database schema initialized successfully (version 7).');
   } catch (error) {
     console.error('Failed to initialize database schema:', error);
     throw error;

@@ -24,6 +24,7 @@ describe('syncWorker account role synchronization', () => {
       'securepass'
     );
     userStore.setCurrentUser(localUserId);
+    userStore.saveSessionTokens(localUserId, 'access-token', 'encrypted-refresh-token');
     db.executeSync('DELETE FROM sync_outbox');
 
     jest.spyOn(cloudClient, 'isOnline').mockResolvedValue(true);

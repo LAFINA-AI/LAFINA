@@ -4,6 +4,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import backend.app.admin
 from backend.app.main import app
 from backend.app.database import Base, get_db
 from backend.app.models.account import Account  # noqa: F401
@@ -34,7 +35,6 @@ TestingSessionLocal = async_sessionmaker(
     autoflush=False
 )
 
-import backend.app.admin
 backend.app.admin.AsyncSessionLocal = TestingSessionLocal
 
 @pytest_asyncio.fixture(scope="function", autouse=True)

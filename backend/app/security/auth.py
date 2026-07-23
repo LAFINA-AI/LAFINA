@@ -27,16 +27,21 @@ ph = PasswordHasher(
 security_scheme = HTTPBearer(auto_error=False)
 
 def validate_password_strength(password: str) -> None:
-    if len(password) < 15 or len(password) > 128:
+    """Validate the shared 6-128 character account password policy."""
+    if len(password) < 6:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be between 15 and 128 characters long."
+            detail="Passwords must contain at least 6 characters."
         )
-    if password.lower().strip() in settings.COMMON_PASSWORDS:
+    if len(password) > 128:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password is too common or easily guessable."
+            detail="Passwords must contain no more than 128 characters."
         )
+
+def normalize_email(email: str) -> str:
+    """Normalize an email for case-insensitive account lookup and persistence."""
+    return email.strip().lower()
 
 def hash_password(password: str) -> str:
     validate_password_strength(password)

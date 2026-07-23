@@ -7,11 +7,12 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { Mail, Lock, Check } from 'lucide-react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { userStore } from '../../storage';
-import { authService } from '../../cloud/authService';
+import { accountLinkService } from '../../cloud/accountLinkService';
 import { syncWorker } from '../../sync/syncWorker';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
@@ -79,37 +80,32 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     try {
       await new Promise<void>(resolve => setTimeout(resolve, 800));
-      
-      const user = await userStore.login(email.trim(), password);
-      if (user) {
-        userStore.setCurrentUser(user.id);
+
+      const result = await accountLinkService.login(email, password);
+      if (
+        (result.status === 'success' || result.status === 'local_only') &&
+        result.localUserId
+      ) {
         if (rememberMe) {
-          userStore.setRememberMe(true, email.trim());
+          userStore.setRememberMe(true, email.trim().toLowerCase());
         }
 
-        // Attempt cloud login if online; fallback to cloud registration if account doesn't exist in cloud DB
-        try {
-          const cloudLoginRes = await authService.login(email.trim(), password);
-          if (cloudLoginRes.status === 'success' && cloudLoginRes.data) {
-            userStore.updateUserRole(user.id, cloudLoginRes.data.role);
-            userStore.saveSessionTokens(user.id, cloudLoginRes.data.access_token, cloudLoginRes.data.refresh_token);
-          } else if (cloudLoginRes.status === 'validation_error' || cloudLoginRes.status === 'auth_required') {
-            const regRes = await authService.register(email.trim(), password);
-            if (regRes.status === 'success' && regRes.data) {
-              userStore.updateUserRole(user.id, regRes.data.role);
-              userStore.saveSessionTokens(user.id, regRes.data.access_token, regRes.data.refresh_token);
-            }
-          }
+        if (result.status === 'success') {
           syncWorker.performSync().catch(err => {
             console.warn('[LoginScreen] Background sync error:', err);
           });
-        } catch (cloudErr) {
-          console.warn('[LoginScreen] Cloud login skipped (offline mode):', cloudErr);
         }
 
-        onLoginSuccess(user.id);
+        if (result.status === 'local_only') {
+          Alert.alert(
+            'Signed In for Offline Mode',
+            `${result.message}\n\nUse Profile > Cloud Account to create or link FastAPI without changing your local password or data.`
+          );
+        }
+
+        onLoginSuccess(result.localUserId);
       } else {
-        setError('Invalid email or password');
+        setError(result.message);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An error occurred during login');

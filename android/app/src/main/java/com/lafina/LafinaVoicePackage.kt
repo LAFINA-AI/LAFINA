@@ -13,7 +13,8 @@ class LafinaVoicePackage : ReactPackage {
       LafinaIntentExtractorModule(reactContext),
       LafinaTTSModule(reactContext),
       LafinaReminderModule(reactContext),
-      AndroidKeystoreModule(reactContext)
+      AndroidKeystoreModule(reactContext),
+      AndroidConnectivityModule(reactContext)
     )
   }
 

@@ -7,11 +7,12 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { Mail, Lock, User } from 'lucide-react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
-import { userStore } from '../../storage';
-import { authService } from '../../cloud/authService';
+import { validatePassword } from '../../storage';
+import { accountLinkService } from '../../cloud/accountLinkService';
 import { syncWorker } from '../../sync/syncWorker';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
@@ -53,14 +54,43 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   const { colors } = useTheme();
   const themed = useThemedStyles((c) => getThemedStyles(c));
 
+  const completeRegistration = (userId: string, message?: string) => {
+    if (message) {
+      Alert.alert('Offline-Only Account', message);
+    }
+    onRegisterSuccess(userId);
+  };
+
+  const handleOfflineOnlyRegistration = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await accountLinkService.registerOfflineOnly({
+        username,
+        email,
+        password,
+      });
+      if (result.status === 'offline_only' && result.localUserId) {
+        completeRegistration(result.localUserId, result.message);
+      } else {
+        setError(result.message);
+      }
+    } catch (registrationError: unknown) {
+      setError(registrationError instanceof Error ? registrationError.message : 'Offline registration failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleRegister = async () => {
     if (!username.trim() || !email.trim() || !password || !confirmPassword) {
       setError('Please fill in all fields');
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long');
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      setError(passwordValidation.error);
       return;
     }
 
@@ -74,30 +104,42 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
     try {
       await new Promise<void>(resolve => setTimeout(resolve, 800));
-      const userId = await userStore.register(username.trim(), email.trim(), password);
-      userStore.setCurrentUser(userId);
+      const result = await accountLinkService.registerCloudFirst({
+        username,
+        email,
+        password,
+      });
 
-      // Attempt cloud registration if online
-      try {
-        const cloudRes = await authService.register(email.trim(), password);
-        if (cloudRes.status === 'success' && cloudRes.data) {
-          userStore.updateUserRole(userId, cloudRes.data.role);
-          userStore.saveSessionTokens(userId, cloudRes.data.access_token, cloudRes.data.refresh_token);
-        } else if (cloudRes.status === 'validation_error' && cloudRes.error?.includes('already exists')) {
-          const loginRes = await authService.login(email.trim(), password);
-          if (loginRes.status === 'success' && loginRes.data) {
-            userStore.updateUserRole(userId, loginRes.data.role);
-            userStore.saveSessionTokens(userId, loginRes.data.access_token, loginRes.data.refresh_token);
-          }
-        }
+      if (result.status === 'offline' || result.status === 'server_unavailable') {
+        setLoading(false);
+        Alert.alert(
+          result.status === 'offline' ? 'Device Offline' : 'FastAPI Unavailable',
+          `${result.message}\n\nYou can cancel and try again, or explicitly create an offline-only account.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Create Offline-Only Account',
+              onPress: handleOfflineOnlyRegistration,
+            },
+          ]
+        );
+        return;
+      }
+
+      if (result.status === 'success' && result.localUserId) {
         syncWorker.performSync().catch(err => {
           console.warn('[RegisterScreen] Background sync error:', err);
         });
-      } catch (cloudErr) {
-        console.warn('[RegisterScreen] Cloud registration skipped (offline mode):', cloudErr);
+        completeRegistration(result.localUserId);
+        return;
       }
 
-      onRegisterSuccess(userId);
+      if (result.status === 'local_only' && result.localUserId) {
+        completeRegistration(result.localUserId, result.message);
+        return;
+      }
+
+      setError(result.message);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {

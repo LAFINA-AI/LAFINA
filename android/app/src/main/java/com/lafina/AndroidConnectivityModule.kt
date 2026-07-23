@@ -1,0 +1,39 @@
+package com.lafina
+
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import com.facebook.react.bridge.Promise
+import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReactContextBaseJavaModule
+import com.facebook.react.bridge.ReactMethod
+
+class AndroidConnectivityModule(
+    reactContext: ReactApplicationContext
+) : ReactContextBaseJavaModule(reactContext) {
+
+    override fun getName(): String = "AndroidConnectivityModule"
+
+    @ReactMethod
+    fun isOnline(promise: Promise) {
+        try {
+            val manager = reactApplicationContext.getSystemService(
+                Context.CONNECTIVITY_SERVICE
+            ) as ConnectivityManager
+            val activeNetwork = manager.activeNetwork
+            if (activeNetwork == null) {
+                promise.resolve(false)
+                return
+            }
+            val capabilities = manager.getNetworkCapabilities(activeNetwork)
+            val online = capabilities?.hasCapability(
+                NetworkCapabilities.NET_CAPABILITY_INTERNET
+            ) == true && capabilities.hasCapability(
+                NetworkCapabilities.NET_CAPABILITY_VALIDATED
+            )
+            promise.resolve(online)
+        } catch (error: Exception) {
+            promise.reject("CONNECTIVITY_CHECK_ERROR", error.message, error)
+        }
+    }
+}
