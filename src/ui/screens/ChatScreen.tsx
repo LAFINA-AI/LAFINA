@@ -284,8 +284,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.blue,
   },
   headerLeft: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    marginRight: 8,
   },
   headerLogo: {
     width: 38,
@@ -293,6 +295,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   headerTextContainer: {
+    flex: 1,
     flexDirection: 'column',
     justifyContent: 'center',
   },
@@ -349,9 +352,9 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   modeToggleBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderWidth: 1,
     borderColor: '#FFFFFF',
@@ -363,6 +366,11 @@ const styles = StyleSheet.create({
   modeToggleText: {
     fontSize: 11,
     fontFamily: Fonts.heading,
+    fontWeight: '600',
     color: '#FFFFFF',
+  },
+  modeToggleTextActive: {
+    color: Colors.blue,
+    fontWeight: 'bold',
   },
 });
