@@ -11,6 +11,8 @@ import {
 import { Mail, Lock, User } from 'lucide-react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { userStore } from '../../storage';
+import { authService } from '../../cloud/authService';
+import { syncWorker } from '../../sync/syncWorker';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import type { ThemeColors } from '../contexts/ThemeContext';
@@ -74,6 +76,20 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
       await new Promise<void>(resolve => setTimeout(resolve, 800));
       const userId = await userStore.register(username.trim(), email.trim(), password);
       userStore.setCurrentUser(userId);
+
+      // Attempt cloud registration if online
+      try {
+        const cloudRes = await authService.register(email.trim(), password);
+        if (cloudRes.status === 'validation_error' && cloudRes.error?.includes('already exists')) {
+          await authService.login(email.trim(), password);
+        }
+        syncWorker.performSync().catch(err => {
+          console.warn('[RegisterScreen] Background sync error:', err);
+        });
+      } catch (cloudErr) {
+        console.warn('[RegisterScreen] Cloud registration skipped (offline mode):', cloudErr);
+      }
+
       onRegisterSuccess(userId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Registration failed');

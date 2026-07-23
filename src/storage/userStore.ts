@@ -2,6 +2,7 @@ import { generateId } from '../utils';
 import { db } from './database';
 import { hashPassword, verifyPassword } from './authUtils';
 import { GUEST_USER_ID, GUEST_USERNAME } from '../constants';
+import { syncOutboxStore } from './syncOutboxStore';
 
 export interface User {
   id: string;
@@ -103,6 +104,16 @@ export const userStore = {
         `INSERT INTO users (id, username, email, password_hash, role, is_new_user, time_format_24h, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, username, email, hash, 'user', 1, 0, now, now]
       );
+      try {
+        syncOutboxStore.enqueueMutation('profile', id, 'create', {
+          username,
+          time_format_24h: false,
+          week_starts_monday: false,
+          dark_mode: false,
+        });
+      } catch (e) {
+        console.warn('Failed to enqueue profile mutation to outbox:', e);
+      }
       return id;
     } catch (error) {
       console.error('Error registering user:', error);

@@ -11,6 +11,8 @@ import {
 import { Mail, Lock, Check } from 'lucide-react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { userStore } from '../../storage';
+import { authService } from '../../cloud/authService';
+import { syncWorker } from '../../sync/syncWorker';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import type { ThemeColors } from '../contexts/ThemeContext';
@@ -84,6 +86,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         if (rememberMe) {
           userStore.setRememberMe(true, email.trim());
         }
+
+        // Attempt cloud login if online; fallback to cloud registration if account doesn't exist in cloud DB
+        try {
+          const cloudLoginRes = await authService.login(email.trim(), password);
+          if (cloudLoginRes.status === 'validation_error' || cloudLoginRes.status === 'auth_required') {
+            await authService.register(email.trim(), password);
+          }
+          syncWorker.performSync().catch(err => {
+            console.warn('[LoginScreen] Background sync error:', err);
+          });
+        } catch (cloudErr) {
+          console.warn('[LoginScreen] Cloud login skipped (offline mode):', cloudErr);
+        }
+
         onLoginSuccess(user.id);
       } else {
         setError('Invalid email or password');
