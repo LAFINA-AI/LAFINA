@@ -7,10 +7,13 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { Mail, Lock, Check } from 'lucide-react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { userStore } from '../../storage';
+import { accountLinkService } from '../../cloud/accountLinkService';
+import { syncWorker } from '../../sync/syncWorker';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import type { ThemeColors } from '../contexts/ThemeContext';
@@ -77,16 +80,32 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     try {
       await new Promise<void>(resolve => setTimeout(resolve, 800));
-      
-      const user = await userStore.login(email.trim(), password);
-      if (user) {
-        userStore.setCurrentUser(user.id);
+
+      const result = await accountLinkService.login(email, password);
+      if (
+        (result.status === 'success' || result.status === 'local_only') &&
+        result.localUserId
+      ) {
         if (rememberMe) {
-          userStore.setRememberMe(true, email.trim());
+          userStore.setRememberMe(true, email.trim().toLowerCase());
         }
-        onLoginSuccess(user.id);
+
+        if (result.status === 'success') {
+          syncWorker.performSync().catch(err => {
+            console.warn('[LoginScreen] Background sync error:', err);
+          });
+        }
+
+        if (result.status === 'local_only') {
+          Alert.alert(
+            'Signed In for Offline Mode',
+            `${result.message}\n\nUse Profile > Cloud Account to create or link FastAPI without changing your local password or data.`
+          );
+        }
+
+        onLoginSuccess(result.localUserId);
       } else {
-        setError('Invalid email or password');
+        setError(result.message);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An error occurred during login');

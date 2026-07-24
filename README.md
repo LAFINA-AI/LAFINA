@@ -95,3 +95,83 @@ To learn more about React Native, take a look at the following resources:
 - [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
 - [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
 - [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+
+---
+
+# LAFINA Backend (FastAPI & PostgreSQL)
+
+LAFINA includes an offline-first FastAPI backend providing cloud account authentication, PostgreSQL synchronization, and DeepSeek-V4 Flash online assistant proxying.
+
+## Backend Prerequisites
+- Python 3.12+
+- PostgreSQL database (optional for local testing; SQLite in-memory fallback is used during pytest)
+
+## 1. Install Backend Dependencies
+From the repository root:
+```sh
+pip install -r backend/requirements.txt
+```
+
+## 2. Environment Variables & Production Deployment
+Create a `.env` file in the root directory (or inside `backend/`):
+```env
+ENVIRONMENT=development
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/lafina
+JWT_ISSUER=lafina-auth
+JWT_AUDIENCE=lafina-app
+DEEPSEEK_API_KEY=sk-your-deepseek-api-key
+```
+*(Note: If RS256 RSA keys are omitted in development, temporary keys are generated automatically on startup).*
+
+### DeepSeek API Key Production Setup (Render)
+1. **Generate Key**: Create an API key through the official [DeepSeek Platform](https://platform.deepseek.com/).
+2. **Configure Environment Secret**: In your Render dashboard, navigate to Environment Variables and add `DEEPSEEK_API_KEY` as a secret environment variable.
+3. **Set Production Mode**: Set `ENVIRONMENT=production`. When `ENVIRONMENT=production`, backend startup will fail fast if `DEEPSEEK_API_KEY` is missing or set to a placeholder value.
+4. **Client Security Standard**: **NEVER** place the DeepSeek API key in React Native client configuration, source control, screenshots, logs, or client requests. The mobile app communicates strictly with the FastAPI `/v1/ai/chat` endpoint and never sees or receives provider credentials.
+5. **Key Rotation Procedure**:
+   - Create a new key on the DeepSeek Platform.
+   - Update the `DEEPSEEK_API_KEY` secret environment variable in Render.
+   - Redeploy the web service successfully.
+   - Revoke the previous key on the DeepSeek Platform.
+
+
+## 3. Creating Admin Accounts (No Hardcoded Credentials)
+To create an admin account or promote an existing account without hardcoding passwords:
+
+**Option A: Using the Secure Admin CLI (Interactive Prompt)**
+```sh
+python -m backend.scripts.create_admin
+```
+*(Prompts interactively for `admin email` and `password` without storing or echoing them).*
+
+**Option B: Via Environment Variables in `.env`**
+```env
+ADMIN_EMAIL=youradmin@domain.com
+ADMIN_PASSWORD=your-secure-min-15-char-password
+```
+
+## 4. Database Migrations (PostgreSQL)
+Run Alembic migrations to apply PostgreSQL table schemas and Row-Level Security (RLS) policies:
+```sh
+python -m alembic -c backend/alembic.ini upgrade head
+```
+
+## 5. Run Development Server
+Start FastAPI server with auto-reload:
+```sh
+python -m uvicorn backend.app.main:app --reload --port 8000
+```
+- **OpenAPI Interactive Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **SQLAdmin Studio (Secure Admin UI)**: [http://localhost:8000/admin](http://localhost:8000/admin) (Requires logging in with an active account having `role == "admin"`).
+
+## 6. Run Backend Tests & Linting
+Run the Pytest suite (covers Auth, RS256 JWT, Argon2id, Sync LWW ordering, and DeepSeek proxy):
+```sh
+python -m pytest backend/tests
+```
+
+Run Ruff linter check:
+```sh
+python -m ruff check backend
+```
+

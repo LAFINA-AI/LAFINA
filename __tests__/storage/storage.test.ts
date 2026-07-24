@@ -5,7 +5,7 @@ import { tasksStore } from '../../src/storage/tasksStore';
 import { notesStore } from '../../src/storage/notesStore';
 import { userStore } from '../../src/storage/userStore';
 import { behaviorStore } from '../../src/storage/behaviorStore';
-import { hashPassword, verifyPassword } from '../../src/storage/authUtils';
+import { hashPassword, normalizeEmail, validatePassword, verifyPassword } from '../../src/storage/authUtils';
 
 describe('Storage Layer', () => {
   beforeAll(async () => {
@@ -400,6 +400,29 @@ describe('Storage Layer', () => {
       const isNotMatch = await verifyPassword('wrongpassword', hash);
       expect(isNotMatch).toBe(false);
     });
+
+    it('enforces the shared 6-128 character mobile password policy', () => {
+      expect(validatePassword('12345')).toEqual({
+        isValid: false,
+        error: 'Passwords must contain at least 6 characters.',
+      });
+      expect(validatePassword('123456')).toEqual({
+        isValid: true,
+        error: null,
+      });
+      expect(validatePassword('x'.repeat(128))).toEqual({
+        isValid: true,
+        error: null,
+      });
+      expect(validatePassword('x'.repeat(129))).toEqual({
+        isValid: false,
+        error: 'Passwords must contain no more than 128 characters.',
+      });
+    });
+
+    it('normalizes email case and surrounding whitespace', () => {
+      expect(normalizeEmail('  Student@USTP.EDU.PH ')).toBe('student@ustp.edu.ph');
+    });
   });
 
   describe('userStore', () => {
@@ -434,6 +457,18 @@ describe('Storage Layer', () => {
       ).rejects.toThrow('Email already registered');
     });
 
+    it('accepts a six-character password and rejects over 128 characters', async () => {
+      const userId = await userStore.register(
+        'Six Character User', 'six-local@ustp.edu.ph', 'abc123'
+      );
+      expect(await userStore.login('SIX-LOCAL@USTP.EDU.PH', 'abc123')).toMatchObject({
+        id: userId,
+      });
+      await expect(userStore.register(
+        'Long Password User', 'long-local@ustp.edu.ph', 'x'.repeat(129)
+      )).rejects.toThrow('no more than 128 characters');
+    });
+
     it('can authenticate a user on login', async () => {
       await userStore.register('Login User', 'login@ustp.edu.ph', 'securepass');
       
@@ -449,6 +484,20 @@ describe('Storage Layer', () => {
       // Wrong email
       const wrongEmail = await userStore.login('nonexistent@ustp.edu.ph', 'securepass');
       expect(wrongEmail).toBeNull();
+    });
+
+    it('updates the role on the matching local SQLite user', async () => {
+      const localUserId = await userStore.register(
+        'Student Pro User',
+        'student-pro@ustp.edu.ph',
+        'securepass'
+      );
+      const unrelatedCloudAccountId = '3ce7cc43-e4da-4b82-b4cd-070dbf7b8369';
+
+      userStore.updateUserRole(localUserId, 'student_pro');
+
+      expect(userStore.getUserById(localUserId)?.role).toBe('student_pro');
+      expect(userStore.getUserById(unrelatedCloudAccountId)).toBeNull();
     });
 
     it('can manage user sessions', async () => {

@@ -11,6 +11,7 @@ import {
   DeviceEventEmitter,
   Alert,
   PermissionsAndroid,
+  AppState,
 } from 'react-native';
 import type { AlertButton } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -28,6 +29,7 @@ import {
   reconcileReminderAlarms,
 } from './src/scheduler';
 import type { NativeCallAction, NativeCallTrigger } from './src/scheduler';
+import { accountLinkService } from './src/cloud/accountLinkService';
 
 
 // Screens
@@ -170,6 +172,11 @@ function AppContent({
         if (currentUser) {
           setUserId(currentUser.id);
           setIsOnboarding(currentUser.isNewUser);
+          accountLinkService.refreshCloudProfile(currentUser.id).then((result) => {
+            if (result.status === 'success') {
+              setRefreshTrigger((previous) => previous + 1);
+            }
+          }).catch(() => undefined);
         }
 
         // Simulate a minor visual delay for the premium splash screen display
@@ -191,6 +198,23 @@ function AppContent({
       }
     };
   }, [setUserId]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active' || !userId) {
+        return;
+      }
+      accountLinkService.refreshCloudProfile(userId).then((result) => {
+        if (result.status === 'success') {
+          setRefreshTrigger((previous) => previous + 1);
+        }
+      }).catch(() => undefined);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [userId]);
 
   const triggerRefresh = () => {
     setRefreshTrigger((prev) => prev + 1);

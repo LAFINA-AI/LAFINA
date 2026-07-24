@@ -15,7 +15,12 @@ import { Fonts, Colors } from '../theme';
 import { chatStore } from '../../storage';
 import { LAFINA_LOGO_CHAT_HEADER_XML } from '../../assets/lafina_logo_chat_header_xml';
 import type { ChatMessage } from '../../storage';
-import { runLocalLlmChat } from '../../ai';
+import {
+  runLocalLlmChat,
+  createFallbackNluResult,
+  normalizeTranscript,
+  applyNluScheduleResult,
+} from '../../ai';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import type { ThemeColors } from '../contexts/ThemeContext';
 import { generateId } from '../../utils';
@@ -23,6 +28,9 @@ import { generateId } from '../../utils';
 // Chat sub-components
 import { ChatMessageItem } from '../components/chat/ChatMessageItem';
 import { ChatInput } from '../components/chat/ChatInput';
+
+import { onlineChatSkill } from '../../skills/onlineChatSkill';
+import { accountLinkService } from '../../cloud/accountLinkService';
 
 interface ChatScreenProps {
   userId: string;
@@ -38,6 +46,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [isOnlineMode, setIsOnlineMode] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const themed = useThemedStyles((c) => getChatThemedStyles(c));
@@ -62,6 +71,34 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: false });
     }, 100);
+  };
+
+  const handleToggleOnline = async () => {
+    if (!isOnlineMode) {
+      const authorization = await accountLinkService.authorizeOnlineMode(userId);
+      if (authorization.status === 'student_pro_required') {
+        Alert.alert(
+          'Student Pro Required',
+          `${authorization.message}\n\nOffline Chat and offline scheduling remain available.`
+        );
+        return;
+      }
+      if (authorization.status !== 'success') {
+        const needsAuthentication = authorization.status === 'auth_required';
+        const unavailable = authorization.status === 'offline' ||
+          authorization.status === 'server_unavailable';
+        Alert.alert(
+          needsAuthentication
+            ? 'Cloud Authentication Required'
+            : unavailable ? 'Online Service Unavailable' : 'Online Mode Unavailable',
+          `${authorization.message}\n\n${needsAuthentication
+            ? 'Use Profile > Cloud Account to sign in or link FastAPI.'
+            : 'Offline Chat and offline scheduling remain available.'}`
+        );
+        return;
+      }
+    }
+    setIsOnlineMode(!isOnlineMode);
   };
 
   const handleSend = async () => {
@@ -95,8 +132,43 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     setMessages(tempMessages);
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
-    // 2. Process Command via SmolLM2 Local LLM Chatbot
-    const aiReply = await runLocalLlmChat(userText, userId);
+    let aiReply = '';
+    if (isOnlineMode) {
+      // Apply scheduling actions locally if user message expresses scheduling intent
+      const normalizedUserText = normalizeTranscript(userText);
+      const scheduleNlu = createFallbackNluResult(normalizedUserText);
+      let localScheduleReply: string | null = null;
+      if (scheduleNlu.intent === 'schedule') {
+        const scheduleRes = applyNluScheduleResult(scheduleNlu, userId);
+        if (scheduleRes.didUpdate) {
+          localScheduleReply = scheduleRes.reply;
+        }
+      }
+
+      // FastAPI is authoritative for entitlements and re-checks the live account
+      // role on every request, including SQLAdmin upgrades and downgrades.
+      const chatPayload = tempMessages.map((m) => ({
+        role: m.sender as 'user' | 'assistant',
+        content: m.content,
+      }));
+      const cloudRes = await onlineChatSkill.sendChatMessage(chatPayload);
+      if (cloudRes.status === 'success' && cloudRes.data) {
+        aiReply = localScheduleReply ?? cloudRes.data.reply;
+      } else if (localScheduleReply) {
+        aiReply = localScheduleReply;
+      } else if (cloudRes.status === 'subscription_required') {
+        setIsOnlineMode(false);
+        aiReply = `[Cloud AI Error]: ${cloudRes.error || 'Online AI requires a Student Pro subscription.'}`;
+      } else if (cloudRes.status === 'auth_required') {
+        setIsOnlineMode(false);
+        aiReply = '[Cloud AI Error (auth_required)]: Cloud session expired. Link or sign in again from Profile. Offline mode remains available.';
+      } else {
+        aiReply = `[Cloud AI Error (${cloudRes.status})]: ${cloudRes.error || 'Unable to connect to online assistant.'}`;
+      }
+    } else {
+      // Process Command via SmolLM2 Local LLM Chatbot (100% offline)
+      aiReply = await runLocalLlmChat(userText, userId);
+    }
 
     // 3. Insert AI Response
     const aiMsgId = generateId('msg');
@@ -151,10 +223,20 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           />
           <View style={styles.headerTextContainer}>
             <Text style={styles.headerTitle}>LAFINA Assistant</Text>
-            <Text style={styles.headerSubtitle}>Offline NLU Scheduler</Text>
+            <Text style={styles.headerSubtitle} numberOfLines={1} ellipsizeMode="tail">
+              {isOnlineMode ? 'Online Assistant (DeepSeek-V4)' : 'Offline NLU Scheduler'}
+            </Text>
           </View>
         </View>
         <View style={styles.headerRight}>
+          <TouchableOpacity
+            onPress={handleToggleOnline}
+            style={[styles.modeToggleBtn, isOnlineMode && styles.modeToggleActive]}
+          >
+            <Text style={[styles.modeToggleText, isOnlineMode && styles.modeToggleTextActive]}>
+              {isOnlineMode ? 'Online' : 'Offline'}
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleClearChat} style={styles.headerIconBtn}>
             <View style={styles.plusCircle}>
               <Plus size={16} color="#FFFFFF" />
@@ -220,8 +302,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.blue,
   },
   headerLeft: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    marginRight: 8,
   },
   headerLogo: {
     width: 38,
@@ -229,6 +313,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   headerTextContainer: {
+    flex: 1,
     flexDirection: 'column',
     justifyContent: 'center',
   },
@@ -283,5 +368,27 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     marginTop: 6,
     fontStyle: 'italic',
+  },
+  modeToggleBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    marginRight: 6,
+  },
+  modeToggleActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  modeToggleText: {
+    fontSize: 11,
+    fontFamily: Fonts.heading,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  modeToggleTextActive: {
+    color: Colors.blue,
+    fontWeight: 'bold',
   },
 });

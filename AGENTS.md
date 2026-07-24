@@ -88,6 +88,7 @@ lafina/
 - Docstrings on all public methods
 
 ### General
+- Never look at, view, read, or analyze `.env` files — they contain sensitive data. Never inspect `.env` contents under any circumstances.
 - Never hardcode API keys, passwords, or secrets — use `.env` files and environment variables
 - Never commit `.env` files — `.gitignore` must exclude them
 - All async operations must have proper error handling with try/catch
@@ -211,6 +212,9 @@ These rules exist specifically to stop agents from going off-track on this proje
 
 8. **One task at a time.** Complete and test a task fully before moving to the next one.
    Do not batch unrelated changes into one commit.
+
+9. **Never look at or analyze `.env` files.** `.env` files contain sensitive data (API keys, secrets, credentials).
+   Agents must never attempt to read, view, parse, or analyze `.env` files under any circumstances.
 
 ---
 
