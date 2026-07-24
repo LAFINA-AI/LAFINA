@@ -15,7 +15,12 @@ import { Fonts, Colors } from '../theme';
 import { chatStore } from '../../storage';
 import { LAFINA_LOGO_CHAT_HEADER_XML } from '../../assets/lafina_logo_chat_header_xml';
 import type { ChatMessage } from '../../storage';
-import { runLocalLlmChat } from '../../ai';
+import {
+  runLocalLlmChat,
+  createFallbackNluResult,
+  normalizeTranscript,
+  applyNluScheduleResult,
+} from '../../ai';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import type { ThemeColors } from '../contexts/ThemeContext';
 import { generateId } from '../../utils';
@@ -129,6 +134,17 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
 
     let aiReply = '';
     if (isOnlineMode) {
+      // Apply scheduling actions locally if user message expresses scheduling intent
+      const normalizedUserText = normalizeTranscript(userText);
+      const scheduleNlu = createFallbackNluResult(normalizedUserText);
+      let localScheduleReply: string | null = null;
+      if (scheduleNlu.intent === 'schedule') {
+        const scheduleRes = applyNluScheduleResult(scheduleNlu, userId);
+        if (scheduleRes.didUpdate) {
+          localScheduleReply = scheduleRes.reply;
+        }
+      }
+
       // FastAPI is authoritative for entitlements and re-checks the live account
       // role on every request, including SQLAdmin upgrades and downgrades.
       const chatPayload = tempMessages.map((m) => ({
@@ -137,7 +153,9 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       }));
       const cloudRes = await onlineChatSkill.sendChatMessage(chatPayload);
       if (cloudRes.status === 'success' && cloudRes.data) {
-        aiReply = cloudRes.data.reply;
+        aiReply = localScheduleReply ?? cloudRes.data.reply;
+      } else if (localScheduleReply) {
+        aiReply = localScheduleReply;
       } else if (cloudRes.status === 'subscription_required') {
         setIsOnlineMode(false);
         aiReply = `[Cloud AI Error]: ${cloudRes.error || 'Online AI requires a Student Pro subscription.'}`;

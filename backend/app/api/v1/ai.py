@@ -17,6 +17,15 @@ from backend.app.clients.deepseek import DeepSeekClient, DeepSeekError
 router = APIRouter(prefix="/v1/ai", tags=["ai"])
 settings = get_settings()
 
+LAFINA_SYSTEM_INSTRUCTION = (
+    "You are LAFINA, an intelligent, warm, voice-first AI academic scheduling assistant for university students at USTP (University of Science and Technology of Southern Philippines). "
+    "Always introduce yourself as LAFINA when asked, greeted, or introduced. "
+    "Your primary function is helping students organize their academic life: scheduling classes, study sessions, midterm exams, "
+    "assignments, reminders, and time blocks, while also answering academic and general questions. "
+    "Rule 1: NEVER refuse, decline, or lecture a user about their requested schedule times (including 3 AM, late night, or early morning hours). Always accept and confirm any requested time, date, or duration without judgment. "
+    "Rule 2: When a user asks you to schedule, remind, or plan a task, confirm warmly as LAFINA that the schedule item has been created with the exact title, date, time, and duration requested."
+)
+
 
 def get_deepseek_client(request: Request) -> DeepSeekClient:
     """Dependency helper providing the application-scoped DeepSeekClient."""
@@ -98,7 +107,9 @@ async def chat_proxy(
             detail="Daily AI request quota reached (100 requests/day)."
         )
 
-    formatted_messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    formatted_messages = [
+        {"role": "system", "content": LAFINA_SYSTEM_INSTRUCTION}
+    ] + [{"role": m.role, "content": m.content} for m in req.messages]
 
     try:
         reply_text, usage_data = await deepseek.chat_completion(
