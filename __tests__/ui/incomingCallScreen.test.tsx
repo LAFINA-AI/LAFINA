@@ -36,11 +36,22 @@ jest.mock('../../src/scheduler', () => ({
   })),
   manualAcknowledgeCall: jest.fn().mockResolvedValue(undefined),
   manualSnoozeCall: jest.fn().mockResolvedValue(undefined),
+  prepareCallSpeech: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock('../../src/cloud/speechService', () => ({
+  createCallSpeechProvider: jest.fn(() => ({
+    speakText: jest.fn().mockResolvedValue({ source: 'gemini' }),
+    stopSpeech: jest.fn().mockResolvedValue(undefined),
+    prepareText: jest.fn().mockResolvedValue(undefined),
+    dispose: jest.fn().mockResolvedValue(undefined),
+  })),
 }));
 
 const schedulerMock = jest.requireMock('../../src/scheduler') as {
   answerCall: jest.Mock;
   declineCall: jest.Mock;
+  prepareCallSpeech: jest.Mock;
 };
 
 let stateListener: ((event: CallStateEvent) => void) | null = null;
@@ -292,10 +303,16 @@ describe('incoming reminder call presentation', () => {
     ReactTestRenderer.act(() => answerButton.props.onPress());
     await ReactTestRenderer.act(flushPromises);
 
+    expect(schedulerMock.prepareCallSpeech).toHaveBeenCalledWith(
+      expect.any(Object),
+      'Compiler Design midterm',
+      10,
+    );
     expect(schedulerMock.answerCall).toHaveBeenCalledWith(
       'rem-call-ui',
       'student-1',
       true,
+      expect.any(Object),
     );
     expect(getRenderedText(renderer)).toContain('ACTIVE SCHEDULED CALL');
 

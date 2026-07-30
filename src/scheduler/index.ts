@@ -13,6 +13,7 @@ export {
   autoSnoozeCall,
   manualSnoozeCall,
   manualAcknowledgeCall,
+  prepareCallSpeech,
 } from './callDispatcher';
 export {
   scheduleReminderAlarm,
@@ -46,3 +47,5 @@ export type {
 } from './callDispatcher';
 export { refreshPendingReminderLeadTimes } from './reminderPreferenceSync';
 export type { ReminderPreferenceRefreshResult } from './reminderPreferenceSync';
+export { defaultCallSpeechProvider } from './speechProvider';
+export type { CallSpeechProvider, CallSpeechResult } from './speechProvider';

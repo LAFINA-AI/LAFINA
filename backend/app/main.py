@@ -9,15 +9,19 @@ import backend.app.models  # noqa: F401
 from backend.app.api.v1 import auth, sync, ai
 from backend.app.admin import setup_admin
 from backend.app.clients.deepseek import DeepSeekClient
+from backend.app.clients.gemini_tts import GeminiTtsClient
 
 settings = get_settings()
 deepseek_client = DeepSeekClient(settings=settings)
+gemini_tts_client = GeminiTtsClient(settings=settings)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize DeepSeek HTTP client pool
+    # Initialize HTTP client pools
     await deepseek_client.start()
+    await gemini_tts_client.start()
     app.state.deepseek_client = deepseek_client
+    app.state.gemini_tts_client = gemini_tts_client
 
     # Auto-create tables in dev/test environment if PostgreSQL is available
     try:
@@ -31,6 +35,7 @@ async def lifespan(app: FastAPI):
         print(f"[Warning] Startup initialization note: {e}")
     yield
     await deepseek_client.close()
+    await gemini_tts_client.close()
     await engine.dispose()
 
 

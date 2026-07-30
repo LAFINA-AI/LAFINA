@@ -22,9 +22,11 @@ import {
   getReminderPreferences,
   manualAcknowledgeCall,
   manualSnoozeCall,
+  prepareCallSpeech,
 } from '../../scheduler';
 import type {
   CallResolution,
+  CallSpeechProvider,
   CallState,
   CallStateEvent,
   NativeCallAction,
@@ -34,6 +36,8 @@ import { Fonts, Shadows } from '../theme';
 import { useTheme } from '../contexts/ThemeContext';
 
 const lafinaLogo = require('../../assets/lafina_default_logo.png');
+
+import { createCallSpeechProvider } from '../../cloud/speechService';
 
 interface IncomingCallScreenProps {
   visible: boolean;
@@ -63,6 +67,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
   const resultTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedActionRef = useRef('');
   const closingRef = useRef(false);
+  const speechProviderRef = useRef<CallSpeechProvider | null>(null);
 
   const clearResultTimeout = useCallback((): void => {
     if (resultTimeoutRef.current) {
@@ -93,12 +98,23 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
     if (visible) {
       closingRef.current = false;
       resetPresentation();
-      setSnoozeMinutes(getReminderPreferences(userId).snoozeDurationMinutes);
-      return;
+      const defaultSnoozeMinutes =
+        getReminderPreferences(userId).snoozeDurationMinutes;
+      setSnoozeMinutes(defaultSnoozeMinutes);
+      const speechProvider = createCallSpeechProvider(userId);
+      speechProviderRef.current = speechProvider;
+      void prepareCallSpeech(speechProvider, task, defaultSnoozeMinutes);
+      return () => {
+        if (speechProviderRef.current === speechProvider) {
+          speechProviderRef.current = null;
+        }
+        void speechProvider.dispose?.().catch(() => undefined);
+      };
     }
 
     resetPresentation();
-  }, [reminderId, resetPresentation, userId, visible]);
+    return undefined;
+  }, [reminderId, resetPresentation, task, userId, visible]);
 
   useEffect(() => {
     let animLoop: Animated.CompositeAnimation | null = null;
@@ -203,7 +219,9 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
     }
 
     try {
-      await answerCall(reminderId, userId, microphoneGranted);
+      const speechProvider =
+        speechProviderRef.current || createCallSpeechProvider(userId);
+      await answerCall(reminderId, userId, microphoneGranted, speechProvider);
       if (!microphoneGranted) {
         setReply(
           'Microphone permission is unavailable. Use Acknowledge or Snooze below.',

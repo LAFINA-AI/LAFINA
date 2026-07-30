@@ -57,12 +57,21 @@ class Settings(BaseSettings):
     MAX_REGISTRATIONS_PER_IP_PER_HOUR: int = 100
     MAX_AI_REQUESTS_PER_MIN: int = 10
     MAX_AI_REQUESTS_PER_DAY: int = 100
+    MAX_TTS_REQUESTS_PER_MIN: int = 10
+    MAX_TTS_REQUESTS_PER_DAY: int = 100
 
     # DeepSeek API Configuration
     DEEPSEEK_API_KEY: SecretStr | None = None
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-v4-flash"
     DEEPSEEK_TIMEOUT_SECONDS: float = 120.0
+
+    # Gemini TTS Configuration
+    GEMINI_API_KEY: SecretStr | None = None
+    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com"
+    GEMINI_TTS_MODEL: str = "gemini-3.1-flash-tts-preview"
+    GEMINI_TTS_VOICE: str = "Aoede"
+    GEMINI_TTS_TIMEOUT_SECONDS: float = 20.0
 
     # Password blocklist (common passwords to reject)
     COMMON_PASSWORDS: set[str] = {
@@ -82,6 +91,19 @@ class Settings(BaseSettings):
 
     def is_deepseek_key_valid(self) -> bool:
         return self.get_deepseek_key_invalid_reason() is None
+
+    def get_gemini_key_invalid_reason(self) -> str | None:
+        if self.GEMINI_API_KEY is None:
+            return "GEMINI_API_KEY environment variable is not set (None)"
+        raw_key = self.GEMINI_API_KEY.get_secret_value().strip().strip("'\"")
+        if not raw_key:
+            return "GEMINI_API_KEY is blank or empty"
+        if raw_key.lower() in INVALID_PLACEHOLDER_KEYS:
+            return f"GEMINI_API_KEY is set to a placeholder value ('{raw_key}')"
+        return None
+
+    def is_gemini_key_valid(self) -> bool:
+        return self.get_gemini_key_invalid_reason() is None
 
     @model_validator(mode="after")
     def validate_deepseek_config(self) -> "Settings":

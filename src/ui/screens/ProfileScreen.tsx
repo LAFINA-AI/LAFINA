@@ -138,20 +138,25 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     }
     setTtsTesting(true);
     try {
-      const { isTtsAvailable, speakTextWithTts } = require('../../ai');
-      if (!isTtsAvailable()) {
-        Alert.alert(
-          'TTS Unavailable',
-          'The native Kokoro TTS module is not linked. Rebuild the Android app and try again.'
-        );
-        return;
-      }
+      const { createCallSpeechProvider } = require('../../cloud/speechService');
+      const provider = createCallSpeechProvider(userId);
+
       Alert.alert(
         'Synthesizing…',
-        'First run loads the on-device voice model (may take 10–30s). Keep media volume up.'
+        'Synthesizing text to speech. Keep media volume up.'
       );
-      await speakTextWithTts('Hey! This is LAFINA. Text to speech is working.');
-      Alert.alert('TTS OK', 'Playback finished. If you heard nothing, raise media volume.');
+      const result = await provider.speakText('Hey! This is LAFINA. Text to speech is working.');
+      if (result.source === 'gemini') {
+        Alert.alert(
+          'TTS Test (Gemini 3.1 Flash)',
+          'Playback finished using Gemini 3.1 Flash (Aoede Voice).'
+        );
+      } else {
+        Alert.alert(
+          'TTS Test (Kokoro Fallback)',
+          'Playback finished using Kokoro-82M (Offline Fallback).'
+        );
+      }
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       console.error('[Profile] TTS test failed:', e);

@@ -9,6 +9,7 @@ import {
   disconnectCall,
   manualAcknowledgeCall,
   manualSnoozeCall,
+  prepareCallSpeech,
 } from '../../src/scheduler/callDispatcher';
 
 const emitMock = DeviceEventEmitter.emit as jest.MockedFunction<
@@ -309,6 +310,50 @@ describe('callDispatcher hands-free controller', () => {
     );
   });
 
+  it('allows only one acknowledgement resolution and waits for playback to stop', async () => {
+    insertReminder('rem-single-resolution');
+    let finishStop!: () => void;
+    const stopSpeech = jest.fn().mockResolvedValue(undefined);
+    stopSpeech.mockImplementationOnce(
+      () =>
+        new Promise<void>(resolve => {
+          finishStop = resolve;
+        }),
+    );
+    const provider = {
+      speakText: jest.fn().mockResolvedValue({ source: 'gemini' as const }),
+      stopSpeech,
+    };
+
+    await answerCall('rem-single-resolution', 'user1', false, provider);
+    await flushPromises();
+
+    const firstResolution = manualAcknowledgeCall(
+      'rem-single-resolution',
+      'user1',
+    );
+    await Promise.resolve();
+    await manualAcknowledgeCall('rem-single-resolution', 'user1');
+
+    expect(stopSpeech).toHaveBeenCalledTimes(1);
+    expect(provider.speakText).toHaveBeenCalledTimes(1);
+    expect(
+      remindersStore.getReminderById('rem-single-resolution')?.status,
+    ).toBe('triggered');
+
+    finishStop();
+    await firstResolution;
+
+    expect(provider.speakText).toHaveBeenCalledTimes(2);
+    expect(provider.speakText).toHaveBeenLastCalledWith(
+      'Great! Task acknowledged. Have a productive day.',
+      undefined,
+    );
+    expect(
+      remindersStore.getReminderById('rem-single-resolution')?.status,
+    ).toBe('acknowledged');
+  });
+
   it('manual controls cancel automatic capture before resolving the reminder', async () => {
     insertReminder('rem-manual');
     let resolveCapture!: (result: ReturnType<typeof sttResult>) => void;
@@ -369,6 +414,54 @@ describe('callDispatcher hands-free controller', () => {
     await declineCall('rem-decline', 'user1');
     expect(remindersStore.getReminderById('rem-decline')?.status).toBe(
       'snoozed',
+    );
+  });
+
+  it('prepares only the announcement and likely response phrases', async () => {
+    const provider = {
+      speakText: jest.fn().mockResolvedValue({ source: 'gemini' as const }),
+      prepareText: jest.fn().mockResolvedValue(undefined),
+    };
+
+    await prepareCallSpeech(provider, 'Physics quiz', 10);
+
+    expect(provider.prepareText).toHaveBeenCalledTimes(3);
+    expect(provider.prepareText).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('Physics quiz'),
+    );
+    expect(provider.prepareText).toHaveBeenNthCalledWith(
+      2,
+      'Great! Task acknowledged. Have a productive day.',
+    );
+    expect(provider.prepareText).toHaveBeenNthCalledWith(
+      3,
+      'Snoozed for 10 minutes.',
+    );
+  });
+
+  it('uses injected CallSpeechProvider for announcements and speech', async () => {
+    insertReminder('rem-provider');
+    const mockProvider = {
+      speakText: jest.fn().mockResolvedValue({ source: 'gemini' as const }),
+      stopSpeech: jest.fn().mockResolvedValue(undefined),
+      prepareText: jest.fn().mockResolvedValue(undefined),
+    };
+
+    await answerCall('rem-provider', 'user1', false, mockProvider);
+    await flushPromises();
+    expect(mockProvider.speakText).toHaveBeenCalledWith(
+      expect.stringContaining('Math Homework'),
+      undefined,
+    );
+    expect(mockProvider.prepareText).toHaveBeenCalledWith(
+      expect.stringContaining('Math Homework'),
+    );
+    expect(mockProvider.prepareText).toHaveBeenCalledWith(
+      'Great! Task acknowledged. Have a productive day.',
+    );
+    expect(mockProvider.prepareText).toHaveBeenCalledWith(
+      'Snoozed for 5 minutes.',
     );
   });
 });

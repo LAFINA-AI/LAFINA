@@ -1,11 +1,6 @@
 import { DeviceEventEmitter } from 'react-native';
 import { remindersStore } from '../storage';
-import {
-  playSpeechFile,
-  speakTextWithTts,
-  stopSpeechPlayback,
-  synthesizeSpeech,
-} from '../ai/tts/ttsService';
+import { stopSpeechPlayback, synthesizeSpeech } from '../ai/tts/ttsService';
 import {
   cancelOfflineSpeechCapture,
   hasOfflineSpeechCapture,
@@ -30,6 +25,10 @@ import {
   startActiveCallSession,
   stopActiveCallSession,
 } from './reminderAlarm';
+import {
+  CallSpeechProvider,
+  defaultCallSpeechProvider,
+} from './speechProvider';
 
 export type CallState =
   | 'ringing'
@@ -61,6 +60,8 @@ interface CallDispatcherSession {
   state: CallState;
   retryCount: number;
   voiceEnabled: boolean;
+  speechProvider: CallSpeechProvider;
+  isResolving: boolean;
 }
 
 interface EventSubscription {
@@ -86,7 +87,6 @@ const ACKNOWLEDGE_CONFIRMATION =
   'Great! Task acknowledged. Have a productive day.';
 const RETRY_PROMPT =
   'I did not catch one of the choices shown on screen. Please try again now.';
-const CALL_ANNOUNCEMENT_VERSION = 'tts_v2_';
 const WHISPER_MODEL = 'ggml-tiny.en-q5_1.bin';
 const STT_MEDIAN_TARGET_MS = 1_500;
 const STT_P95_LIMIT_MS = 3_000;
@@ -116,6 +116,33 @@ const warmCallResponseAudio = async (
   }
 };
 
+/**
+ * Prepares the online call announcement and most likely confirmations without
+ * coupling the offline scheduler to a cloud implementation.
+ */
+export const prepareCallSpeech = async (
+  provider: CallSpeechProvider,
+  task: string,
+  defaultSnoozeMinutes: number,
+): Promise<void> => {
+  if (!provider.prepareText) return;
+  const preparePhrase = async (phrase: string): Promise<void> => {
+    try {
+      await provider.prepareText?.(phrase);
+    } catch (error) {
+      console.warn('[CallDispatcher] Could not prepare call speech:', error);
+    }
+  };
+
+  // Prioritize the announcement, then warm both possible confirmations while
+  // the announcement is playing.
+  await preparePhrase(buildAnnouncement(task));
+  await Promise.all([
+    preparePhrase(ACKNOWLEDGE_CONFIRMATION),
+    preparePhrase(getSnoozeConfirmation(defaultSnoozeMinutes)),
+  ]);
+};
+
 const publishCallState = (state: CallState, text?: string): void => {
   if (activeSession) activeSession.state = state;
   const payload: CallStateEvent = { state };
@@ -136,6 +163,12 @@ const resolutionFromAction = (
 const isCurrentSession = (session: CallDispatcherSession): boolean =>
   activeSession === session;
 
+const claimCallResolution = (session: CallDispatcherSession): boolean => {
+  if (!isCurrentSession(session) || session.isResolving) return false;
+  session.isResolving = true;
+  return true;
+};
+
 const removeActiveCapture = (capture: ActiveCallCapture): void => {
   capture.speechStartedSubscription.remove();
   if (activeCallCapture === capture) activeCallCapture = null;
@@ -152,18 +185,28 @@ const cancelActiveCapture = (): void => {
   );
 };
 
-const stopActiveAudioAndCapture = (): void => {
+const stopActiveAudioAndCapture = async (
+  session: CallDispatcherSession | null = activeSession,
+): Promise<void> => {
   cancelActiveCapture();
-  void stopSpeechPlayback().catch(() => undefined);
+  if (session?.speechProvider.stopSpeech) {
+    await session.speechProvider.stopSpeech().catch(() => undefined);
+    return;
+  }
+  await stopSpeechPlayback().catch(() => undefined);
 };
 
 /**
  * Handles non-listening TTS playback while recovering the visible call state on failure.
  */
-export const speakText = async (text: string): Promise<void> => {
+export const speakText = async (
+  text: string,
+  options?: { fallbackAudioPath?: string | null },
+): Promise<void> => {
   try {
     publishCallState('speaking', text);
-    await speakTextWithTts(text);
+    const provider = activeSession?.speechProvider || defaultCallSpeechProvider;
+    await provider.speakText(text, options);
   } catch (error) {
     console.error('[CallDispatcher] speakText error:', error);
     publishCallState('connected', '');
@@ -178,7 +221,10 @@ const normalizeCallCommand = (transcript: string): string =>
     .replace(/\s+/g, ' ');
 
 const editDistance = (left: string, right: string): number => {
-  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  const previous = Array.from(
+    { length: right.length + 1 },
+    (_, index) => index,
+  );
   const current = new Array<number>(right.length + 1);
   for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
     current[0] = leftIndex;
@@ -217,7 +263,9 @@ export const detectCallKeyword = (transcript: string): CallCommand | null => {
   if (!normalized) return null;
 
   const acknowledgeExact =
-    /\b(?:ac?k?nowledg?(?:e|ed|es|ing|ement|ment)?|nowledg?(?:e|ed|es|ing)?)\b/.test(normalized);
+    /\b(?:ac?k?nowledg?(?:e|ed|es|ing|ement|ment)?|nowledg?(?:e|ed|es|ing)?)\b/.test(
+      normalized,
+    );
   const snoozeExact = /\bsnooz(?:e|ed)\b/.test(normalized);
   if (acknowledgeExact && snoozeExact) return null;
   if (acknowledgeExact) {
@@ -238,12 +286,22 @@ export const detectCallKeyword = (transcript: string): CallCommand | null => {
 
   const tokens = normalized
     .split(' ')
-    .filter(token => !['please', 'say', 'i', 'it', 'this', 'reminder'].includes(token));
+    .filter(
+      token =>
+        !['please', 'say', 'i', 'it', 'this', 'reminder'].includes(token),
+    );
   if (tokens.length === 0 || tokens.length > 3) return null;
   const candidates = [...tokens, tokens.join('')];
   const nearAcknowledge = isNearKeyword(
     candidates,
-    ['acknowledge', 'acknowledged', 'knowledge', 'knowledged', 'acknowlege', 'knowlege'],
+    [
+      'acknowledge',
+      'acknowledged',
+      'knowledge',
+      'knowledged',
+      'acknowlege',
+      'knowlege',
+    ],
     2,
   );
   const nearSnooze = isNearKeyword(candidates, ['snooze', 'snoozed'], 2);
@@ -273,11 +331,8 @@ const playConcurrentAnnouncement = async (
   if (!isCurrentSession(session)) return;
   publishCallState('speaking_listening', text);
   try {
-    if (cachedPath?.includes(CALL_ANNOUNCEMENT_VERSION)) {
-      await playSpeechFile(cachedPath);
-    } else {
-      await speakTextWithTts(text);
-    }
+    const provider = session.speechProvider || defaultCallSpeechProvider;
+    await provider.speakText(text, { fallbackAudioPath: cachedPath });
   } catch (error) {
     if (
       isCurrentSession(session) &&
@@ -325,6 +380,7 @@ const processCallTranscript = async (
     await handleFailedAttempt(session);
     return;
   }
+  if (!claimCallResolution(session)) return;
 
   try {
     const preferences = getReminderPreferences(session.userId);
@@ -337,6 +393,7 @@ const processCallTranscript = async (
       if (action.ok) {
         disconnectCall(resolutionFromAction(action));
       } else if (isCurrentSession(session)) {
+        session.isResolving = false;
         await handleFailedAttempt(session);
       }
       return;
@@ -352,11 +409,15 @@ const processCallTranscript = async (
     if (action.ok) {
       disconnectCall(resolutionFromAction(action));
     } else if (isCurrentSession(session)) {
+      session.isResolving = false;
       await handleFailedAttempt(session);
     }
   } catch (error) {
     console.error('[CallDispatcher] Voice response error:', error);
-    if (isCurrentSession(session)) await handleFailedAttempt(session);
+    if (isCurrentSession(session)) {
+      session.isResolving = false;
+      await handleFailedAttempt(session);
+    }
   }
 };
 
@@ -388,7 +449,10 @@ async function startAutomaticAttempt(
     } catch (error) {
       session.voiceEnabled = false;
       void stopActiveCallSession();
-      console.error('[CallDispatcher] Could not start automatic capture:', error);
+      console.error(
+        '[CallDispatcher] Could not start automatic capture:',
+        error,
+      );
       publishCallState(
         'connected',
         'Offline speech recognition could not start. Use the buttons below.',
@@ -451,11 +515,8 @@ async function startAutomaticAttempt(
   // 1. Play prompt announcement and wait for it to finish playing
   try {
     publishCallState('speaking', prompt);
-    if (cachedPath?.includes(CALL_ANNOUNCEMENT_VERSION)) {
-      await playSpeechFile(cachedPath);
-    } else {
-      await speakTextWithTts(prompt);
-    }
+    const provider = session.speechProvider || defaultCallSpeechProvider;
+    await provider.speakText(prompt, { fallbackAudioPath: cachedPath });
   } catch (error) {
     console.error('[CallDispatcher] TTS playback failed:', error);
   }
@@ -533,6 +594,7 @@ export const answerCall = async (
   reminderId: string,
   userId: string,
   voiceEnabled = true,
+  speechProvider?: CallSpeechProvider,
 ): Promise<void> => {
   const reminder = remindersStore.getReminderById(reminderId);
   if (!reminder || reminder.userId !== userId) {
@@ -544,7 +606,7 @@ export const answerCall = async (
     return;
   }
 
-  stopActiveAudioAndCapture();
+  await stopActiveAudioAndCapture();
   sessionSequence += 1;
   const session: CallDispatcherSession = {
     id: sessionSequence,
@@ -554,6 +616,8 @@ export const answerCall = async (
     state: 'connected',
     retryCount: 0,
     voiceEnabled,
+    speechProvider: speechProvider || defaultCallSpeechProvider,
+    isResolving: false,
   };
   activeSession = session;
 
@@ -571,6 +635,11 @@ export const answerCall = async (
   const preferences = getReminderPreferences(userId);
   const announcement = buildAnnouncement(reminder.task);
   void warmCallResponseAudio(preferences.snoozeDurationMinutes);
+  void prepareCallSpeech(
+    session.speechProvider,
+    reminder.task,
+    preferences.snoozeDurationMinutes,
+  );
 
   if (!voiceEnabled) {
     void speakText(announcement).then(() => {
@@ -592,9 +661,9 @@ export const answerCall = async (
  */
 export const autoSnoozeCall = async (): Promise<void> => {
   const session = activeSession;
-  if (!session) return;
+  if (!session || !claimCallResolution(session)) return;
   const showResolution = session.state !== 'ringing';
-  stopActiveAudioAndCapture();
+  await stopActiveAudioAndCapture(session);
 
   const action = await autoSnoozeReminderAction(
     session.reminderId,
@@ -627,6 +696,8 @@ export const declineCall = async (
     state: 'ringing',
     retryCount: 0,
     voiceEnabled: false,
+    speechProvider: defaultCallSpeechProvider,
+    isResolving: false,
   };
   await autoSnoozeCall();
 };
@@ -639,10 +710,24 @@ export const manualSnoozeCall = async (
   userId: string,
   minutes: number,
 ): Promise<void> => {
-  stopActiveAudioAndCapture();
+  const session = activeSession;
+  if (
+    !session ||
+    session.reminderId !== reminderId ||
+    session.userId !== userId ||
+    !claimCallResolution(session)
+  ) {
+    return;
+  }
+  await stopActiveAudioAndCapture(session);
   const action = await snoozeReminderAction(reminderId, userId, minutes);
+  if (!isCurrentSession(session)) return;
   await speakText(action.message);
-  if (action.ok) disconnectCall(resolutionFromAction(action));
+  if (action.ok) {
+    disconnectCall(resolutionFromAction(action));
+  } else if (isCurrentSession(session)) {
+    session.isResolving = false;
+  }
 };
 
 /**
@@ -652,23 +737,37 @@ export const manualAcknowledgeCall = async (
   reminderId: string,
   userId: string,
 ): Promise<void> => {
-  stopActiveAudioAndCapture();
+  const session = activeSession;
+  if (
+    !session ||
+    session.reminderId !== reminderId ||
+    session.userId !== userId ||
+    !claimCallResolution(session)
+  ) {
+    return;
+  }
+  await stopActiveAudioAndCapture(session);
   const action = await acknowledgeReminderAction(reminderId, userId);
+  if (!isCurrentSession(session)) return;
   await speakText(action.message);
-  if (action.ok) disconnectCall(resolutionFromAction(action));
+  if (action.ok) {
+    disconnectCall(resolutionFromAction(action));
+  } else if (isCurrentSession(session)) {
+    session.isResolving = false;
+  }
 };
 
 /**
  * Stops the active call loop, microphone service, wake lock, and terminal UI state.
  */
 export const disconnectCall = (resolution?: CallResolution): void => {
-  stopActiveAudioAndCapture();
+  const session = activeSession;
+  if (!session) return;
+  session.state = 'disconnected';
+  activeSession = null;
+  void stopActiveAudioAndCapture(session);
   void stopActiveCallSession().catch(() => undefined);
-  if (activeSession) {
-    activeSession.state = 'disconnected';
-    activeSession = null;
-    const event: CallStateEvent = { state: 'disconnected' };
-    if (resolution) event.resolution = resolution;
-    DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', event);
-  }
+  const event: CallStateEvent = { state: 'disconnected' };
+  if (resolution) event.resolution = resolution;
+  DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', event);
 };
