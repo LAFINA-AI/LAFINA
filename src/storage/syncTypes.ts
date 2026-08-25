@@ -120,3 +120,47 @@ export interface BusinessWorkBlockRow {
 export interface BusinessTaskWithAssignments extends BusinessTaskRow {
   assignments: BusinessTaskAssignmentRow[];
 }
+
+/** Local delivery status for outgoing chat messages and comments. */
+export type DeliveryStatus = 'pending' | 'sent' | 'failed';
+
+/** Business chat channel row in SQLite. */
+export interface BusinessChatChannelRow {
+  id: string;
+  business_id: string;
+  name: string;
+  channel_type: string;
+  is_archived: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Business chat message row in SQLite. */
+export interface BusinessChatMessageRow {
+  id: string;
+  channel_id: string;
+  business_id: string;
+  sender_id: string;
+  sender_name: string | null;
+  client_message_id: string;
+  content: string;
+  task_link_id: string | null;
+  task_title: string | null;
+  delivery_status: DeliveryStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Business task comment row in SQLite. */
+export interface BusinessTaskCommentRow {
+  id: string;
+  task_id: string;
+  business_id: string;
+  user_id: string;
+  user_name: string | null;
+  client_comment_id: string;
+  content: string;
+  delivery_status: DeliveryStatus;
+  created_at: string;
+  updated_at: string;
+}

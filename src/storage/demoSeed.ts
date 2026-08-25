@@ -274,4 +274,77 @@ export const seedLocalDemoAccounts = async (): Promise<void> => {
     ON CONFLICT(id) DO NOTHING`,
     [DEMO_IDS.BIZ_ID, DEMO_IDS.BOB_ID, shift2Start, shift2End, DEMO_IDS.MANAGER_ID, now, now]
   );
+
+  // 7. Seed Chat Channels
+  const defaultChannelId = '77777777-7777-7777-a777-777777777771';
+  db.executeSync(
+    `INSERT INTO business_chat_channels (
+      id, business_id, name, channel_type, is_archived, created_at, updated_at
+    ) VALUES (?, ?, 'general', 'general', 0, ?, ?)
+    ON CONFLICT(id) DO NOTHING`,
+    [defaultChannelId, DEMO_IDS.BIZ_ID, now, now]
+  );
+
+  // 8. Seed Chat Messages
+  db.executeSync(
+    `INSERT INTO business_chat_messages (
+      id, channel_id, business_id, sender_id, sender_name, client_message_id,
+      content, task_link_id, task_title, delivery_status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)
+    ON CONFLICT(id) DO NOTHING`,
+    [
+      '88888888-8888-8888-a888-888888888881',
+      defaultChannelId,
+      DEMO_IDS.BIZ_ID,
+      DEMO_IDS.MANAGER_ID,
+      'Dr. Eleanor Vance',
+      'demo_msg_001',
+      "Welcome team! Please review today's scheduled firmware and calibration tasks.",
+      task1Id,
+      'Prepare IoT Sensor Array Firmware v2.1',
+      now,
+      now,
+    ]
+  );
+
+  db.executeSync(
+    `INSERT INTO business_chat_messages (
+      id, channel_id, business_id, sender_id, sender_name, client_message_id,
+      content, task_link_id, task_title, delivery_status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)
+    ON CONFLICT(id) DO NOTHING`,
+    [
+      '88888888-8888-8888-a888-888888888882',
+      defaultChannelId,
+      DEMO_IDS.BIZ_ID,
+      DEMO_IDS.ALICE_ID,
+      'Alice Guo',
+      'demo_msg_002',
+      'On it Dr. Vance! I submitted the oscilloscope calibration waveforms for review.',
+      task2Id,
+      'Calibrate Oscilloscopes & Signal Generators',
+      now,
+      now,
+    ]
+  );
+
+  // 9. Seed Task Comments
+  db.executeSync(
+    `INSERT INTO business_task_comments (
+      id, task_id, business_id, user_id, user_name, client_comment_id,
+      content, delivery_status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)
+    ON CONFLICT(id) DO NOTHING`,
+    [
+      '99999999-9999-9999-a999-999999999991',
+      task2Id,
+      DEMO_IDS.BIZ_ID,
+      DEMO_IDS.ALICE_ID,
+      'Alice Guo',
+      'demo_comment_001',
+      'All 4 channels calibrated at 100MHz with zero jitter.',
+      now,
+      now,
+    ]
+  );
 };

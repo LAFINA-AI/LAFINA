@@ -16,6 +16,11 @@ from backend.app.models.business_collaboration import (
     BusinessTaskAssignment,
     BusinessWorkBlock,
 )
+from backend.app.models.business_chat import (
+    BusinessChatChannel,
+    BusinessChatMessage,
+    BusinessTaskComment,
+)
 from backend.app.security.auth import hash_password
 
 # Fixed Identifiers for Demo Accounts & Workspace
@@ -299,8 +304,76 @@ async def seed_demo_accounts():
                 )
             )
 
+        # 6. Seed Chat Channels
+        chan_id = uuid.UUID("77777777-7777-7777-a777-777777777771")
+        chan_stmt = select(BusinessChatChannel).where(BusinessChatChannel.id == chan_id)
+        if not (await db.execute(chan_stmt)).scalar_one_or_none():
+            db.add(
+                BusinessChatChannel(
+                    id=chan_id,
+                    business_id=DEMO_BIZ_ID,
+                    name="general",
+                    channel_type="general",
+                    is_archived=False,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+
+        # 7. Seed Chat Messages
+        msg1_id = uuid.UUID("88888888-8888-8888-a888-888888888881")
+        msg1_stmt = select(BusinessChatMessage).where(BusinessChatMessage.id == msg1_id)
+        if not (await db.execute(msg1_stmt)).scalar_one_or_none():
+            db.add(
+                BusinessChatMessage(
+                    id=msg1_id,
+                    channel_id=chan_id,
+                    business_id=DEMO_BIZ_ID,
+                    sender_id=DEMO_MANAGER_ID,
+                    client_message_id="demo_msg_001",
+                    content="Welcome team! Please review today's scheduled firmware and calibration tasks.",
+                    task_link_id=task1_id,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+
+        msg2_id = uuid.UUID("88888888-8888-8888-a888-888888888882")
+        msg2_stmt = select(BusinessChatMessage).where(BusinessChatMessage.id == msg2_id)
+        if not (await db.execute(msg2_stmt)).scalar_one_or_none():
+            db.add(
+                BusinessChatMessage(
+                    id=msg2_id,
+                    channel_id=chan_id,
+                    business_id=DEMO_BIZ_ID,
+                    sender_id=DEMO_ALICE_ID,
+                    client_message_id="demo_msg_002",
+                    content="On it Dr. Vance! I submitted the oscilloscope calibration waveforms for review.",
+                    task_link_id=task2_id,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+
+        # 8. Seed Task Comments
+        com1_id = uuid.UUID("99999999-9999-9999-a999-999999999991")
+        com1_stmt = select(BusinessTaskComment).where(BusinessTaskComment.id == com1_id)
+        if not (await db.execute(com1_stmt)).scalar_one_or_none():
+            db.add(
+                BusinessTaskComment(
+                    id=com1_id,
+                    task_id=task2_id,
+                    business_id=DEMO_BIZ_ID,
+                    user_id=DEMO_ALICE_ID,
+                    client_comment_id="demo_comment_001",
+                    content="All 4 channels calibrated at 100MHz with zero jitter.",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+
         await db.commit()
-        print("[Seed] Successfully seeded demo tasks and work blocks.")
+        print("[Seed] Successfully seeded demo tasks, work blocks, chat messages, and comments.")
         print("\n========================================================")
         print("DEMO ACCOUNTS SEEDED SUCCESSFULLY")
         print("========================================================")

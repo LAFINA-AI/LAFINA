@@ -39,6 +39,10 @@ export const cloudClient = {
     apiBaseUrl = url;
   },
 
+  getBaseUrl: (): string => {
+    return apiBaseUrl;
+  },
+
   /** Persists a replacement access token for the active local user. */
   setAccessToken: (token: string | null) => {
     try {

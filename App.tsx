@@ -12,6 +12,7 @@ import {
   Alert,
   PermissionsAndroid,
   AppState,
+  TouchableOpacity,
 } from 'react-native';
 import type { AlertButton } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -53,6 +54,7 @@ import {
   WorkScreen,
   TeamManagementModal,
 } from './src/ui/screens';
+import { CompanyChatScreen } from './src/ui/screens/business/CompanyChatScreen';
 
 // Assets
 const lafinaDefaultLogo = require('./src/assets/lafina_default_logo.png');
@@ -85,6 +87,7 @@ function AppContent({
   const [members, setMembers] = useState<BusinessMemberData[]>([]);
   const [invitations, setInvitations] = useState<BusinessInvitationData[]>([]);
   const [isLeaseActive, setIsLeaseActive] = useState(true);
+  const [chatViewMode, setChatViewMode] = useState<'company' | 'assistant'>('company');
   const splashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { colors } = useTheme();
@@ -423,6 +426,42 @@ function AppContent({
           />
         );
       case 'chat':
+        if (shellMode === 'manager' || shellMode === 'employee') {
+          if (chatViewMode === 'company') {
+            return (
+              <CompanyChatScreen
+                userId={userId}
+                onOpenTask={() => setActiveTab('work')}
+                onSwitchToAiAssistant={() => setChatViewMode('assistant')}
+              />
+            );
+          }
+          return (
+            <View style={{ flex: 1 }}>
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  backgroundColor: '#EFF6FF',
+                  borderBottomWidth: 1,
+                  borderBottomColor: '#DBEAFE',
+                }}
+                onPress={() => setChatViewMode('company')}
+              >
+                <Text style={{ color: '#2563EB', fontFamily: Fonts.heading, fontSize: 13 }}>
+                  ← Back to Company Team Chat
+                </Text>
+              </TouchableOpacity>
+              <ChatScreen
+                userId={userId}
+                refreshTrigger={refreshTrigger}
+                onRefresh={triggerRefresh}
+              />
+            </View>
+          );
+        }
         return (
           <ChatScreen
             userId={userId}

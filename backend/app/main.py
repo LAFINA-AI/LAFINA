@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import get_settings
 from backend.app.database import engine, Base
 import backend.app.models  # noqa: F401
-from backend.app.api.v1 import auth, sync, ai, businesses, business_sync
+from backend.app.api.v1 import auth, sync, ai, businesses, business_sync, business_chat
 from backend.app.database import get_db
 from backend.app.services.capabilities import resolve_account_capabilities
 from backend.app.admin import setup_admin
@@ -88,6 +88,7 @@ app.include_router(sync.router)
 app.include_router(ai.router)
 app.include_router(businesses.router)
 app.include_router(business_sync.router)
+app.include_router(business_chat.router)
 
 # Mount SQLAdmin UI (Prisma Studio equivalent)
 setup_admin(app, engine)

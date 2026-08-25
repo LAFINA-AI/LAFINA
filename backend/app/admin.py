@@ -11,6 +11,7 @@ from backend.app.models import (
     Account, AuthSession, RecoveryCode,
     Business, BusinessMembership, BusinessInvitation,
     BusinessTask, BusinessTaskAssignment, BusinessWorkBlock, BusinessChangeFeed,
+    BusinessChatChannel, BusinessChatMessage, BusinessTaskComment,
     TasksSync, EventsSync, TimeBlocksSync, RemindersSync, NotesSync, CustomCategoriesSync,
     IdempotentMutation, ChangeFeed, AIUsage, SecurityEvent
 )
@@ -173,6 +174,21 @@ class BusinessChangeFeedAdmin(ModelView, model=BusinessChangeFeed):
     column_list = ["id", "business_id", "actor_id", "entity_type", "entity_id", "operation", "version", "created_at"]
     icon = "fa-solid fa-rss"
 
+class BusinessChatChannelAdmin(ModelView, model=BusinessChatChannel):
+    column_list = ["id", "business_id", "name", "channel_type", "is_archived", "created_at"]
+    column_searchable_list = ["name"]
+    icon = "fa-solid fa-comments"
+
+class BusinessChatMessageAdmin(ModelView, model=BusinessChatMessage):
+    column_list = ["id", "channel_id", "business_id", "sender_id", "content", "task_link_id", "created_at"]
+    column_searchable_list = ["content"]
+    icon = "fa-solid fa-message"
+
+class BusinessTaskCommentAdmin(ModelView, model=BusinessTaskComment):
+    column_list = ["id", "task_id", "business_id", "user_id", "content", "created_at"]
+    column_searchable_list = ["content"]
+    icon = "fa-solid fa-comment-dots"
+
 authentication_backend = AdminAuth(secret_key=settings.JWT_PRIVATE_KEY[:32])
 
 def setup_admin(app, engine):
@@ -193,6 +209,9 @@ def setup_admin(app, engine):
     admin.add_view(BusinessTaskAssignmentAdmin)
     admin.add_view(BusinessWorkBlockAdmin)
     admin.add_view(BusinessChangeFeedAdmin)
+    admin.add_view(BusinessChatChannelAdmin)
+    admin.add_view(BusinessChatMessageAdmin)
+    admin.add_view(BusinessTaskCommentAdmin)
     admin.add_view(TasksSyncAdmin)
     admin.add_view(EventsSyncAdmin)
     admin.add_view(TimeBlocksSyncAdmin)

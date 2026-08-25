@@ -15,6 +15,7 @@ import { Fonts, Shadows } from '../../theme';
 import type { ThemeColors } from '../../contexts/ThemeContext';
 import { X, CheckCircle, RotateCcw, AlertCircle } from 'lucide-react-native';
 import type { BusinessTaskWithAssignments, BusinessTaskAssignmentRow } from '../../../storage/syncTypes';
+import { TaskCommentsThread } from '../../components/business/TaskCommentsThread';
 
 interface TaskReviewModalProps {
   visible: boolean;
@@ -133,6 +134,13 @@ export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({
                 </View>
               ) : null}
             </View>
+
+            {/* Task Comments & Real-time Collaboration Thread */}
+            <TaskCommentsThread
+              taskId={task.id}
+              businessId={task.business_id}
+              currentUserId={assignment.user_id}
+            />
 
             {/* Reopen Feedback Area */}
             {showFeedbackInput ? (

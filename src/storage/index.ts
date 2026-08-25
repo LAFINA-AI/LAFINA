@@ -56,6 +56,7 @@ export { businessTasksStore } from './businessTasksStore';
 export type { CreateBusinessTaskParams } from './businessTasksStore';
 export { businessWorkBlocksStore } from './businessWorkBlocksStore';
 export type { CreateBusinessWorkBlockParams } from './businessWorkBlocksStore';
+export { businessChatStore } from './businessChatStore';
 export type {
   PersistedSyncStatus,
   SyncEntityType,
@@ -74,6 +75,10 @@ export type {
   BusinessTaskAssignmentRow,
   BusinessWorkBlockRow,
   BusinessTaskWithAssignments,
+  DeliveryStatus,
+  BusinessChatChannelRow,
+  BusinessChatMessageRow,
+  BusinessTaskCommentRow,
 } from './syncTypes';
 export {
   seedLocalDemoAccounts,

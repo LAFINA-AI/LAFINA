@@ -257,6 +257,42 @@ export const businessStore = {
   },
 
   /**
+   * Retrieves the active business record for a user.
+   */
+  getBusinessForUser: (userId: string): LocalBusiness | null => {
+    const row = db.executeSync(
+      `SELECT b.* FROM businesses b
+       JOIN business_memberships m ON m.business_id = b.id
+       WHERE m.user_id = ? AND m.membership_status = 'active'
+       LIMIT 1`,
+      [userId]
+    ).rows?.[0] as {
+      id: string;
+      name: string;
+      owner_id: string;
+      timezone: string;
+      subscription_plan: string;
+      subscription_status: string;
+      seat_limit: number;
+      created_at: string;
+      updated_at: string;
+    } | undefined;
+
+    if (!row) return null;
+    return {
+      id: row.id,
+      name: row.name,
+      ownerId: row.owner_id,
+      timezone: row.timezone,
+      subscriptionPlan: row.subscription_plan,
+      subscriptionStatus: row.subscription_status,
+      seatLimit: row.seat_limit,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  },
+
+  /**
    * Purges all cached data and unsent outbox mutations for a specified business upon confirmed removal.
    */
   purgeBusinessCache: (businessId: string): void => {

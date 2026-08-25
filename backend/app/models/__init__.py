@@ -17,6 +17,11 @@ from backend.app.models.business_collaboration import (
     BusinessChangeFeed,
     BusinessIdempotentMutation,
 )
+from backend.app.models.business_chat import (
+    BusinessChatChannel,
+    BusinessChatMessage,
+    BusinessTaskComment,
+)
 
 __all__ = [
     "Account",
@@ -30,6 +35,9 @@ __all__ = [
     "BusinessWorkBlock",
     "BusinessChangeFeed",
     "BusinessIdempotentMutation",
+    "BusinessChatChannel",
+    "BusinessChatMessage",
+    "BusinessTaskComment",
     "ProfileSync",
     "TasksSync",
     "EventsSync",

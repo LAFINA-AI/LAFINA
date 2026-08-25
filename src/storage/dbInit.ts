@@ -700,7 +700,7 @@ export const initDatabase = async (): Promise<void> => {
         // Versioned schema migrations
         const versionResult = tx.executeSync('PRAGMA user_version');
         const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;
-        const TARGET_VERSION = 11;
+        const TARGET_VERSION = 12;
 
         if (currentVersion < TARGET_VERSION) {
         if (currentVersion < 1) {
@@ -1031,11 +1031,65 @@ export const initDatabase = async (): Promise<void> => {
           `);
         }
 
+        if (currentVersion < 12) {
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS business_chat_channels (
+              id TEXT PRIMARY KEY,
+              business_id TEXT NOT NULL,
+              name TEXT NOT NULL DEFAULT 'general',
+              channel_type TEXT NOT NULL DEFAULT 'general',
+              is_archived INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE,
+              UNIQUE (business_id, name)
+            )
+          `);
+
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS business_chat_messages (
+              id TEXT PRIMARY KEY,
+              channel_id TEXT NOT NULL,
+              business_id TEXT NOT NULL,
+              sender_id TEXT NOT NULL,
+              sender_name TEXT,
+              client_message_id TEXT NOT NULL,
+              content TEXT NOT NULL,
+              task_link_id TEXT,
+              task_title TEXT,
+              delivery_status TEXT NOT NULL DEFAULT 'sent',
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (channel_id) REFERENCES business_chat_channels (id) ON DELETE CASCADE,
+              FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE,
+              UNIQUE (business_id, client_message_id)
+            )
+          `);
+
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS business_task_comments (
+              id TEXT PRIMARY KEY,
+              task_id TEXT NOT NULL,
+              business_id TEXT NOT NULL,
+              user_id TEXT NOT NULL,
+              user_name TEXT,
+              client_comment_id TEXT NOT NULL,
+              content TEXT NOT NULL,
+              delivery_status TEXT NOT NULL DEFAULT 'sent',
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (task_id) REFERENCES business_tasks (id) ON DELETE CASCADE,
+              FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE,
+              UNIQUE (task_id, client_comment_id)
+            )
+          `);
+        }
+
           tx.executeSync(`PRAGMA user_version = ${TARGET_VERSION}`);
         }
       }
     });
-    console.log('Database schema initialized successfully (version 11).');
+    console.log('Database schema initialized successfully (version 12).');
     await seedLocalDemoAccounts();
   } catch (error) {
     console.error('Failed to initialize database schema:', error);
