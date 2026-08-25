@@ -79,7 +79,12 @@ export type {
   BusinessChatChannelRow,
   BusinessChatMessageRow,
   BusinessTaskCommentRow,
+  LocalBusinessMeetingRow,
+  LocalBusinessMeetingSegmentRow,
+  LocalBusinessActionCandidateRow,
+  LocalBusinessMeetingRecipientRow,
 } from './syncTypes';
+export { meetingStore } from './meetingStore';
 export {
   seedLocalDemoAccounts,
   DEMO_IDS,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -24,12 +24,16 @@ import {
   Play,
   RotateCcw,
   User,
+  Mic,
+  Sparkles,
 } from 'lucide-react-native';
 import { SyncStatusIndicator } from '../../components/business/SyncStatusIndicator';
 import {
   businessTasksStore,
   businessWorkBlocksStore,
   tasksStore,
+  meetingStore,
+  businessStore,
 } from '../../../storage';
 import type { Task } from '../../../storage';
 import type {
@@ -37,9 +41,14 @@ import type {
   BusinessTaskAssignmentRow,
   BusinessWorkBlockRow,
   TaskAssignmentStatus,
+  LocalBusinessMeetingRow,
 } from '../../../storage/syncTypes';
+import { MeetingRecordModal } from './MeetingRecordModal';
+import { MeetingDetailScreen } from './MeetingDetailScreen';
+import { fetchMeetingsFromCloud } from '../../../cloud/meetingService';
+import { RosterMember } from '../../../ai/meeting/actionCandidateExtractor';
 
-export type WorkSubTab = 'tasks' | 'calendar' | 'notes';
+export type WorkSubTab = 'tasks' | 'calendar' | 'notes' | 'meetings';
 export type TaskFilter = 'all' | 'due_today' | 'pending_review' | 'needs_assignee';
 
 interface WorkScreenProps {
@@ -70,6 +79,43 @@ export const WorkScreen: React.FC<WorkScreenProps> = ({
   const [showPersonalLayer, setShowPersonalLayer] = useState(true);
   const [taskFilter, setTaskFilter] = useState<TaskFilter>('all');
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Meeting states
+  const [meetings, setMeetings] = useState<LocalBusinessMeetingRow[]>([]);
+  const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
+  const [showRecordModal, setShowRecordModal] = useState(false);
+  const [roster, setRoster] = useState<RosterMember[]>([]);
+
+  const loadMeetings = useCallback(async () => {
+    try {
+      const localMeetings = meetingStore.getMeetingsForBusiness(businessId);
+      setMeetings(localMeetings);
+      // Background cloud catch-up
+      fetchMeetingsFromCloud(businessId).then((synced) => {
+        if (synced && synced.length > 0) {
+          setMeetings(synced);
+        }
+      }).catch(() => {});
+    } catch {}
+  }, [businessId]);
+
+  const loadRoster = useCallback(() => {
+    try {
+      const members = businessStore.getMembers(businessId);
+      setRoster(
+        members.map((m) => ({
+          id: m.user_id,
+          name: m.email.split('@')[0],
+          email: m.email,
+        }))
+      );
+    } catch {}
+  }, [businessId]);
+
+  useEffect(() => {
+    loadMeetings();
+    loadRoster();
+  }, [loadMeetings, loadRoster, refreshKey]);
 
   // Load Business Tasks
   const allTasks = businessTasksStore.getTasksForBusiness(businessId);
@@ -103,6 +149,21 @@ export const WorkScreen: React.FC<WorkScreenProps> = ({
     setRefreshKey((prev) => prev + 1);
   };
 
+  if (selectedMeetingId) {
+    return (
+      <MeetingDetailScreen
+        meetingId={selectedMeetingId}
+        businessId={businessId}
+        userId={userId}
+        isManager={isManager}
+        onBack={() => {
+          setSelectedMeetingId(null);
+          loadMeetings();
+        }}
+      />
+    );
+  }
+
   return (
     <View style={[styles.screen, themed.screen]} key={refreshKey}>
       {/* Header */}
@@ -120,9 +181,9 @@ export const WorkScreen: React.FC<WorkScreenProps> = ({
             onPress={onOpenProfile}
             accessible={true}
             accessibilityRole="button"
-            accessibilityLabel="Account and Settings"
+            accessibilityLabel="Open profile settings"
           >
-            <Settings size={20} color={colors.textPrimary} />
+            <Settings size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -207,6 +268,33 @@ export const WorkScreen: React.FC<WorkScreenProps> = ({
             ]}
           >
             Notes
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.subTab,
+            activeSubTab === 'meetings' && [styles.activeSubTab, { borderBottomColor: colors.red }],
+          ]}
+          onPress={() => setActiveSubTab('meetings')}
+          accessible={true}
+          accessibilityRole="tab"
+          accessibilityLabel="Meetings subtab"
+          accessibilityState={{ selected: activeSubTab === 'meetings' }}
+        >
+          <Mic
+            size={18}
+            color={activeSubTab === 'meetings' ? colors.red : colors.textMuted}
+          />
+          <Text
+            style={[
+              styles.subTabText,
+              activeSubTab === 'meetings'
+                ? [styles.activeSubTabText, { color: colors.red }]
+                : themed.mutedText,
+            ]}
+          >
+            Meetings
           </Text>
         </TouchableOpacity>
       </View>
@@ -601,7 +689,111 @@ export const WorkScreen: React.FC<WorkScreenProps> = ({
             )}
           </View>
         )}
+
+        {/* MEETINGS SUBTAB */}
+        {activeSubTab === 'meetings' && (
+          <View style={styles.tabContentWrapper}>
+            <View style={styles.tabHeaderRow}>
+              <View>
+                <Text style={[styles.tabSectionTitle, themed.text]}>Meeting Transcriptions</Text>
+                <Text style={[styles.notesExplainer, themed.mutedText]}>
+                  Offline Whisper.cpp recording up to 60m with spoken action extraction.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.addTaskBtn, { backgroundColor: colors.red }]}
+                onPress={() => setShowRecordModal(true)}
+                accessible={true}
+                accessibilityRole="button"
+                accessibilityLabel="Record New Meeting"
+              >
+                <Mic size={16} color="#FFF" />
+                <Text style={styles.addTaskText}>Record</Text>
+              </TouchableOpacity>
+            </View>
+
+            {meetings.length === 0 ? (
+              <View style={[styles.placeholderCard, themed.card, Shadows.card]}>
+                <Mic size={36} color={colors.red} />
+                <Text style={[styles.cardHeadline, themed.text]}>No Meetings Recorded</Text>
+                <Text style={[styles.cardDescription, themed.mutedText]}>
+                  Record 1-hour team meetings with offline speech-to-text, timestamps, and action extraction.
+                </Text>
+              </View>
+            ) : (
+              meetings.map((m) => {
+                const durationMins = Math.floor(m.duration_seconds / 60);
+                const hasSummary = m.summary_status === 'completed';
+                return (
+                  <TouchableOpacity
+                    key={m.id}
+                    style={[styles.meetingCard, themed.card, Shadows.card]}
+                    onPress={() => setSelectedMeetingId(m.id)}
+                  >
+                    <View style={styles.meetingCardHeader}>
+                      <Text style={[styles.meetingCardTitle, themed.text]} numberOfLines={1}>
+                        {m.title}
+                      </Text>
+                      {hasSummary ? (
+                        <View style={[styles.summaryBadge, { backgroundColor: colors.blue + '20' }]}>
+                          <Sparkles size={11} color={colors.blue} />
+                          <Text style={[styles.summaryBadgeText, { color: colors.blue }]}>
+                            AI Summary
+                          </Text>
+                        </View>
+                      ) : (
+                        <View style={[styles.summaryBadge, { backgroundColor: '#9CA3AF20' }]}>
+                          <Text style={[styles.summaryBadgeText, { color: '#6B7280' }]}>
+                            Transcript
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {m.full_transcript ? (
+                      <Text style={[styles.meetingExcerpt, themed.mutedText]} numberOfLines={2}>
+                        "{m.full_transcript}"
+                      </Text>
+                    ) : null}
+
+                    <View style={styles.meetingCardMeta}>
+                      <View style={styles.metaBadge}>
+                        <Clock size={12} color={colors.textMuted} />
+                        <Text style={[styles.metaBadgeText, themed.mutedText]}>
+                          {durationMins}m
+                        </Text>
+                      </View>
+                      <View style={styles.metaBadge}>
+                        <CalendarIcon size={12} color={colors.textMuted} />
+                        <Text style={[styles.metaBadgeText, themed.mutedText]}>
+                          {new Date(m.created_at).toLocaleDateString()}
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </View>
+        )}
       </ScrollView>
+
+      {/* Meeting Recording Modal */}
+      <MeetingRecordModal
+        visible={showRecordModal}
+        businessId={businessId}
+        userId={userId}
+        roster={roster}
+        onClose={() => {
+          setShowRecordModal(false);
+          loadMeetings();
+        }}
+        onMeetingRecorded={(newMeetingId) => {
+          setShowRecordModal(false);
+          loadMeetings();
+          setSelectedMeetingId(newMeetingId);
+        }}
+      />
     </View>
   );
 };
@@ -989,5 +1181,59 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  meetingCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+    marginBottom: 12,
+  },
+  meetingCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  meetingCardTitle: {
+    fontSize: 15,
+    fontFamily: Fonts.heading,
+    fontWeight: 'bold',
+    flex: 1,
+    marginRight: 8,
+  },
+  summaryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  summaryBadgeText: {
+    fontSize: 10,
+    fontFamily: Fonts.heading,
+    fontWeight: 'bold',
+  },
+  meetingExcerpt: {
+    fontSize: 12,
+    fontFamily: Fonts.body,
+    fontStyle: 'italic',
+    lineHeight: 16,
+  },
+  meetingCardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+  },
+  metaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metaBadgeText: {
+    fontSize: 11,
+    fontFamily: Fonts.body,
+    fontWeight: '500',
   },
 });

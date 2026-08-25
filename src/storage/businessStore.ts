@@ -293,6 +293,36 @@ export const businessStore = {
   },
 
   /**
+   * Retrieves all active memberships and user emails for a business workspace.
+   */
+  getMembers: (businessId: string): Array<{
+    id: string;
+    business_id: string;
+    user_id: string;
+    email: string;
+    member_role: BusinessMemberRole;
+    membership_status: MembershipStatus;
+  }> => {
+    const result = db.executeSync(
+      `SELECT m.id, m.business_id, m.user_id, COALESCE(u.email, m.user_id) as email,
+              m.member_role, m.membership_status
+       FROM business_memberships m
+       LEFT JOIN users u ON u.id = m.user_id
+       WHERE m.business_id = ? AND m.membership_status = 'active'`,
+      [businessId]
+    );
+    const rows = result.rows || [];
+    return rows.map((r: any) => ({
+      id: r.id,
+      business_id: r.business_id,
+      user_id: r.user_id,
+      email: r.email,
+      member_role: r.member_role as BusinessMemberRole,
+      membership_status: r.membership_status as MembershipStatus,
+    }));
+  },
+
+  /**
    * Purges all cached data and unsent outbox mutations for a specified business upon confirmed removal.
    */
   purgeBusinessCache: (businessId: string): void => {

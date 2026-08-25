@@ -22,6 +22,10 @@ from backend.app.models.business_chat import (
     BusinessChatMessage,
     BusinessTaskComment,
 )
+from backend.app.models.business_meeting import (
+    BusinessMeeting,
+    BusinessMeetingRecipient,
+)
 
 __all__ = [
     "Account",
@@ -38,6 +42,8 @@ __all__ = [
     "BusinessChatChannel",
     "BusinessChatMessage",
     "BusinessTaskComment",
+    "BusinessMeeting",
+    "BusinessMeetingRecipient",
     "ProfileSync",
     "TasksSync",
     "EventsSync",

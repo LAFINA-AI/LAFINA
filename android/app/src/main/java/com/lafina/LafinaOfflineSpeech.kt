@@ -43,6 +43,11 @@ object LafinaWhisperBridge {
     threads: Int,
     commandMode: Boolean
   ): String
+  external fun transcribeWithTimestamps(
+    contextPointer: Long,
+    samples: FloatArray,
+    threads: Int
+  ): String
   external fun freeContext(contextPointer: Long)
 }
 

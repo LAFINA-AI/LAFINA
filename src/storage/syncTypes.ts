@@ -164,3 +164,53 @@ export interface BusinessTaskCommentRow {
   created_at: string;
   updated_at: string;
 }
+
+/** Local business meeting row in SQLite. */
+export interface LocalBusinessMeetingRow {
+  id: string;
+  business_id: string;
+  created_by: string;
+  title: string;
+  duration_seconds: number;
+  full_transcript: string;
+  summary_json: string | null; // JSON string
+  summary_status: 'not_requested' | 'summary_pending' | 'completed' | 'failed';
+  keep_audio: number; // 0 or 1
+  created_at: string;
+  updated_at: string;
+}
+
+/** Meeting transcript segment row in SQLite. */
+export interface LocalBusinessMeetingSegmentRow {
+  id: string;
+  meeting_id: string;
+  start_ms: number;
+  end_ms: number;
+  text: string;
+  speaker: string | null;
+  created_at: string;
+}
+
+/** Action candidate extracted from meeting transcript. */
+export interface LocalBusinessActionCandidateRow {
+  id: string;
+  meeting_id: string;
+  title: string;
+  instructions: string;
+  suggested_assignee_id: string | null;
+  suggested_assignee_name: string | null;
+  suggested_due_date: string | null;
+  status: 'pending_review' | 'confirmed' | 'discarded';
+  created_task_id: string | null;
+  created_at: string;
+}
+
+/** Selective sharing recipient row for a meeting. */
+export interface LocalBusinessMeetingRecipientRow {
+  id: string;
+  meeting_id: string;
+  business_id: string;
+  user_id: string;
+  email?: string;
+  created_at: string;
+}

@@ -56,5 +56,11 @@
         android:enabled="true"
         android:exported="false"
         android:foregroundServiceType="microphone" />
+
+      <service
+        android:name=".LafinaMeetingService"
+        android:enabled="true"
+        android:exported="false"
+        android:foregroundServiceType="microphone" />
     </application>
 </manifest>

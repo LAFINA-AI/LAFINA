@@ -700,7 +700,7 @@ export const initDatabase = async (): Promise<void> => {
         // Versioned schema migrations
         const versionResult = tx.executeSync('PRAGMA user_version');
         const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;
-        const TARGET_VERSION = 12;
+        const TARGET_VERSION = 13;
 
         if (currentVersion < TARGET_VERSION) {
         if (currentVersion < 1) {
@@ -1084,12 +1084,69 @@ export const initDatabase = async (): Promise<void> => {
             )
           `);
         }
+        if (currentVersion < 13) {
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS business_meetings (
+              id TEXT PRIMARY KEY,
+              business_id TEXT NOT NULL,
+              created_by TEXT NOT NULL,
+              title TEXT NOT NULL DEFAULT 'Untitled Meeting',
+              duration_seconds INTEGER NOT NULL DEFAULT 0,
+              full_transcript TEXT NOT NULL DEFAULT '',
+              summary_json TEXT,
+              summary_status TEXT NOT NULL DEFAULT 'not_requested',
+              keep_audio INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE
+            )
+          `);
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS business_meeting_segments (
+              id TEXT PRIMARY KEY,
+              meeting_id TEXT NOT NULL,
+              start_ms INTEGER NOT NULL DEFAULT 0,
+              end_ms INTEGER NOT NULL DEFAULT 0,
+              text TEXT NOT NULL,
+              speaker TEXT,
+              created_at TEXT NOT NULL,
+              FOREIGN KEY (meeting_id) REFERENCES business_meetings (id) ON DELETE CASCADE
+            )
+          `);
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS business_action_candidates (
+              id TEXT PRIMARY KEY,
+              meeting_id TEXT NOT NULL,
+              title TEXT NOT NULL,
+              instructions TEXT NOT NULL,
+              suggested_assignee_id TEXT,
+              suggested_assignee_name TEXT,
+              suggested_due_date TEXT,
+              status TEXT NOT NULL DEFAULT 'pending_review',
+              created_task_id TEXT,
+              created_at TEXT NOT NULL,
+              FOREIGN KEY (meeting_id) REFERENCES business_meetings (id) ON DELETE CASCADE
+            )
+          `);
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS business_meeting_recipients (
+              id TEXT PRIMARY KEY,
+              meeting_id TEXT NOT NULL,
+              business_id TEXT NOT NULL,
+              user_id TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              FOREIGN KEY (meeting_id) REFERENCES business_meetings (id) ON DELETE CASCADE,
+              FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE,
+              UNIQUE (meeting_id, user_id)
+            )
+          `);
+        }
 
           tx.executeSync(`PRAGMA user_version = ${TARGET_VERSION}`);
         }
       }
     });
-    console.log('Database schema initialized successfully (version 12).');
+    console.log('Database schema initialized successfully (version 13).');
     await seedLocalDemoAccounts();
   } catch (error) {
     console.error('Failed to initialize database schema:', error);
