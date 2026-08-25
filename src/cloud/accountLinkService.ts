@@ -2,6 +2,7 @@ import { authService, AuthResponseData, UserProfileData } from './authService';
 import { cloudClient, CloudResultStatus } from './cloudClient';
 import { normalizeEmail, validatePassword } from '../storage/authUtils';
 import { userStore } from '../storage/userStore';
+import { businessStore } from '../storage/businessStore';
 
 export type AccountFlowStatus =
   | 'success'
@@ -412,6 +413,12 @@ export const accountLinkService = {
       };
     }
     userStore.linkCloudAccount(localUserId, profile.id, profile.role);
+    businessStore.saveCachedCapabilities(
+      localUserId,
+      profile.subscription_plan || 'student',
+      profile.effective_subscription_plan || 'student',
+      profile.business_session || null,
+    );
     return {
       status: 'success',
       localUserId,
@@ -420,18 +427,28 @@ export const accountLinkService = {
     };
   },
 
-  /** Requires a verified live Student Pro or admin FastAPI profile for Online Chat. */
+  /** Requires a verified live Student Pro, Business, or admin FastAPI profile for Online Chat. */
   authorizeOnlineMode: async (localUserId: string): Promise<AccountFlowResult> => {
     const profileResult = await accountLinkService.refreshCloudProfile(localUserId);
     if (profileResult.status !== 'success') {
       return profileResult;
     }
-    if (profileResult.role !== 'student_pro' && profileResult.role !== 'admin') {
+    const cachedBiz = businessStore.getCachedCapabilities(localUserId);
+    const isProOrBusiness =
+      profileResult.role === 'student_pro' ||
+      profileResult.role === 'admin' ||
+      profileResult.role === 'business' ||
+      cachedBiz?.effectivePlan === 'business' ||
+      cachedBiz?.effectivePlan === 'student_pro' ||
+      cachedBiz?.subscriptionPlan === 'business' ||
+      cachedBiz?.subscriptionPlan === 'student_pro';
+
+    if (!isProOrBusiness) {
       return {
         status: 'student_pro_required',
         localUserId,
         role: profileResult.role,
-        message: 'The live FastAPI account does not have Student Pro access.',
+        message: 'The live FastAPI account does not have Student Pro or Business access.',
       };
     }
     return profileResult;

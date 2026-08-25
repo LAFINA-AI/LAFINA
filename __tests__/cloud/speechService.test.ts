@@ -1,11 +1,13 @@
 import { createCallSpeechProvider } from '../../src/cloud/speechService';
 import { cloudClient } from '../../src/cloud/cloudClient';
 import { userStore } from '../../src/storage/userStore';
+import { businessStore } from '../../src/storage/businessStore';
 import * as ttsService from '../../src/ai/tts/ttsService';
 import RNFS from 'react-native-fs';
 
 jest.mock('../../src/cloud/cloudClient');
 jest.mock('../../src/storage/userStore');
+jest.mock('../../src/storage/businessStore');
 jest.mock('../../src/ai/tts/ttsService');
 jest.mock('react-native-fs', () => ({
   CachesDirectoryPath: '/mock/cache/path',
@@ -122,11 +124,41 @@ describe('speechService (Cloud CallSpeechProvider)', () => {
     );
   });
 
+  it('allows Gemini TTS for a business plan employee', async () => {
+    (userStore.getUserById as jest.Mock).mockReturnValue({
+      id: userId,
+      role: 'student',
+    });
+    (businessStore.getCachedCapabilities as jest.Mock).mockReturnValue({
+      userId,
+      effectivePlan: 'business',
+      memberRole: 'employee',
+    });
+    (cloudClient.request as jest.Mock).mockResolvedValue({
+      status: 'success',
+      data: {
+        requestId: 'req_biz',
+        audioBase64: 'UklGRgAAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
+        mimeType: 'audio/wav',
+        model: 'gemini-3.1-flash-tts-preview',
+        voice: 'Aoede',
+        createdAt: '2026-07-28T00:00:00Z',
+      },
+    });
+
+    const provider = createCallSpeechProvider(userId);
+    const result = await provider.speakText('Hello Business Employee!');
+
+    expect(cloudClient.request).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ source: 'gemini' });
+  });
+
   it('falls back to Kokoro when user role is not student_pro', async () => {
     (userStore.getUserById as jest.Mock).mockReturnValue({
       id: userId,
       role: 'student',
     });
+    (businessStore.getCachedCapabilities as jest.Mock).mockReturnValue(null);
 
     const provider = createCallSpeechProvider(userId);
     const result = await provider.speakText('Hello standard user');

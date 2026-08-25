@@ -4,7 +4,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import backend.app.admin
+from backend.app.admin import set_admin_session_maker
 from backend.app.main import app
 from backend.app.database import Base, get_db
 from backend.app.models.account import Account  # noqa: F401
@@ -35,10 +35,21 @@ TestingSessionLocal = async_sessionmaker(
     autoflush=False
 )
 
-backend.app.admin.AsyncSessionLocal = TestingSessionLocal
+set_admin_session_maker(TestingSessionLocal)
+
+def rebind_admin_session_maker():
+    set_admin_session_maker(TestingSessionLocal)
+    if hasattr(app.state, "admin") and app.state.admin:
+        app.state.admin.engine = test_engine
+        app.state.admin.session_maker = TestingSessionLocal
+        for view in getattr(app.state.admin, "views", []):
+            view.session_maker = TestingSessionLocal
+
+rebind_admin_session_maker()
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def setup_test_db():
+    rebind_admin_session_maker()
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield

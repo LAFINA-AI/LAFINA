@@ -15,6 +15,11 @@ from backend.app.security.auth import (
     hash_token, get_current_user_and_session, normalize_email, validate_password_strength
 )
 
+from backend.app.services.capabilities import (
+    BusinessSessionData,
+    resolve_account_capabilities,
+)
+
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 settings = get_settings()
 
@@ -43,12 +48,18 @@ class AuthTokenResponse(BaseModel):
     user_id: str
     email: str
     role: str
+    system_role: str = "user"
+    subscription_plan: str = "student"
     recovery_codes: list[str] | None = None
 
 class UserProfileResponse(BaseModel):
     id: str
     email: str
     role: str
+    system_role: str = "user"
+    subscription_plan: str = "student"
+    effective_subscription_plan: str = "student"
+    business_session: BusinessSessionData | None = None
     is_active: bool
     created_at: str
 
@@ -94,6 +105,8 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
         user_id=str(account.id),
         email=account.email,
         role=account.role,
+        system_role=account.system_role,
+        subscription_plan=account.subscription_plan,
         recovery_codes=raw_recovery_codes
     )
 
@@ -132,7 +145,9 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
         refresh_token=raw_refresh,
         user_id=str(account.id),
         email=account.email,
-        role=account.role
+        role=account.role,
+        system_role=account.system_role,
+        subscription_plan=account.subscription_plan,
     )
 
 @router.post("/refresh", response_model=AuthTokenResponse)
@@ -184,7 +199,9 @@ async def refresh(req: RefreshRequest, db: AsyncSession = Depends(get_db)):
         refresh_token=new_raw_refresh,
         user_id=str(account.id),
         email=account.email,
-        role=account.role
+        role=account.role,
+        system_role=account.system_role,
+        subscription_plan=account.subscription_plan,
     )
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -237,12 +254,21 @@ async def recover(req: RecoverRequest, db: AsyncSession = Depends(get_db)):
     return {"detail": "Password successfully reset. Please log in with your new password."}
 
 @router.get("/me", response_model=UserProfileResponse)
-async def get_me(auth_data: tuple[Account, AuthSession] = Depends(get_current_user_and_session)):
+async def get_me(
+    auth_data: tuple[Account, AuthSession] = Depends(get_current_user_and_session),
+    db: AsyncSession = Depends(get_db),
+):
     account, _ = auth_data
+    cap_res = await resolve_account_capabilities(account, db)
+
     return UserProfileResponse(
         id=str(account.id),
         email=account.email,
         role=account.role,
+        system_role=cap_res.system_role,
+        subscription_plan=cap_res.subscription_plan,
+        effective_subscription_plan=cap_res.effective_subscription_plan,
+        business_session=cap_res.business_session,
         is_active=account.is_active,
-        created_at=account.created_at.isoformat()
+        created_at=account.created_at.isoformat(),
     )

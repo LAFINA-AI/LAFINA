@@ -567,7 +567,14 @@ const getPersonalEntityTable = (entityType: SyncEntityType): string | null => {
       return 'notes';
     case 'custom_category':
       return 'custom_categories';
+    case 'business_task':
+      return 'business_tasks';
+    case 'business_task_assignment':
+      return 'business_task_assignments';
+    case 'business_work_block':
+      return 'business_work_blocks';
     case 'profile':
+    default:
       return null;
   }
 };

@@ -9,12 +9,26 @@ from backend.app.config import get_settings
 from backend.app.database import AsyncSessionLocal
 from backend.app.models import (
     Account, AuthSession, RecoveryCode,
+    Business, BusinessMembership, BusinessInvitation,
+    BusinessTask, BusinessTaskAssignment, BusinessWorkBlock, BusinessChangeFeed,
     TasksSync, EventsSync, TimeBlocksSync, RemindersSync, NotesSync, CustomCategoriesSync,
     IdempotentMutation, ChangeFeed, AIUsage, SecurityEvent
 )
 from backend.app.security.auth import verify_password
 
 settings = get_settings()
+
+_admin_session_maker = None
+
+def set_admin_session_maker(maker):
+    global _admin_session_maker
+    _admin_session_maker = maker
+
+def get_admin_session_maker():
+    global _admin_session_maker
+    if _admin_session_maker is not None:
+        return _admin_session_maker
+    return AsyncSessionLocal
 
 class AdminAuth(AuthenticationBackend):
     async def login(self, request: Request) -> bool:
@@ -25,7 +39,7 @@ class AdminAuth(AuthenticationBackend):
         if not email or not password:
             return False
 
-        async with AsyncSessionLocal() as db:
+        async with get_admin_session_maker()() as db:
             stmt = select(Account).where(Account.email == email)
             res = await db.execute(stmt)
             account = res.scalar_one_or_none()
@@ -58,7 +72,7 @@ class AdminAuth(AuthenticationBackend):
             request.session.clear()
             return False
 
-        async with AsyncSessionLocal() as db:
+        async with get_admin_session_maker()() as db:
             stmt = select(Account).where(Account.id == user_uuid)
             res = await db.execute(stmt)
             account = res.scalar_one_or_none()
@@ -127,6 +141,38 @@ class SecurityEventAdmin(ModelView, model=SecurityEvent):
     column_list = ["id", "owner_id", "event_type", "ip_address", "created_at"]
     icon = "fa-solid fa-shield-virus"
 
+class BusinessAdmin(ModelView, model=Business):
+    column_list = ["id", "name", "owner_id", "subscription_plan", "subscription_status", "seat_limit", "created_at"]
+    column_searchable_list = ["name"]
+    icon = "fa-solid fa-building"
+
+class BusinessMembershipAdmin(ModelView, model=BusinessMembership):
+    column_list = ["id", "business_id", "user_id", "member_role", "membership_status", "created_at"]
+    icon = "fa-solid fa-user-group"
+
+class BusinessInvitationAdmin(ModelView, model=BusinessInvitation):
+    column_list = ["id", "business_id", "email", "member_role", "status", "expires_at", "created_at"]
+    column_searchable_list = ["email"]
+    icon = "fa-solid fa-envelope-open-text"
+
+class BusinessTaskAdmin(ModelView, model=BusinessTask):
+    column_list = ["id", "business_id", "created_by", "title", "priority", "due_date", "is_cancelled", "version", "created_at"]
+    column_searchable_list = ["title"]
+    icon = "fa-solid fa-list-check"
+
+class BusinessTaskAssignmentAdmin(ModelView, model=BusinessTaskAssignment):
+    column_list = ["id", "business_task_id", "user_id", "status", "manager_review_status", "version", "created_at"]
+    icon = "fa-solid fa-user-check"
+
+class BusinessWorkBlockAdmin(ModelView, model=BusinessWorkBlock):
+    column_list = ["id", "business_id", "user_id", "title", "start_time", "end_time", "created_by", "version", "created_at"]
+    column_searchable_list = ["title"]
+    icon = "fa-solid fa-calendar-week"
+
+class BusinessChangeFeedAdmin(ModelView, model=BusinessChangeFeed):
+    column_list = ["id", "business_id", "actor_id", "entity_type", "entity_id", "operation", "version", "created_at"]
+    icon = "fa-solid fa-rss"
+
 authentication_backend = AdminAuth(secret_key=settings.JWT_PRIVATE_KEY[:32])
 
 def setup_admin(app, engine):
@@ -140,6 +186,13 @@ def setup_admin(app, engine):
     admin.add_view(AccountAdmin)
     admin.add_view(AuthSessionAdmin)
     admin.add_view(RecoveryCodeAdmin)
+    admin.add_view(BusinessAdmin)
+    admin.add_view(BusinessMembershipAdmin)
+    admin.add_view(BusinessInvitationAdmin)
+    admin.add_view(BusinessTaskAdmin)
+    admin.add_view(BusinessTaskAssignmentAdmin)
+    admin.add_view(BusinessWorkBlockAdmin)
+    admin.add_view(BusinessChangeFeedAdmin)
     admin.add_view(TasksSyncAdmin)
     admin.add_view(EventsSyncAdmin)
     admin.add_view(TimeBlocksSyncAdmin)
@@ -150,4 +203,5 @@ def setup_admin(app, engine):
     admin.add_view(ChangeFeedAdmin)
     admin.add_view(AIUsageAdmin)
     admin.add_view(SecurityEventAdmin)
+    app.state.admin = admin
     return admin

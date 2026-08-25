@@ -320,7 +320,7 @@ describe('accountLinkService', () => {
     expect(userStore.getUserById('cloud-account-uuid')).toBeNull();
   });
 
-  it.each(['student_pro', 'admin'])('allows Online Chat for a live %s role', async (role) => {
+  it.each(['student_pro', 'admin', 'business'])('allows Online Chat for a live %s role', async (role) => {
     const localUserId = await userStore.register(
       `Role ${role}`, `${role}@ustp.edu.ph`, 'local-password'
     );
@@ -329,6 +329,37 @@ describe('accountLinkService', () => {
     jest.spyOn(authService, 'getMe').mockResolvedValue({
       status: 'success',
       data: cloudProfile(role, `${role}@ustp.edu.ph`),
+    });
+
+    const result = await accountLinkService.authorizeOnlineMode(localUserId);
+    expect(result.status).toBe('success');
+  });
+
+  it('allows Online Chat for an employee with an active business session', async () => {
+    const localUserId = await userStore.register(
+      'Role Employee', 'employee@ustp.edu.ph', 'local-password'
+    );
+    userStore.setCurrentUser(localUserId);
+    userStore.saveSessionTokens(localUserId, 'access-token', 'encrypted-refresh-token');
+    jest.spyOn(authService, 'getMe').mockResolvedValue({
+      status: 'success',
+      data: {
+        id: 'cloud-uuid-emp',
+        email: 'employee@ustp.edu.ph',
+        role: 'student',
+        subscription_plan: 'student',
+        effective_subscription_plan: 'business',
+        business_session: {
+          business_id: 'biz-123',
+          business_name: 'Tech Corp',
+          member_role: 'employee',
+          membership_status: 'active',
+          lease_expires_at: '2099-01-01T00:00:00Z',
+          capabilities: ['business_chat'],
+        },
+        is_active: true,
+        created_at: new Date().toISOString(),
+      },
     });
 
     const result = await accountLinkService.authorizeOnlineMode(localUserId);

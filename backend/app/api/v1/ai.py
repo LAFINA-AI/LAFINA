@@ -12,6 +12,7 @@ from backend.app.models.account import Account
 from backend.app.models.session import AuthSession
 from backend.app.models.ai_usage import AIUsage
 from backend.app.security.auth import get_current_user_and_session
+from backend.app.services.capabilities import resolve_account_capabilities
 from backend.app.clients.deepseek import DeepSeekClient, DeepSeekError
 from backend.app.clients.gemini_tts import GeminiTtsClient, GeminiTtsError
 
@@ -82,16 +83,24 @@ async def chat_proxy(
     req: AIChatRequest,
     auth_data: Annotated[tuple[Account, AuthSession], Depends(get_current_user_and_session)],
     db: AsyncSession = Depends(get_db),
-    deepseek: DeepSeekClient = Depends(get_deepseek_client)
+    deepseek: DeepSeekClient = Depends(get_deepseek_client),
 ):
     account, _ = auth_data
     owner_id = account.id
 
-    # Enforce role-based entitlement for Online AI from live DB Account
-    if account.role not in ("student_pro", "admin"):
+    # Enforce role-based or business-entitled access for Online AI from live DB Account
+    cap_res = await resolve_account_capabilities(account, db)
+    is_entitled = (
+        account.role in ("student_pro", "admin", "business")
+        or account.system_role == "admin"
+        or account.subscription_plan in ("student_pro", "business")
+        or cap_res.effective_subscription_plan in ("student_pro", "business")
+        or cap_res.system_role == "admin"
+    )
+    if not is_entitled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Online AI requires a student_pro subscription. Please upgrade your account."
+            detail="Online AI requires a student_pro or business subscription. Please upgrade your account."
         )
 
     now = datetime.now(timezone.utc)
@@ -178,11 +187,17 @@ async def tts_proxy(
     account, _ = auth_data
     owner_id = account.id
 
-    # Enforce role-based entitlement for TTS from live DB Account: strictly student_pro only!
-    if account.role != "student_pro":
+    # Enforce subscription entitlement for TTS from live DB Account (student_pro or business)
+    cap_res = await resolve_account_capabilities(account, db)
+    is_entitled = (
+        account.role in ("student_pro", "business")
+        or account.subscription_plan in ("student_pro", "business")
+        or cap_res.effective_subscription_plan in ("student_pro", "business")
+    )
+    if not is_entitled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Gemini TTS requires a student_pro subscription. Please upgrade your account."
+            detail="Gemini TTS requires a student_pro or business subscription. Please upgrade your account."
         )
 
     trimmed_text = req.text.strip()

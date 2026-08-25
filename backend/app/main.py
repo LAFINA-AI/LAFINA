@@ -6,10 +6,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import get_settings
 from backend.app.database import engine, Base
 import backend.app.models  # noqa: F401
-from backend.app.api.v1 import auth, sync, ai
+from backend.app.api.v1 import auth, sync, ai, businesses, business_sync
+from backend.app.database import get_db
+from backend.app.services.capabilities import resolve_account_capabilities
 from backend.app.admin import setup_admin
 from backend.app.clients.deepseek import DeepSeekClient
 from backend.app.clients.gemini_tts import GeminiTtsClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 settings = get_settings()
 deepseek_client = DeepSeekClient(settings=settings)
@@ -83,19 +86,29 @@ if settings.ENVIRONMENT == "development":
 app.include_router(auth.router)
 app.include_router(sync.router)
 app.include_router(ai.router)
+app.include_router(businesses.router)
+app.include_router(business_sync.router)
 
 # Mount SQLAdmin UI (Prisma Studio equivalent)
 setup_admin(app, engine)
 
 @app.get("/v1/me", response_model=auth.UserProfileResponse, tags=["auth"])
-async def get_me_top_level(auth_data: tuple[auth.Account, auth.AuthSession] = Depends(auth.get_current_user_and_session)):
+async def get_me_top_level(
+    auth_data: tuple[auth.Account, auth.AuthSession] = Depends(auth.get_current_user_and_session),
+    db: AsyncSession = Depends(get_db),
+):
     account, _ = auth_data
+    cap_res = await resolve_account_capabilities(account, db)
     return auth.UserProfileResponse(
         id=str(account.id),
         email=account.email,
         role=account.role,
+        system_role=cap_res.system_role,
+        subscription_plan=cap_res.subscription_plan,
+        effective_subscription_plan=cap_res.effective_subscription_plan,
+        business_session=cap_res.business_session,
         is_active=account.is_active,
-        created_at=account.created_at.isoformat()
+        created_at=account.created_at.isoformat(),
     )
 
 @app.get("/healthz", status_code=status.HTTP_200_OK)

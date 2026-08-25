@@ -45,11 +45,39 @@ export { syncConflictStore } from './syncConflictStore';
 export type { SyncConflict, SyncConflictInput } from './syncConflictStore';
 export { syncStateStore } from './syncStateStore';
 export type { PersistedSyncState, SyncStateUpdate } from './syncStateStore';
+export { businessStore } from './businessStore';
+export type {
+  LocalBusiness,
+  LocalBusinessMembership,
+  LocalBusinessInvitation,
+  CachedCapabilities,
+} from './businessStore';
+export { businessTasksStore } from './businessTasksStore';
+export type { CreateBusinessTaskParams } from './businessTasksStore';
+export { businessWorkBlocksStore } from './businessWorkBlocksStore';
+export type { CreateBusinessWorkBlockParams } from './businessWorkBlocksStore';
 export type {
   PersistedSyncStatus,
   SyncEntityType,
   SyncOperation,
   SyncPayload,
   SyncScopeType,
+  SystemRole,
+  SubscriptionPlan,
+  BusinessMemberRole,
+  MembershipStatus,
+  BusinessSession,
+  TaskPriority,
+  TaskAssignmentStatus,
+  ManagerReviewStatus,
+  BusinessTaskRow,
+  BusinessTaskAssignmentRow,
+  BusinessWorkBlockRow,
+  BusinessTaskWithAssignments,
 } from './syncTypes';
+export {
+  seedLocalDemoAccounts,
+  DEMO_IDS,
+  DEMO_CREDENTIALS,
+} from './demoSeed';
 

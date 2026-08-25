@@ -1,7 +1,7 @@
 /** Supported synchronization scope namespaces. */
 export type SyncScopeType = 'account' | 'business';
 
-/** Personal entity types currently supported by the cloud sync API. */
+/** Entity types supported by the cloud sync API (personal and business). */
 export type SyncEntityType =
   | 'profile'
   | 'task'
@@ -9,7 +9,10 @@ export type SyncEntityType =
   | 'time_block'
   | 'reminder'
   | 'note'
-  | 'custom_category';
+  | 'custom_category'
+  | 'business_task'
+  | 'business_task_assignment'
+  | 'business_work_block';
 
 /** Mutation verbs accepted by the cloud sync API. */
 export type SyncOperation = 'create' | 'update' | 'delete';
@@ -25,3 +28,95 @@ export type PersistedSyncStatus =
   | 'Offline'
   | 'Sign-in required'
   | 'Attention required';
+
+/** User system authorization role. */
+export type SystemRole = 'user' | 'admin';
+
+/** Subscription billing and feature tier. */
+export type SubscriptionPlan = 'student' | 'student_pro' | 'business';
+
+/** Role within an organization-owned business workspace. */
+export type BusinessMemberRole = 'manager' | 'employee';
+
+/** Status of a user membership in a business workspace. */
+export type MembershipStatus = 'invited' | 'active' | 'suspended' | 'removed';
+
+/** Active business lease and capability session payload. */
+export interface BusinessSession {
+  business_id: string;
+  business_name: string;
+  member_role: BusinessMemberRole;
+  membership_status: MembershipStatus;
+  lease_expires_at: string;
+  capabilities: string[];
+}
+
+/** Business task priorities. */
+export type TaskPriority = 'high' | 'medium' | 'low';
+
+/** Lifecycle status of an assigned business task. */
+export type TaskAssignmentStatus =
+  | 'todo'
+  | 'in_progress'
+  | 'pending_review'
+  | 'completed';
+
+/** Manager review decision status. */
+export type ManagerReviewStatus = 'pending' | 'approved' | 'reopened';
+
+/** Business task row in SQLite. */
+export interface BusinessTaskRow {
+  id: string;
+  business_id: string;
+  created_by: string;
+  title: string;
+  instructions: string;
+  priority: TaskPriority;
+  due_date: string | null;
+  scheduled_at: string | null;
+  recurrence_rule: string | null;
+  reminder_lead_minutes: number;
+  is_cancelled: number;
+  version: number;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Business task assignment row in SQLite. */
+export interface BusinessTaskAssignmentRow {
+  id: string;
+  business_task_id: string;
+  business_id: string;
+  user_id: string;
+  status: TaskAssignmentStatus;
+  manager_review_status: ManagerReviewStatus;
+  reopened_reason: string | null;
+  submitted_at: string | null;
+  approved_at: string | null;
+  version: number;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Business work block row in SQLite. */
+export interface BusinessWorkBlockRow {
+  id: string;
+  business_id: string;
+  user_id: string;
+  title: string;
+  start_time: string;
+  end_time: string;
+  recurrence_rule: string | null;
+  created_by: string;
+  version: number;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Full composite task containing its assignment rows. */
+export interface BusinessTaskWithAssignments extends BusinessTaskRow {
+  assignments: BusinessTaskAssignmentRow[];
+}

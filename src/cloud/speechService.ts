@@ -1,6 +1,7 @@
 import RNFS from 'react-native-fs';
 import { cloudClient } from './cloudClient';
 import { userStore } from '../storage/userStore';
+import { businessStore } from '../storage/businessStore';
 import {
   playSpeechFile,
   speakTextWithTts,
@@ -70,9 +71,19 @@ export const createCallSpeechProvider = (
     if (disposed) return false;
     const activeSessionToken = userStore.getActiveSessionToken();
     const localUser = userStore.getUserById(userId);
+    const cachedBiz = businessStore.getCachedCapabilities(userId);
+    const isProOrBusiness =
+      localUser?.role === 'student_pro' ||
+      localUser?.role === 'admin' ||
+      localUser?.role === 'business' ||
+      cachedBiz?.effectivePlan === 'business' ||
+      cachedBiz?.effectivePlan === 'student_pro' ||
+      cachedBiz?.subscriptionPlan === 'business' ||
+      cachedBiz?.subscriptionPlan === 'student_pro';
+
     if (
       activeSessionToken.userId !== userId ||
-      localUser?.role !== 'student_pro' ||
+      !isProOrBusiness ||
       !cloudClient.getAccessToken()
     ) {
       return false;

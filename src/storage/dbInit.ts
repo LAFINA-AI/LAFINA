@@ -1,4 +1,5 @@
 import { db, DatabaseTransaction } from './database';
+import { seedLocalDemoAccounts } from './demoSeed';
 import { buildProfileSyncPayload } from './profileSyncPayload';
 import type {
   SyncEntityType,
@@ -570,6 +571,124 @@ export const initDatabase = async (): Promise<void> => {
           PRIMARY KEY (user_id, scope_type, scope_id, mutation_id)
         )
       `);
+      // Create business tables
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS businesses (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          owner_id TEXT NOT NULL,
+          timezone TEXT NOT NULL DEFAULT 'UTC',
+          subscription_plan TEXT NOT NULL DEFAULT 'business',
+          subscription_status TEXT NOT NULL DEFAULT 'active',
+          seat_limit INTEGER NOT NULL DEFAULT 5,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `);
+
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS business_memberships (
+          id TEXT PRIMARY KEY,
+          business_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          member_role TEXT NOT NULL DEFAULT 'employee',
+          membership_status TEXT NOT NULL DEFAULT 'active',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE
+        )
+      `);
+
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS business_invitations (
+          id TEXT PRIMARY KEY,
+          business_id TEXT NOT NULL,
+          invited_by TEXT NOT NULL,
+          email TEXT NOT NULL,
+          member_role TEXT NOT NULL DEFAULT 'employee',
+          status TEXT NOT NULL DEFAULT 'pending',
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE
+        )
+      `);
+
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS business_capabilities_cache (
+          user_id TEXT PRIMARY KEY,
+          business_id TEXT,
+          business_name TEXT,
+          member_role TEXT,
+          membership_status TEXT,
+          subscription_plan TEXT NOT NULL DEFAULT 'student',
+          effective_plan TEXT NOT NULL DEFAULT 'student',
+          capabilities TEXT NOT NULL DEFAULT '[]',
+          lease_expires_at TEXT,
+          updated_at TEXT NOT NULL
+        )
+      `);
+
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS business_tasks (
+          id TEXT PRIMARY KEY,
+          business_id TEXT NOT NULL,
+          created_by TEXT NOT NULL,
+          title TEXT NOT NULL,
+          instructions TEXT NOT NULL DEFAULT '',
+          priority TEXT NOT NULL DEFAULT 'medium',
+          due_date TEXT,
+          scheduled_at TEXT,
+          recurrence_rule TEXT,
+          reminder_lead_minutes INTEGER NOT NULL DEFAULT 15,
+          is_cancelled INTEGER NOT NULL DEFAULT 0,
+          version INTEGER NOT NULL DEFAULT 1,
+          deleted_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE
+        )
+      `);
+
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS business_task_assignments (
+          id TEXT PRIMARY KEY,
+          business_task_id TEXT NOT NULL,
+          business_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'todo',
+          manager_review_status TEXT NOT NULL DEFAULT 'pending',
+          reopened_reason TEXT,
+          submitted_at TEXT,
+          approved_at TEXT,
+          version INTEGER NOT NULL DEFAULT 1,
+          deleted_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (business_task_id) REFERENCES business_tasks (id) ON DELETE CASCADE,
+          FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE,
+          UNIQUE (business_task_id, user_id)
+        )
+      `);
+
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS business_work_blocks (
+          id TEXT PRIMARY KEY,
+          business_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          start_time TEXT NOT NULL,
+          end_time TEXT NOT NULL,
+          recurrence_rule TEXT,
+          created_by TEXT NOT NULL,
+          version INTEGER NOT NULL DEFAULT 1,
+          deleted_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE
+        )
+      `);
+
       tx.executeSync(`
         CREATE INDEX IF NOT EXISTS idx_sync_conflicts_scope_unresolved
         ON sync_conflicts (user_id, scope_type, scope_id, resolved_at, updated_at)
@@ -581,7 +700,7 @@ export const initDatabase = async (): Promise<void> => {
         // Versioned schema migrations
         const versionResult = tx.executeSync('PRAGMA user_version');
         const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;
-        const TARGET_VERSION = 9;
+        const TARGET_VERSION = 11;
 
         if (currentVersion < TARGET_VERSION) {
         if (currentVersion < 1) {
@@ -608,7 +727,6 @@ export const initDatabase = async (): Promise<void> => {
           try { tx.executeSync('ALTER TABLE active_session ADD COLUMN updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP'); } catch {}
         }
         if (currentVersion < 7) {
-          try { tx.executeSync('ALTER TABLE users ADD COLUMN cloud_account_id TEXT'); } catch {}
           try { tx.executeSync('ALTER TABLE users ADD COLUMN cloud_linked INTEGER NOT NULL DEFAULT 0'); } catch {}
           try { tx.executeSync('ALTER TABLE users ADD COLUMN cloud_linked_at TEXT'); } catch {}
           try { tx.executeSync('ALTER TABLE active_session ADD COLUMN access_token TEXT'); } catch {}
@@ -792,11 +910,133 @@ export const initDatabase = async (): Promise<void> => {
           backfillLegacyPersonalOutbox(tx, new Date().toISOString());
         }
 
+        if (currentVersion < 10) {
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS businesses (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              owner_id TEXT NOT NULL,
+              timezone TEXT NOT NULL DEFAULT 'UTC',
+              subscription_plan TEXT NOT NULL DEFAULT 'business',
+              subscription_status TEXT NOT NULL DEFAULT 'active',
+              seat_limit INTEGER NOT NULL DEFAULT 5,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+          `);
+
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS business_memberships (
+              id TEXT PRIMARY KEY,
+              business_id TEXT NOT NULL,
+              user_id TEXT NOT NULL,
+              member_role TEXT NOT NULL DEFAULT 'employee',
+              membership_status TEXT NOT NULL DEFAULT 'active',
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE
+            )
+          `);
+
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS business_invitations (
+              id TEXT PRIMARY KEY,
+              business_id TEXT NOT NULL,
+              invited_by TEXT NOT NULL,
+              email TEXT NOT NULL,
+              member_role TEXT NOT NULL DEFAULT 'employee',
+              status TEXT NOT NULL DEFAULT 'pending',
+              expires_at TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE
+            )
+          `);
+
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS business_capabilities_cache (
+              user_id TEXT PRIMARY KEY,
+              business_id TEXT,
+              business_name TEXT,
+              member_role TEXT,
+              membership_status TEXT,
+              subscription_plan TEXT NOT NULL DEFAULT 'student',
+              effective_plan TEXT NOT NULL DEFAULT 'student',
+              capabilities TEXT NOT NULL DEFAULT '[]',
+              lease_expires_at TEXT,
+              updated_at TEXT NOT NULL
+            )
+          `);
+        }
+
+        if (currentVersion < 11) {
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS business_tasks (
+              id TEXT PRIMARY KEY,
+              business_id TEXT NOT NULL,
+              created_by TEXT NOT NULL,
+              title TEXT NOT NULL,
+              instructions TEXT NOT NULL DEFAULT '',
+              priority TEXT NOT NULL DEFAULT 'medium',
+              due_date TEXT,
+              scheduled_at TEXT,
+              recurrence_rule TEXT,
+              reminder_lead_minutes INTEGER NOT NULL DEFAULT 15,
+              is_cancelled INTEGER NOT NULL DEFAULT 0,
+              version INTEGER NOT NULL DEFAULT 1,
+              deleted_at TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE
+            )
+          `);
+
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS business_task_assignments (
+              id TEXT PRIMARY KEY,
+              business_task_id TEXT NOT NULL,
+              business_id TEXT NOT NULL,
+              user_id TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'todo',
+              manager_review_status TEXT NOT NULL DEFAULT 'pending',
+              reopened_reason TEXT,
+              submitted_at TEXT,
+              approved_at TEXT,
+              version INTEGER NOT NULL DEFAULT 1,
+              deleted_at TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (business_task_id) REFERENCES business_tasks (id) ON DELETE CASCADE,
+              FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE,
+              UNIQUE (business_task_id, user_id)
+            )
+          `);
+
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS business_work_blocks (
+              id TEXT PRIMARY KEY,
+              business_id TEXT NOT NULL,
+              user_id TEXT NOT NULL,
+              title TEXT NOT NULL,
+              start_time TEXT NOT NULL,
+              end_time TEXT NOT NULL,
+              recurrence_rule TEXT,
+              created_by TEXT NOT NULL,
+              version INTEGER NOT NULL DEFAULT 1,
+              deleted_at TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (business_id) REFERENCES businesses (id) ON DELETE CASCADE
+            )
+          `);
+        }
+
           tx.executeSync(`PRAGMA user_version = ${TARGET_VERSION}`);
         }
       }
     });
-    console.log('Database schema initialized successfully (version 9).');
+    console.log('Database schema initialized successfully (version 11).');
+    await seedLocalDemoAccounts();
   } catch (error) {
     console.error('Failed to initialize database schema:', error);
     throw error;

@@ -9,11 +9,27 @@ from backend.app.models.mutations import IdempotentMutation
 from backend.app.models.change_feed import ChangeFeed
 from backend.app.models.sync_head import SyncHead
 from backend.app.models.ai_usage import AIUsage, SecurityEvent
+from backend.app.models.business import Business, BusinessMembership, BusinessInvitation
+from backend.app.models.business_collaboration import (
+    BusinessTask,
+    BusinessTaskAssignment,
+    BusinessWorkBlock,
+    BusinessChangeFeed,
+    BusinessIdempotentMutation,
+)
 
 __all__ = [
     "Account",
     "AuthSession",
     "RecoveryCode",
+    "Business",
+    "BusinessMembership",
+    "BusinessInvitation",
+    "BusinessTask",
+    "BusinessTaskAssignment",
+    "BusinessWorkBlock",
+    "BusinessChangeFeed",
+    "BusinessIdempotentMutation",
     "ProfileSync",
     "TasksSync",
     "EventsSync",
