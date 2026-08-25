@@ -1,11 +1,23 @@
 import React from 'react';
-import { ActivityIndicator, NativeModules } from 'react-native';
+import { ActivityIndicator, AppState, NativeModules } from 'react-native';
+import type { AppStateStatus } from 'react-native';
 import ReactTestRenderer from 'react-test-renderer';
 import App from '../App';
 import { db } from '../src/storage/database';
 import { initDatabase } from '../src/storage/dbInit';
 import { remindersStore } from '../src/storage/remindersStore';
 import { userStore } from '../src/storage/userStore';
+import { syncWorker } from '../src/sync/syncWorker';
+
+jest.mock('@op-engineering/op-sqlite', () => {
+  throw new Error('Use the JS fallback database for React component tests.');
+});
+
+jest.mock('../src/sync/syncWorker', () => ({
+  syncWorker: {
+    performSync: jest.fn().mockResolvedValue(undefined),
+  },
+}));
 
 jest.mock('react-native/Libraries/Modal/Modal', () => ({
   __esModule: true,
@@ -157,5 +169,42 @@ describe('application startup', () => {
     expect(incomingScreen.props.visible).toBe(true);
     expect(incomingScreen.props.initialAction).toBe('call');
     expect(incomingScreen.props.reminderId).toBe('rem-cold-start');
+  });
+
+  it('syncs an existing account at startup and whenever the app resumes', async () => {
+    const userId = 'resume-sync-user';
+    const now = new Date().toISOString();
+    db.executeSync(
+      'INSERT INTO users (id, username, is_new_user, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      [userId, 'Resume Student', 0, now, now],
+    );
+    userStore.setCurrentUser(userId);
+    let appStateListener: ((nextState: AppStateStatus) => void) | null = null;
+    const appStateSpy = jest
+      .spyOn(AppState, 'addEventListener')
+      .mockImplementation((_eventType, listener) => {
+        appStateListener = listener;
+        return { remove: jest.fn() };
+      });
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(<App />);
+      await flushPromises();
+    });
+    for (let flushIndex = 0; flushIndex < 3; flushIndex += 1) {
+      await ReactTestRenderer.act(flushPromises);
+    }
+
+    expect(syncWorker.performSync).toHaveBeenCalledTimes(1);
+    await ReactTestRenderer.act(async () => {
+      if (!appStateListener) {
+        throw new Error('AppState listener was not registered.');
+      }
+      appStateListener('active');
+      await flushPromises();
+    });
+
+    expect(syncWorker.performSync).toHaveBeenCalledTimes(2);
+    appStateSpy.mockRestore();
   });
 });

@@ -3,5 +3,6 @@ module.exports = {
   setupFiles: ['./jest.setup.js'],
   moduleNameMapper: {
     '\\.(gguf|bin|onnx)$': '<rootDir>/__mocks__/fileMock.js',
+    '^@op-engineering/op-sqlite$': '<rootDir>/__mocks__/opSqliteMock.js',
   },
 };

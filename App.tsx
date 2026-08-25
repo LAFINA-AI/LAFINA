@@ -29,7 +29,7 @@ import {
   reconcileReminderAlarms,
 } from './src/scheduler';
 import type { NativeCallAction, NativeCallTrigger } from './src/scheduler';
-import { accountLinkService } from './src/cloud/accountLinkService';
+import { syncWorker } from './src/sync/syncWorker';
 
 
 // Screens
@@ -172,10 +172,8 @@ function AppContent({
         if (currentUser) {
           setUserId(currentUser.id);
           setIsOnboarding(currentUser.isNewUser);
-          accountLinkService.refreshCloudProfile(currentUser.id).then((result) => {
-            if (result.status === 'success') {
-              setRefreshTrigger((previous) => previous + 1);
-            }
+          syncWorker.performSync().then(() => {
+            setRefreshTrigger((previous) => previous + 1);
           }).catch(() => undefined);
         }
 
@@ -204,10 +202,8 @@ function AppContent({
       if (nextState !== 'active' || !userId) {
         return;
       }
-      accountLinkService.refreshCloudProfile(userId).then((result) => {
-        if (result.status === 'success') {
-          setRefreshTrigger((previous) => previous + 1);
-        }
+      syncWorker.performSync().then(() => {
+        setRefreshTrigger((previous) => previous + 1);
       }).catch(() => undefined);
     });
 

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from backend.app.config import get_settings
-from backend.app.database import get_db
+from backend.app.database import get_db, set_transaction_rls_user
 from backend.app.models.account import Account
 from backend.app.models.session import AuthSession
 
@@ -142,5 +142,7 @@ async def get_current_user_and_session(
 
     if session_expires_at < now:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired or revoked.")
+
+    await set_transaction_rls_user(db, account.id)
 
     return account, session

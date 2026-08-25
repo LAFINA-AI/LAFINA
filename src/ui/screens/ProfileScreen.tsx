@@ -24,6 +24,7 @@ import { Pencil } from 'lucide-react-native';
 import { accountLinkService } from '../../cloud/accountLinkService';
 import { authService } from '../../cloud/authService';
 import { normalizeEmail } from '../../storage/authUtils';
+import { syncWorker } from '../../sync/syncWorker';
 
 // Profile sub-components
 import { ProfileStats } from '../components/profile/ProfileStats';
@@ -243,6 +244,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         cloudPassword
       );
       if (result.status === 'success') {
+        await syncWorker.performSync();
         setCloudPassword('');
         setCloudLinkVisible(false);
         loadSettings();

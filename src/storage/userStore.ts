@@ -1,8 +1,9 @@
 import { generateId } from '../utils';
-import { db } from './database';
+import { db, DatabaseTransaction } from './database';
 import { hashPassword, normalizeEmail, validatePassword, verifyPassword } from './authUtils';
 import { GUEST_USER_ID, GUEST_USERNAME } from '../constants';
 import { syncOutboxStore } from './syncOutboxStore';
+import { buildProfileSyncPayload } from './profileSyncPayload';
 
 export interface User {
   id: string;
@@ -41,6 +42,23 @@ const mapStoredUser = (row: StoredUserRow): User => ({
   createdAt: String(row.created_at),
   updatedAt: String(row.updated_at),
 });
+
+const enqueueProfileMutation = (
+  userId: string,
+  operation: 'create' | 'update',
+  tx: DatabaseTransaction,
+): void => {
+  syncOutboxStore.enqueueMutation(
+    userId,
+    'profile',
+    'profile',
+    operation,
+    buildProfileSyncPayload(userId, tx),
+    'account',
+    userId,
+    tx,
+  );
+};
 
 // Ensure active_session table exists with auth token persistence columns
 try {
@@ -136,20 +154,16 @@ export const userStore = {
     const hash = await hashPassword(password);
 
     try {
-      db.executeSync(
-        `INSERT INTO users (id, username, email, password_hash, role, is_new_user, time_format_24h, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, username, normalizedEmail, hash, 'student', 1, 0, now, now]
-      );
-      try {
-        syncOutboxStore.enqueueMutation('profile', id, 'create', {
-          username,
-          time_format_24h: false,
-          week_starts_monday: false,
-          dark_mode: false,
-        });
-      } catch (e) {
-        console.warn('Failed to enqueue profile mutation to outbox:', e);
-      }
+      db.transactionSync((tx) => {
+        tx.executeSync(
+          `INSERT INTO users (
+             id, username, email, password_hash, role, is_new_user, time_format_24h,
+             week_starts_monday, dark_mode, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, username, normalizedEmail, hash, 'student', 1, 0, 0, 0, now, now],
+        );
+        enqueueProfileMutation(id, 'create', tx);
+      });
       return id;
     } catch (error) {
       console.error('Error registering user:', error);
@@ -313,7 +327,7 @@ export const userStore = {
     try {
       db.executeSync(
         `UPDATE users SET is_new_user = 0, updated_at = ? WHERE id = ?`,
-        [now, userId]
+        [now, userId],
       );
     } catch (error) {
       console.error('Error marking onboarding complete:', error);
@@ -384,10 +398,13 @@ export const userStore = {
   set24HourFormat: (userId: string, enabled: boolean): void => {
     const now = new Date().toISOString();
     try {
-      db.executeSync(
-        `UPDATE users SET time_format_24h = ?, updated_at = ? WHERE id = ?`,
-        [enabled ? 1 : 0, now, userId]
-      );
+      db.transactionSync((tx) => {
+        tx.executeSync(
+          `UPDATE users SET time_format_24h = ?, updated_at = ? WHERE id = ?`,
+          [enabled ? 1 : 0, now, userId],
+        );
+        enqueueProfileMutation(userId, 'update', tx);
+      });
     } catch (error) {
       console.error('Error saving 24-hour time format setting:', error);
       throw error;
@@ -419,10 +436,13 @@ export const userStore = {
   setWeekStartsMonday: (userId: string, enabled: boolean): void => {
     const now = new Date().toISOString();
     try {
-      db.executeSync(
-        `UPDATE users SET week_starts_monday = ?, updated_at = ? WHERE id = ?`,
-        [enabled ? 1 : 0, now, userId]
-      );
+      db.transactionSync((tx) => {
+        tx.executeSync(
+          `UPDATE users SET week_starts_monday = ?, updated_at = ? WHERE id = ?`,
+          [enabled ? 1 : 0, now, userId],
+        );
+        enqueueProfileMutation(userId, 'update', tx);
+      });
     } catch (error) {
       console.error('Error saving week starts on Monday setting:', error);
       throw error;
@@ -454,10 +474,13 @@ export const userStore = {
   setDarkModeEnabled: (userId: string, enabled: boolean): void => {
     const now = new Date().toISOString();
     try {
-      db.executeSync(
-        `UPDATE users SET dark_mode = ?, updated_at = ? WHERE id = ?`,
-        [enabled ? 1 : 0, now, userId]
-      );
+      db.transactionSync((tx) => {
+        tx.executeSync(
+          `UPDATE users SET dark_mode = ?, updated_at = ? WHERE id = ?`,
+          [enabled ? 1 : 0, now, userId],
+        );
+        enqueueProfileMutation(userId, 'update', tx);
+      });
     } catch (error) {
       console.error('Error saving dark mode setting:', error);
       throw error;

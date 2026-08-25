@@ -37,4 +37,19 @@ export type {
 } from './preferencesStore';
 export { remindersStore } from './remindersStore';
 export type { Reminder, ReminderStatus } from './remindersStore';
+export { syncOutboxStore } from './syncOutboxStore';
+export type { OutboxItem } from './syncOutboxStore';
+export { syncMetadataStore } from './syncMetadataStore';
+export type { SyncMetadataInput } from './syncMetadataStore';
+export { syncConflictStore } from './syncConflictStore';
+export type { SyncConflict, SyncConflictInput } from './syncConflictStore';
+export { syncStateStore } from './syncStateStore';
+export type { PersistedSyncState, SyncStateUpdate } from './syncStateStore';
+export type {
+  PersistedSyncStatus,
+  SyncEntityType,
+  SyncOperation,
+  SyncPayload,
+  SyncScopeType,
+} from './syncTypes';
 
