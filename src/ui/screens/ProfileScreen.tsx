@@ -6,9 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  ActivityIndicator,
-  Modal,
-  TextInput,
 } from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { preferencesStore, tasksStore, notesStore, userStore } from '../../storage';
@@ -21,10 +18,7 @@ import { GUEST_USER_ID } from '../../constants';
 import { SvgXml } from 'react-native-svg';
 import { ARC_SCREEN_XML } from '../../assets/arc_screen_xml';
 import { Pencil } from 'lucide-react-native';
-import { accountLinkService } from '../../cloud/accountLinkService';
 import { authService } from '../../cloud/authService';
-import { normalizeEmail } from '../../storage/authUtils';
-import { syncWorker } from '../../sync/syncWorker';
 
 // Profile sub-components
 import { ProfileStats } from '../components/profile/ProfileStats';
@@ -89,10 +83,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
   // Privacy Modal state
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
-  const [cloudLinkVisible, setCloudLinkVisible] = useState(false);
-  const [cloudPassword, setCloudPassword] = useState('');
-  const [cloudLinkError, setCloudLinkError] = useState<string | null>(null);
-  const [cloudLinking, setCloudLinking] = useState(false);
 
   const { colors, isDarkMode, toggleTheme } = useTheme();
   const themed = useThemedStyles((c) => getProfileThemedStyles(c));
@@ -213,55 +203,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       onNavigateToRegister();
     } else {
       Alert.alert('Create Account', 'Navigate to Register from the Welcome screen to create an account.');
-    }
-  };
-
-  const openCloudLink = () => {
-    setCloudPassword('');
-    setCloudLinkError(null);
-    setCloudLinkVisible(true);
-  };
-
-  const closeCloudLink = () => {
-    if (cloudLinking) {
-      return;
-    }
-    setCloudPassword('');
-    setCloudLinkError(null);
-    setCloudLinkVisible(false);
-  };
-
-  const handleCloudLink = async () => {
-    if (!cloudPassword) {
-      setCloudLinkError('Enter the password for the FastAPI cloud account.');
-      return;
-    }
-    setCloudLinking(true);
-    setCloudLinkError(null);
-    try {
-      const result = await accountLinkService.createOrLinkCloudAccount(
-        userId,
-        cloudPassword
-      );
-      if (result.status === 'success') {
-        await syncWorker.performSync();
-        setCloudPassword('');
-        setCloudLinkVisible(false);
-        loadSettings();
-        onRefresh();
-        Alert.alert(
-          'Cloud Account Linked',
-          `FastAPI authentication succeeded. Live cloud role: ${result.role || 'student'}.`
-        );
-      } else {
-        setCloudLinkError(result.message);
-      }
-    } catch (error: unknown) {
-      setCloudLinkError(
-        error instanceof Error ? error.message : 'FastAPI account linking failed.'
-      );
-    } finally {
-      setCloudLinking(false);
     }
   };
 
@@ -414,21 +355,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             />
           </View>
 
-          {/* Cloud Account Group */}
-          {!isGuest && (
-            <>
-              <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Cloud Account</Text>
-              <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
-                <SettingItem
-                  text="Create or Link FastAPI Account"
-                  type="link"
-                  valueText={currentUser?.isCloudLinked ? 'Linked' : 'Offline-only'}
-                  onPress={openCloudLink}
-                />
-              </View>
-            </>
-          )}
-
           {/* Data Management Group */}
           <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Data Settings</Text>
           <View style={[styles.settingsGroupCard, themed.settingsGroupCard]}>
@@ -486,66 +412,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         onClose={() => setPrivacyModalVisible(false)}
       />
 
-      <Modal
-        visible={cloudLinkVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeCloudLink}
-      >
-        <View style={styles.cloudModalOverlay}>
-          <View style={[styles.cloudModalCard, { backgroundColor: colors.cardBg }]}>
-            <Text style={[styles.cloudModalTitle, { color: colors.textPrimary }]}>
-              Create or Link FastAPI
-            </Text>
-            <Text style={[styles.cloudModalBody, { color: colors.textSecondary }]}>
-              Email being linked: {currentUser?.email ? normalizeEmail(currentUser.email) : ''}
-            </Text>
-            <Text style={[styles.cloudModalBody, { color: colors.textSecondary }]}>
-              Enter the password for the existing FastAPI account. If no cloud account exists,
-              this explicit action creates one. Your local password and local data are unchanged.
-            </Text>
-            <TextInput
-              value={cloudPassword}
-              onChangeText={setCloudPassword}
-              placeholder="FastAPI cloud password"
-              placeholderTextColor={colors.textMuted}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!cloudLinking}
-              style={[
-                styles.cloudPasswordInput,
-                {
-                  color: colors.textPrimary,
-                  backgroundColor: colors.inputBg,
-                  borderColor: colors.border,
-                },
-              ]}
-            />
-            {cloudLinkError && (
-              <Text style={styles.cloudLinkError}>{cloudLinkError}</Text>
-            )}
-            <View style={styles.cloudModalActions}>
-              <TouchableOpacity
-                onPress={closeCloudLink}
-                disabled={cloudLinking}
-                style={[styles.cloudModalButton, styles.cloudModalCancel]}
-              >
-                <Text style={{ color: colors.textPrimary }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleCloudLink}
-                disabled={cloudLinking}
-                style={[styles.cloudModalButton, styles.cloudModalConfirm]}
-              >
-                {cloudLinking
-                  ? <ActivityIndicator color={colors.white} />
-                  : <Text style={styles.cloudModalConfirmText}>Continue</Text>}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </ScrollView>
   );
 };
@@ -703,64 +569,5 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 14,
     fontFamily: Fonts.body,
-  },
-  cloudModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  cloudModalCard: {
-    borderRadius: Layout.borderRadiusCard,
-    padding: 20,
-  },
-  cloudModalTitle: {
-    fontFamily: Fonts.heading,
-    fontSize: 19,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  cloudModalBody: {
-    fontFamily: Fonts.body,
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 10,
-  },
-  cloudPasswordInput: {
-    borderWidth: 1,
-    borderRadius: Layout.borderRadiusButton,
-    paddingHorizontal: 12,
-    minHeight: 46,
-    marginTop: 4,
-  },
-  cloudLinkError: {
-    color: Colors.error,
-    fontFamily: Fonts.body,
-    fontSize: 12,
-    marginTop: 8,
-  },
-  cloudModalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 18,
-  },
-  cloudModalButton: {
-    minWidth: 92,
-    minHeight: 42,
-    borderRadius: Layout.borderRadiusButton,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 10,
-  },
-  cloudModalCancel: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  cloudModalConfirm: {
-    backgroundColor: Colors.blue,
-  },
-  cloudModalConfirmText: {
-    color: Colors.textLight,
-    fontWeight: 'bold',
   },
 });

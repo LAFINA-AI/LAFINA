@@ -12,7 +12,7 @@ import {
 import { Trash2, Plus } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { Fonts, Colors } from '../theme';
-import { chatStore } from '../../storage';
+import { chatStore, userStore, businessStore } from '../../storage';
 import { LAFINA_LOGO_CHAT_HEADER_XML } from '../../assets/lafina_logo_chat_header_xml';
 import type { ChatMessage } from '../../storage';
 import {
@@ -31,12 +31,15 @@ import { ChatInput } from '../components/chat/ChatInput';
 
 import { onlineChatSkill } from '../../skills/onlineChatSkill';
 import { accountLinkService } from '../../cloud/accountLinkService';
+import { cloudClient } from '../../cloud/cloudClient';
 
 interface ChatScreenProps {
   userId: string;
   refreshTrigger: number;
   onRefresh: () => void;
 }
+
+let userExplicitOfflineChoice = false;
 
 export const ChatScreen: React.FC<ChatScreenProps> = ({
   userId,
@@ -50,6 +53,38 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const flatListRef = useRef<FlatList>(null);
 
   const themed = useThemedStyles((c) => getChatThemedStyles(c));
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkDefaultOnline = async () => {
+      try {
+        const localUser = userStore.getUserById(userId);
+        const cachedBiz = businessStore.getCachedCapabilities(userId);
+        const isProOrBusiness =
+          localUser?.role === 'student_pro' ||
+          localUser?.role === 'admin' ||
+          localUser?.role === 'business' ||
+          cachedBiz?.effectivePlan === 'business' ||
+          cachedBiz?.effectivePlan === 'student_pro' ||
+          cachedBiz?.subscriptionPlan === 'business' ||
+          cachedBiz?.subscriptionPlan === 'student_pro';
+
+        const isOnline = await cloudClient.isOnline();
+        const token = cloudClient.getAccessToken();
+        if (isProOrBusiness && isOnline && token && !userExplicitOfflineChoice && isMounted) {
+          setIsOnlineMode(true);
+        } else if ((!isOnline || !isProOrBusiness) && isMounted) {
+          setIsOnlineMode(false);
+        }
+      } catch {
+        // Fallback gracefully
+      }
+    };
+    checkDefaultOnline();
+    return () => {
+      isMounted = false;
+    };
+  }, [userId, refreshTrigger]);
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
@@ -79,7 +114,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       if (authorization.status === 'student_pro_required') {
         Alert.alert(
           'Student Pro Required',
-          `${authorization.message}\n\nOffline Chat and offline scheduling remain available.`
+          'Online Assistant (DeepSeek-V4) is exclusive to Student Pro accounts.\n\nOffline Chat and offline scheduling remain available.'
         );
         return;
       }
@@ -92,13 +127,17 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
             ? 'Cloud Authentication Required'
             : unavailable ? 'Online Service Unavailable' : 'Online Mode Unavailable',
           `${authorization.message}\n\n${needsAuthentication
-            ? 'Use Profile > Cloud Account to sign in or link FastAPI.'
+            ? 'Sign in while online so LAFINA can link FastAPI automatically.'
             : 'Offline Chat and offline scheduling remain available.'}`
         );
         return;
       }
+      userExplicitOfflineChoice = false;
+      setIsOnlineMode(true);
+    } else {
+      userExplicitOfflineChoice = true;
+      setIsOnlineMode(false);
     }
-    setIsOnlineMode(!isOnlineMode);
   };
 
   const handleSend = async () => {
@@ -133,7 +172,22 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
     let aiReply = '';
-    if (isOnlineMode) {
+    const localUser = userStore.getUserById(userId);
+    const cachedBiz = businessStore.getCachedCapabilities(userId);
+    const isProOrBusiness =
+      localUser?.role === 'student_pro' ||
+      localUser?.role === 'admin' ||
+      localUser?.role === 'business' ||
+      cachedBiz?.effectivePlan === 'business' ||
+      cachedBiz?.effectivePlan === 'student_pro' ||
+      cachedBiz?.subscriptionPlan === 'business' ||
+      cachedBiz?.subscriptionPlan === 'student_pro';
+
+    const isDeviceOnline = await cloudClient.isOnline();
+    const hasToken = !!cloudClient.getAccessToken();
+    const shouldUseOnline = isProOrBusiness && (isOnlineMode || (isDeviceOnline && !userExplicitOfflineChoice)) && hasToken;
+
+    if (shouldUseOnline) {
       // Apply scheduling actions locally if user message expresses scheduling intent
       const normalizedUserText = normalizeTranscript(userText);
       const scheduleNlu = createFallbackNluResult(normalizedUserText);
@@ -154,16 +208,16 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       const cloudRes = await onlineChatSkill.sendChatMessage(chatPayload);
       if (cloudRes.status === 'success' && cloudRes.data) {
         aiReply = localScheduleReply ?? cloudRes.data.reply;
+        setIsOnlineMode(true);
       } else if (localScheduleReply) {
         aiReply = localScheduleReply;
-      } else if (cloudRes.status === 'subscription_required') {
-        setIsOnlineMode(false);
-        aiReply = `[Cloud AI Error]: ${cloudRes.error || 'Online AI requires a Student Pro subscription.'}`;
       } else if (cloudRes.status === 'auth_required') {
         setIsOnlineMode(false);
-        aiReply = '[Cloud AI Error (auth_required)]: Cloud session expired. Link or sign in again from Profile. Offline mode remains available.';
+        aiReply = '[Cloud AI Error (auth_required)]: Cloud session expired. Sign in again while online. Offline mode remains available.';
       } else {
-        aiReply = `[Cloud AI Error (${cloudRes.status})]: ${cloudRes.error || 'Unable to connect to online assistant.'}`;
+        // Graceful automatic fallback to SmolLM2 Local LLM when cloud call fails
+        console.warn(`[Chat] Online AI request returned ${cloudRes.status}, falling back to offline LLM.`);
+        aiReply = await runLocalLlmChat(userText, userId);
       }
     } else {
       // Process Command via SmolLM2 Local LLM Chatbot (100% offline)

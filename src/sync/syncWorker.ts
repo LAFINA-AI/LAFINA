@@ -1165,8 +1165,17 @@ export const syncWorker = {
       }
 
       if (!cloudClient.getAccessToken()) {
-        syncState.setStatus(localUserId, 'Sign-in required');
-        return;
+        const linkResult = await accountLinkService.completeDeferredCloudLink(
+          localUserId
+        );
+        if (linkResult.status !== 'success' || !cloudClient.getAccessToken()) {
+          syncState.setStatus(
+            localUserId,
+            linkResult.status === 'offline' ? 'Offline' : 'Sign-in required',
+            linkResult.message
+          );
+          return;
+        }
       }
 
       syncState.setStatus(localUserId, 'Syncing');

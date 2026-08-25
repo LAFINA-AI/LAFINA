@@ -3,6 +3,7 @@ import { cloudClient, CloudResultStatus } from './cloudClient';
 import { normalizeEmail, validatePassword } from '../storage/authUtils';
 import { userStore } from '../storage/userStore';
 import { businessStore } from '../storage/businessStore';
+import { secureKeystore } from '../utils/keystore';
 
 export type AccountFlowStatus =
   | 'success'
@@ -59,7 +60,7 @@ const mapCloudFailure = (
       return {
         status: 'incorrect_cloud_password',
         message:
-          'This email already has a FastAPI account, but the password does not match. Enter the password for your existing cloud account to enable Online Mode.',
+          'This email already has a FastAPI account, but the app password does not match it. Automatic cloud linking was skipped.',
       };
     default:
       return { status: 'registration_failed', message: fallbackMessage };
@@ -120,6 +121,7 @@ const attachAuthenticatedCloudSession = async (
 
   try {
     userStore.linkCloudAccount(localUserId, profile.id, profile.role);
+    userStore.clearPendingCloudCredential(localUserId);
   } catch {
     cloudClient.clearActiveSession();
     return {
@@ -171,6 +173,135 @@ const isFlowResult = (
   result: AccountFlowResult | AuthResponseData
 ): result is AccountFlowResult => 'status' in result;
 
+const persistDeferredCloudCredential = async (
+  localUserId: string,
+  password: string
+): Promise<boolean> => {
+  try {
+    const encryptedCredential = await secureKeystore.encryptString(password);
+    userStore.savePendingCloudCredential(localUserId, encryptedCredential);
+    return true;
+  } catch (error: unknown) {
+    console.warn(
+      '[AccountLink] Deferred FastAPI credential could not be stored securely:',
+      error instanceof Error ? error.message : 'Unknown secure-storage error.'
+    );
+    return false;
+  }
+};
+
+const clearDeferredCredentialSafely = (localUserId: string): void => {
+  try {
+    userStore.clearPendingCloudCredential(localUserId);
+  } catch (error: unknown) {
+    console.warn(
+      '[AccountLink] Deferred FastAPI credential could not be erased:',
+      error instanceof Error ? error.message : 'Unknown storage error.'
+    );
+  }
+};
+
+const shouldDiscardDeferredCredential = (status: AccountFlowStatus): boolean =>
+  status === 'incorrect_cloud_password' ||
+  status === 'account_disabled' ||
+  status === 'validation_error';
+
+const runDeferredCloudLink = async (
+  localUserId: string
+): Promise<AccountFlowResult> => {
+  const localUser = userStore.getUserById(localUserId);
+  const activeSession = userStore.getActiveSessionToken();
+
+  if (!localUser?.email || activeSession.userId !== localUserId) {
+    return {
+      status: 'auth_required',
+      message: 'The active local account cannot be matched to a FastAPI login.',
+    };
+  }
+
+  if (activeSession.accessToken) {
+    return {
+      status: 'success',
+      localUserId,
+      role: localUser.role,
+      message: 'A FastAPI-authenticated session is already stored.',
+    };
+  }
+
+  if (!activeSession.pendingCloudCredential) {
+    return {
+      status: 'auth_required',
+      localUserId,
+      role: localUser.role,
+      message:
+        'Automatic FastAPI linking is unavailable for this older local session. Sign out and sign in once while online; no separate FastAPI password is required.',
+    };
+  }
+
+  if (!(await cloudClient.isOnline())) {
+    return {
+      status: 'offline',
+      localUserId,
+      role: localUser.role,
+      message: 'FastAPI linking is queued and will retry when the connection returns.',
+    };
+  }
+
+  let password = '';
+  try {
+    password = await secureKeystore.decryptString(
+      activeSession.pendingCloudCredential
+    );
+  } catch (error: unknown) {
+    clearDeferredCredentialSafely(localUserId);
+    return {
+      status: 'auth_required',
+      localUserId,
+      role: localUser.role,
+      message: error instanceof Error
+        ? `${error.message} Sign in once to retry automatic FastAPI linking.`
+        : 'The secure FastAPI link could not be resumed. Sign in once to retry.',
+    };
+  }
+
+  try {
+    const cloudAuth = await registerOrAuthenticateCloudAccount(
+      normalizeEmail(localUser.email),
+      password
+    );
+    if (isFlowResult(cloudAuth)) {
+      if (shouldDiscardDeferredCredential(cloudAuth.status)) {
+        clearDeferredCredentialSafely(localUserId);
+      }
+      return cloudAuth;
+    }
+    return await attachAuthenticatedCloudSession(localUserId, cloudAuth);
+  } finally {
+    password = '';
+  }
+};
+
+const deferredLinkAttempts = new Map<string, Promise<AccountFlowResult>>();
+
+const completeDeferredCloudLink = async (
+  localUserId: string
+): Promise<AccountFlowResult> => {
+  const existingAttempt = deferredLinkAttempts.get(localUserId);
+  if (existingAttempt) {
+    return await existingAttempt;
+  }
+
+  const attempt = runDeferredCloudLink(localUserId);
+  deferredLinkAttempts.set(localUserId, attempt);
+  try {
+    return await attempt;
+  } finally {
+    if (deferredLinkAttempts.get(localUserId) === attempt) {
+      deferredLinkAttempts.delete(localUserId);
+    }
+  }
+};
+
 export const accountLinkService = {
   /**
    * Registers with FastAPI first, then creates a local user only after cloud success.
@@ -218,6 +349,7 @@ export const accountLinkService = {
       );
       userStore.setCurrentUser(localUserId);
       cloudClient.resetSessionCache();
+      await persistDeferredCloudCredential(localUserId, input.password);
     } catch (error: unknown) {
       return {
         status: 'registration_failed',
@@ -264,11 +396,17 @@ export const accountLinkService = {
       );
       userStore.setCurrentUser(localUserId);
       cloudClient.resetSessionCache();
+      const credentialStored = await persistDeferredCloudCredential(
+        localUserId,
+        input.password
+      );
       return {
         status: 'offline_only',
         localUserId,
         role: 'student',
-        message: 'Offline-only account created. Link FastAPI later from Profile.',
+        message: credentialStored
+          ? 'Offline-only account created. FastAPI will link automatically when the connection returns.'
+          : 'Offline-only account created. Sign in once while online to link FastAPI.',
       };
     } catch (error: unknown) {
       return {
@@ -279,7 +417,7 @@ export const accountLinkService = {
   },
 
   /**
-   * Authenticates locally first and attempts FastAPI login without sacrificing offline access.
+   * Authenticates locally first, then automatically registers or authenticates FastAPI online.
    */
   login: async (email: string, password: string): Promise<AccountFlowResult> => {
     const passwordValidation = validatePassword(password);
@@ -307,6 +445,10 @@ export const accountLinkService = {
 
     userStore.setCurrentUser(authenticatedLocalUser.id);
     cloudClient.resetSessionCache();
+    const credentialStored = await persistDeferredCloudCredential(
+      authenticatedLocalUser.id,
+      password
+    );
 
     if (!(await cloudClient.isOnline())) {
       return {
@@ -314,28 +456,30 @@ export const accountLinkService = {
         cloudStatus: 'offline',
         localUserId: authenticatedLocalUser.id,
         role: authenticatedLocalUser.role,
-        message: 'Signed in locally while offline. Online Mode is unavailable.',
+        message: credentialStored
+          ? 'Signed in locally. FastAPI will link automatically when the connection returns.'
+          : 'Signed in locally while offline. Sign in once while online to link FastAPI.',
       };
     }
 
-    const cloudLogin = await authenticateExistingCloudAccount(normalizedEmail, password);
-    if (isFlowResult(cloudLogin)) {
-      return {
-        status: 'local_only',
-        cloudStatus: cloudLogin.status,
-        localUserId: authenticatedLocalUser.id,
-        role: authenticatedLocalUser.role,
-        message: `${cloudLogin.message} Offline access remains available.`,
-      };
-    }
-
-    const linkResult = await attachAuthenticatedCloudSession(
-      authenticatedLocalUser.id,
-      cloudLogin
-    );
+    // The credential that just passed local authentication is reused through
+    // secure deferred linking, so the user never enters a second password.
+    const linkResult = credentialStored
+      ? await completeDeferredCloudLink(authenticatedLocalUser.id)
+      : await (async (): Promise<AccountFlowResult> => {
+          const cloudAuth = await registerOrAuthenticateCloudAccount(
+            normalizedEmail,
+            password
+          );
+          return isFlowResult(cloudAuth)
+            ? cloudAuth
+            : await attachAuthenticatedCloudSession(
+                authenticatedLocalUser.id,
+                cloudAuth
+              );
+        })();
     if (linkResult.status !== 'success') {
       return {
-        ...linkResult,
         status: 'local_only',
         cloudStatus: linkResult.status,
         localUserId: authenticatedLocalUser.id,
@@ -347,52 +491,32 @@ export const accountLinkService = {
   },
 
   /**
-   * Creates or links FastAPI for an existing active local user without changing local data.
+   * Completes a queued FastAPI link with the encrypted credential captured at local sign-in.
    */
-  createOrLinkCloudAccount: async (
-    localUserId: string,
-    cloudPassword: string
-  ): Promise<AccountFlowResult> => {
-    const passwordValidation = validatePassword(cloudPassword);
-    if (!passwordValidation.isValid) {
-      return {
-        status: 'validation_error',
-        message: passwordValidation.error || 'Password validation failed.',
-      };
-    }
-    const localUser = userStore.getUserById(localUserId);
-    const activeSession = userStore.getActiveSessionToken();
-    if (!localUser?.email || activeSession.userId !== localUserId) {
-      return {
-        status: 'auth_required',
-        message: 'Sign in to the local account before linking FastAPI.',
-      };
-    }
-    if (!(await cloudClient.isOnline())) {
-      return {
-        status: 'offline',
-        message: 'The device is offline. The local account was not changed.',
-      };
-    }
-
-    const cloudResult = await registerOrAuthenticateCloudAccount(
-      normalizeEmail(localUser.email), cloudPassword
-    );
-    if (isFlowResult(cloudResult)) {
-      return cloudResult;
-    }
-    return await attachAuthenticatedCloudSession(localUserId, cloudResult);
-  },
+  completeDeferredCloudLink,
 
   /** Synchronizes the authoritative live FastAPI role into one active local user. */
   refreshCloudProfile: async (localUserId: string): Promise<AccountFlowResult> => {
     const localUser = userStore.getUserById(localUserId);
-    const activeSession = userStore.getActiveSessionToken();
-    if (!localUser?.email || activeSession.userId !== localUserId || !activeSession.accessToken) {
+    let activeSession = userStore.getActiveSessionToken();
+    if (!localUser?.email || activeSession.userId !== localUserId) {
       return {
         status: 'auth_required',
-        message: 'No valid FastAPI-authenticated session is stored for this local account.',
+        message: 'The active local account cannot be matched to a FastAPI login.',
       };
+    }
+    if (!activeSession.accessToken) {
+      const linkResult = await completeDeferredCloudLink(localUserId);
+      if (linkResult.status !== 'success') {
+        return linkResult;
+      }
+      activeSession = userStore.getActiveSessionToken();
+      if (!activeSession.accessToken) {
+        return {
+          status: 'auth_required',
+          message: 'FastAPI linking completed without a usable authenticated session.',
+        };
+      }
     }
     const profileResult = await authService.getMe();
     if (profileResult.status !== 'success' || !profileResult.data) {
@@ -409,7 +533,7 @@ export const accountLinkService = {
       cloudClient.clearActiveSession();
       return {
         status: 'auth_required',
-        message: 'The stored cloud session belongs to a different email. Link again.',
+        message: 'The stored cloud session belongs to a different email. Sign in again while online.',
       };
     }
     userStore.linkCloudAccount(localUserId, profile.id, profile.role);

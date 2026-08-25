@@ -160,6 +160,33 @@ describe('syncWorker account-scoped synchronization', () => {
     ).toBe(0);
   });
 
+  it('completes deferred FastAPI linking before syncing after reconnect', async () => {
+    const localUserId = 'deferred-link-user';
+    createActiveUser(localUserId);
+    userStore.clearSessionTokens(localUserId);
+    jest
+      .mocked(cloudClient.getAccessToken)
+      .mockReturnValueOnce(null)
+      .mockReturnValue('access-token');
+    const linkSpy = jest
+      .spyOn(accountLinkService, 'completeDeferredCloudLink')
+      .mockResolvedValue({
+        status: 'success',
+        localUserId,
+        role: 'student',
+        message: 'FastAPI link completed.',
+      });
+    const requestSpy = jest.spyOn(cloudClient, 'request').mockResolvedValue({
+      status: 'success',
+      data: makeResponse(),
+    });
+
+    await syncWorker.performSync();
+
+    expect(linkSpy).toHaveBeenCalledWith(localUserId);
+    expect(requestSpy).toHaveBeenCalled();
+  });
+
   it('applies a cloud role to the active local user without creating a cloud-ID row', async () => {
     const localUserId = 'local-role-user';
     const cloudAccountId = '3ce7cc43-e4da-4b82-b4cd-070dbf7b8369';

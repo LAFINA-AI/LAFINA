@@ -305,6 +305,7 @@ export const initDatabase = async (): Promise<void> => {
           user_id TEXT PRIMARY KEY,
           access_token TEXT,
           refresh_token TEXT,
+          pending_cloud_credential TEXT,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -772,7 +773,7 @@ export const initDatabase = async (): Promise<void> => {
         // Versioned schema migrations
         const versionResult = tx.executeSync('PRAGMA user_version');
         const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;
-        const TARGET_VERSION = 14;
+        const TARGET_VERSION = 15;
 
         if (currentVersion < TARGET_VERSION) {
         if (currentVersion < 1) {
@@ -803,6 +804,10 @@ export const initDatabase = async (): Promise<void> => {
           try { tx.executeSync('ALTER TABLE users ADD COLUMN cloud_linked_at TEXT'); } catch {}
           try { tx.executeSync('ALTER TABLE active_session ADD COLUMN access_token TEXT'); } catch {}
           try { tx.executeSync('ALTER TABLE active_session ADD COLUMN refresh_token TEXT'); } catch {}
+        }
+
+        if (currentVersion < 15) {
+          try { tx.executeSync('ALTER TABLE active_session ADD COLUMN pending_cloud_credential TEXT'); } catch {}
         }
 
         if (currentVersion < 8) {
@@ -1288,7 +1293,7 @@ export const initDatabase = async (): Promise<void> => {
         }
       }
     });
-    console.log('Database schema initialized successfully (version 14).');
+    console.log('Database schema initialized successfully (version 15).');
     await seedLocalDemoAccounts();
   } catch (error) {
     console.error('Failed to initialize database schema:', error);

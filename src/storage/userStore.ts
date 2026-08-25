@@ -67,6 +67,7 @@ try {
       user_id TEXT PRIMARY KEY,
       access_token TEXT,
       refresh_token TEXT,
+      pending_cloud_credential TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
@@ -76,6 +77,9 @@ try {
   } catch {}
   try {
     db.executeSync('ALTER TABLE active_session ADD COLUMN refresh_token TEXT');
+  } catch {}
+  try {
+    db.executeSync('ALTER TABLE active_session ADD COLUMN pending_cloud_credential TEXT');
   } catch {}
 } catch (e) {
   console.error('Error creating active_session table:', e);
@@ -300,23 +304,73 @@ export const userStore = {
   },
 
   /**
-   * Retrieves active session user ID and persisted auth tokens.
+   * Stores an Android-Keystore-encrypted credential for a deferred FastAPI link.
    */
-  getActiveSessionToken: (): { userId: string | null; accessToken: string | null; refreshToken: string | null } => {
+  savePendingCloudCredential: (userId: string, encryptedCredential: string): void => {
+    const now = new Date().toISOString();
     try {
-      const res = db.executeSync('SELECT user_id, access_token, refresh_token FROM active_session LIMIT 1');
+      db.executeSync(
+        `UPDATE active_session
+         SET pending_cloud_credential = ?, updated_at = ?
+         WHERE user_id = ?`,
+        [encryptedCredential, now, userId]
+      );
+    } catch (error) {
+      console.error('Error saving deferred cloud credential:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Erases the deferred FastAPI credential after linking or a permanent failure.
+   */
+  clearPendingCloudCredential: (userId: string): void => {
+    const now = new Date().toISOString();
+    try {
+      db.executeSync(
+        `UPDATE active_session
+         SET pending_cloud_credential = NULL, updated_at = ?
+         WHERE user_id = ?`,
+        [now, userId]
+      );
+    } catch (error) {
+      console.error('Error clearing deferred cloud credential:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Retrieves the active user, persisted auth tokens, and encrypted deferred credential.
+   */
+  getActiveSessionToken: (): {
+    userId: string | null;
+    accessToken: string | null;
+    refreshToken: string | null;
+    pendingCloudCredential?: string | null;
+  } => {
+    try {
+      const res = db.executeSync(
+        `SELECT user_id, access_token, refresh_token, pending_cloud_credential
+         FROM active_session LIMIT 1`
+      );
       if (res.rows && res.rows.length > 0) {
         const row = res.rows[0];
         return {
           userId: row.user_id || null,
           accessToken: row.access_token || null,
           refreshToken: row.refresh_token || null,
+          pendingCloudCredential: row.pending_cloud_credential || null,
         };
       }
     } catch (e) {
       console.error('Error getting active session token:', e);
     }
-    return { userId: null, accessToken: null, refreshToken: null };
+    return {
+      userId: null,
+      accessToken: null,
+      refreshToken: null,
+      pendingCloudCredential: null,
+    };
   },
 
   /**

@@ -325,6 +325,7 @@ describe('incoming reminder call presentation', () => {
     expect(schedulerMock.declineCall).toHaveBeenCalledWith(
       'rem-call-ui',
       'student-1',
+      expect.any(Object),
     );
     expect(onClose).toHaveBeenCalledTimes(1);
 

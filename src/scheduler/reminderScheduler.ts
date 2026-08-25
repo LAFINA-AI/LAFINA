@@ -1,5 +1,6 @@
 import { DeviceEventEmitter } from 'react-native';
 import { remindersStore, businessTasksStore } from '../storage';
+import { getReminderPreferences } from './userPreferences';
 
 let pollingInterval: any = null;
 let activeUserId: string | null = null;
@@ -34,7 +35,11 @@ export const reconcileBusinessAssignmentReminders = (
       const dueMillis = new Date(task.due_date).getTime();
       if (Number.isNaN(dueMillis)) continue;
 
-      const leadMillis = (task.reminder_lead_minutes || 15) * 60 * 1000;
+      const userPrefs = getReminderPreferences(userId);
+      const effectiveLead = typeof task.reminder_lead_minutes === 'number'
+        ? task.reminder_lead_minutes
+        : userPrefs.leadTimeMinutes;
+      const leadMillis = effectiveLead * 60 * 1000;
       const triggerMillis = dueMillis - leadMillis;
       const triggerAt = new Date(triggerMillis).toISOString();
 

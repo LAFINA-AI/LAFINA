@@ -88,7 +88,7 @@ async def chat_proxy(
     account, _ = auth_data
     owner_id = account.id
 
-    # Enforce role-based or business-entitled access for Online AI from live DB Account
+    # Enforce role-based access for Online AI from live DB Account
     cap_res = await resolve_account_capabilities(account, db)
     is_entitled = (
         account.role in ("student_pro", "admin", "business")
@@ -97,7 +97,7 @@ async def chat_proxy(
         or cap_res.effective_subscription_plan in ("student_pro", "business")
         or cap_res.system_role == "admin"
     )
-    if not is_entitled:
+    if not is_entitled or not account.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Online AI requires a student_pro or business subscription. Please upgrade your account."
@@ -187,14 +187,14 @@ async def tts_proxy(
     account, _ = auth_data
     owner_id = account.id
 
-    # Enforce subscription entitlement for TTS from live DB Account (student_pro or business)
+    # Enforce access for TTS from live DB Account (student_pro or business)
     cap_res = await resolve_account_capabilities(account, db)
     is_entitled = (
         account.role in ("student_pro", "business")
         or account.subscription_plan in ("student_pro", "business")
         or cap_res.effective_subscription_plan in ("student_pro", "business")
     )
-    if not is_entitled:
+    if not is_entitled or not account.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Gemini TTS requires a student_pro or business subscription. Please upgrade your account."

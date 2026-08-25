@@ -26,12 +26,14 @@ class AndroidConnectivityModule(
                 return
             }
             val capabilities = manager.getNetworkCapabilities(activeNetwork)
-            val online = capabilities?.hasCapability(
+            val hasInternet = capabilities?.hasCapability(
                 NetworkCapabilities.NET_CAPABILITY_INTERNET
-            ) == true && capabilities.hasCapability(
-                NetworkCapabilities.NET_CAPABILITY_VALIDATED
-            )
-            promise.resolve(online)
+            ) == true
+            val hasTransport = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true ||
+                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true ||
+                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true ||
+                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+            promise.resolve(hasInternet || hasTransport)
         } catch (error: Exception) {
             promise.reject("CONNECTIVITY_CHECK_ERROR", error.message, error)
         }

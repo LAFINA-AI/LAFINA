@@ -150,7 +150,7 @@ export const authService = {
       cloudClient.clearActiveSession();
       return {
         status: 'auth_required',
-        error: 'Refresh-token renewal failed. Sign in or link the cloud account again.',
+        error: 'Refresh-token renewal failed. Sign in again while online.',
       };
     }
     if (!refreshToken) {
@@ -165,14 +165,14 @@ export const authService = {
       cloudClient.clearActiveSession();
       return {
         status: 'auth_required',
-        error: 'Refresh-token renewal failed. Sign in or link the cloud account again.',
+        error: 'Refresh-token renewal failed. Sign in again while online.',
       };
     }
     if (refreshResult.status !== 'success') {
       cloudClient.clearActiveSession();
       return {
         status: 'auth_required',
-        error: 'Refresh-token renewal failed. Sign in or link the cloud account again.',
+        error: 'Refresh-token renewal failed. Sign in again while online.',
       };
     }
 
@@ -181,7 +181,7 @@ export const authService = {
       cloudClient.clearActiveSession();
       return {
         status: 'auth_required',
-        error: 'Cloud authentication expired. Sign in or link the cloud account again.',
+        error: 'Cloud authentication expired. Sign in again while online.',
       };
     }
     return handleProfileSuccess(renewedProfile);

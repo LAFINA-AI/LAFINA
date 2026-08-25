@@ -23,7 +23,7 @@ export interface CloudResult<T> {
 
 let inMemoryAccessToken: string | null = null;
 let inMemoryUserId: string | null = null;
-let apiBaseUrl: string = 'http://10.0.2.2:8000'; // Render production endpoint or localhost dev URL
+let apiBaseUrl: string = 'http://127.0.0.1:8000'; // Default dev URL (supports adb reverse tcp:8000 tcp:8000)
 const androidConnectivityModule = NativeModules.AndroidConnectivityModule as
   | { isOnline: () => Promise<boolean> }
   | undefined;
@@ -182,7 +182,7 @@ export const cloudClient = {
         if (response.status === 401) {
           return {
             status: 'auth_required',
-            error: requiresAuth ? 'Cloud session expired. Sign in or link again.' : detail,
+            error: requiresAuth ? 'Cloud session expired. Sign in again while online.' : detail,
             httpStatus: response.status,
           };
         }

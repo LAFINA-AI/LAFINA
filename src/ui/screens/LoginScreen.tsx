@@ -99,7 +99,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         if (result.status === 'local_only') {
           Alert.alert(
             'Signed In for Offline Mode',
-            `${result.message}\n\nUse Profile > Cloud Account to create or link FastAPI without changing your local password or data.`
+            `${result.message}\n\nLAFINA will retry automatic FastAPI linking on startup or when the app resumes with internet access.`
           );
         }
 

@@ -34,10 +34,35 @@ void assetClose(void *context) {
 }
 
 std::string trim(const std::string &value) {
-  const auto first = value.find_first_not_of(" \\n\\r\\t");
+  const auto first = value.find_first_not_of(" \n\r\t");
   if (first == std::string::npos) return "";
-  const auto last = value.find_last_not_of(" \\n\\r\\t");
+  const auto last = value.find_last_not_of(" \n\r\t");
   return value.substr(first, last - first + 1);
+}
+
+std::string escapeJson(const std::string &value) {
+  std::string escaped;
+  escaped.reserve(value.size());
+  for (char c : value) {
+    if (c == '"') {
+      escaped += "\\\"";
+    } else if (c == '\\') {
+      escaped += "\\\\";
+    } else if (c == '\b') {
+      escaped += "\\b";
+    } else if (c == '\f') {
+      escaped += "\\f";
+    } else if (c == '\n') {
+      escaped += "\\n";
+    } else if (c == '\r') {
+      escaped += "\\r";
+    } else if (c == '\t') {
+      escaped += "\\t";
+    } else if (static_cast<unsigned char>(c) >= 0x20) {
+      escaped += c;
+    }
+  }
+  return escaped;
 }
 }
 
