@@ -83,8 +83,15 @@ export type {
   LocalBusinessMeetingSegmentRow,
   LocalBusinessActionCandidateRow,
   LocalBusinessMeetingRecipientRow,
+  LocalGmailConnectionRow,
+  LocalGmailThreadCacheRow,
+  LocalGmailMessageCacheRow,
+  LocalGmailDraftRow,
+  GmailAttachmentInfo,
 } from './syncTypes';
 export { meetingStore } from './meetingStore';
+export { gmailStore } from './gmailStore';
+export type { CacheThreadInput, CacheMessageInput, SaveDraftInput } from './gmailStore';
 export {
   seedLocalDemoAccounts,
   DEMO_IDS,

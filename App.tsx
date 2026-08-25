@@ -13,6 +13,7 @@ import {
   PermissionsAndroid,
   AppState,
   TouchableOpacity,
+  Linking,
 } from 'react-native';
 import type { AlertButton } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -53,6 +54,7 @@ import {
   EmployeeTodayScreen,
   WorkScreen,
   TeamManagementModal,
+  GmailInboxScreen,
 } from './src/ui/screens';
 import { CompanyChatScreen } from './src/ui/screens/business/CompanyChatScreen';
 
@@ -231,6 +233,30 @@ function AppContent({
       nativeSubscription.remove();
     };
   }, [userId]);
+
+  // Handle OAuth callback deep linking (lafina://email/callback)
+  useEffect(() => {
+    const handleDeepLink = (event: { url: string }) => {
+      if (!event?.url) return;
+      if (event.url.startsWith('lafina://email/callback')) {
+        setRefreshTrigger((prev) => prev + 1);
+        if (event.url.includes('status=success')) {
+          Alert.alert('Gmail Connected', 'Your Gmail account has been linked successfully.');
+        } else if (event.url.includes('status=error')) {
+          Alert.alert('Connection Failed', 'Could not complete Gmail connection.');
+        }
+      }
+    };
+
+    const linkSub = Linking.addEventListener('url', handleDeepLink);
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink({ url });
+    }).catch(() => {});
+
+    return () => {
+      linkSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     const setupApp = async () => {
@@ -498,14 +524,7 @@ function AppContent({
           />
         );
       case 'inbox':
-        return (
-          <View style={[styles.errorScreen, themed.errorScreen]}>
-            <Text style={[styles.placeholderTitle, themed.text]}>Gmail Inbox</Text>
-            <Text style={[styles.placeholderSubtitle, themed.mutedText]}>
-              Secure Gmail inbox with read-aloud and draft replies will activate in Milestone 6.
-            </Text>
-          </View>
-        );
+        return <GmailInboxScreen userId={userId} />;
       default:
         return <View style={[styles.errorScreen, themed.errorScreen]}><Text style={themed.errorText}>Page Not Found</Text></View>;
     }

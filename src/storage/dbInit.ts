@@ -690,6 +690,78 @@ export const initDatabase = async (): Promise<void> => {
       `);
 
       tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS gmail_connections (
+          user_id TEXT PRIMARY KEY,
+          email_address TEXT NOT NULL,
+          is_connected INTEGER NOT NULL DEFAULT 1,
+          last_synced_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
+
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS gmail_threads_cache (
+          user_id TEXT NOT NULL,
+          thread_id TEXT NOT NULL,
+          history_id TEXT NOT NULL DEFAULT '',
+          snippet TEXT NOT NULL DEFAULT '',
+          subject TEXT NOT NULL DEFAULT '',
+          from_address TEXT NOT NULL DEFAULT '',
+          to_address TEXT NOT NULL DEFAULT '',
+          date TEXT NOT NULL DEFAULT '',
+          unread INTEGER NOT NULL DEFAULT 0,
+          message_count INTEGER NOT NULL DEFAULT 1,
+          has_attachments INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, thread_id),
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
+
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS gmail_messages_cache (
+          user_id TEXT NOT NULL,
+          message_id TEXT NOT NULL,
+          thread_id TEXT NOT NULL,
+          subject TEXT NOT NULL DEFAULT '',
+          from_address TEXT NOT NULL DEFAULT '',
+          to_address TEXT NOT NULL DEFAULT '',
+          cc_address TEXT,
+          bcc_address TEXT,
+          date TEXT NOT NULL DEFAULT '',
+          snippet TEXT NOT NULL DEFAULT '',
+          body_plain TEXT NOT NULL DEFAULT '',
+          body_html TEXT,
+          attachments_json TEXT,
+          is_read INTEGER NOT NULL DEFAULT 0,
+          cached_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, message_id),
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
+
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS gmail_local_drafts (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          remote_draft_id TEXT,
+          thread_id TEXT,
+          to_address TEXT NOT NULL DEFAULT '',
+          cc_address TEXT,
+          bcc_address TEXT,
+          subject TEXT NOT NULL DEFAULT '',
+          body TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'draft',
+          updated_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+      `);
+
+      tx.executeSync(`
         CREATE INDEX IF NOT EXISTS idx_sync_conflicts_scope_unresolved
         ON sync_conflicts (user_id, scope_type, scope_id, resolved_at, updated_at)
       `);
@@ -700,7 +772,7 @@ export const initDatabase = async (): Promise<void> => {
         // Versioned schema migrations
         const versionResult = tx.executeSync('PRAGMA user_version');
         const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;
-        const TARGET_VERSION = 13;
+        const TARGET_VERSION = 14;
 
         if (currentVersion < TARGET_VERSION) {
         if (currentVersion < 1) {
@@ -1141,12 +1213,82 @@ export const initDatabase = async (): Promise<void> => {
             )
           `);
         }
+        if (currentVersion < 14) {
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS gmail_connections (
+              user_id TEXT PRIMARY KEY,
+              email_address TEXT NOT NULL,
+              is_connected INTEGER NOT NULL DEFAULT 1,
+              last_synced_at TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+          `);
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS gmail_threads_cache (
+              user_id TEXT NOT NULL,
+              thread_id TEXT NOT NULL,
+              history_id TEXT NOT NULL DEFAULT '',
+              snippet TEXT NOT NULL DEFAULT '',
+              subject TEXT NOT NULL DEFAULT '',
+              from_address TEXT NOT NULL DEFAULT '',
+              to_address TEXT NOT NULL DEFAULT '',
+              date TEXT NOT NULL DEFAULT '',
+              unread INTEGER NOT NULL DEFAULT 0,
+              message_count INTEGER NOT NULL DEFAULT 1,
+              has_attachments INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              PRIMARY KEY (user_id, thread_id),
+              FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+          `);
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS gmail_messages_cache (
+              user_id TEXT NOT NULL,
+              message_id TEXT NOT NULL,
+              thread_id TEXT NOT NULL,
+              subject TEXT NOT NULL DEFAULT '',
+              from_address TEXT NOT NULL DEFAULT '',
+              to_address TEXT NOT NULL DEFAULT '',
+              cc_address TEXT,
+              bcc_address TEXT,
+              date TEXT NOT NULL DEFAULT '',
+              snippet TEXT NOT NULL DEFAULT '',
+              body_plain TEXT NOT NULL DEFAULT '',
+              body_html TEXT,
+              attachments_json TEXT,
+              is_read INTEGER NOT NULL DEFAULT 0,
+              cached_at TEXT NOT NULL,
+              PRIMARY KEY (user_id, message_id),
+              FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+          `);
+          tx.executeSync(`
+            CREATE TABLE IF NOT EXISTS gmail_local_drafts (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              remote_draft_id TEXT,
+              thread_id TEXT,
+              to_address TEXT NOT NULL DEFAULT '',
+              cc_address TEXT,
+              bcc_address TEXT,
+              subject TEXT NOT NULL DEFAULT '',
+              body TEXT NOT NULL DEFAULT '',
+              status TEXT NOT NULL DEFAULT 'draft',
+              updated_at TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+          `);
+        }
 
           tx.executeSync(`PRAGMA user_version = ${TARGET_VERSION}`);
         }
       }
     });
-    console.log('Database schema initialized successfully (version 13).');
+    console.log('Database schema initialized successfully (version 14).');
     await seedLocalDemoAccounts();
   } catch (error) {
     console.error('Failed to initialize database schema:', error);

@@ -26,6 +26,11 @@ from backend.app.models.business_meeting import (
     BusinessMeeting,
     BusinessMeetingRecipient,
 )
+from backend.app.models.gmail import (
+    GmailOAuthState,
+    GmailConnection,
+    GmailSendAudit,
+)
 
 __all__ = [
     "Account",
@@ -44,6 +49,9 @@ __all__ = [
     "BusinessTaskComment",
     "BusinessMeeting",
     "BusinessMeetingRecipient",
+    "GmailOAuthState",
+    "GmailConnection",
+    "GmailSendAudit",
     "ProfileSync",
     "TasksSync",
     "EventsSync",

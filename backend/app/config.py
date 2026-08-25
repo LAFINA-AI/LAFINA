@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     GEMINI_TTS_VOICE: str = "Aoede"
     GEMINI_TTS_TIMEOUT_SECONDS: float = 20.0
 
+    # Google OAuth & Gmail Configuration
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[SecretStr] = None
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/v1/email/gmail/connect/callback"
+    GMAIL_TOKEN_ENCRYPTION_KEY: Optional[SecretStr] = None
+
     # Password blocklist (common passwords to reject)
     COMMON_PASSWORDS: set[str] = {
         "password", "password123", "1234567890", "12345678", "qwertyuiop",

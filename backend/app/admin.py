@@ -12,6 +12,7 @@ from backend.app.models import (
     Business, BusinessMembership, BusinessInvitation,
     BusinessTask, BusinessTaskAssignment, BusinessWorkBlock, BusinessChangeFeed,
     BusinessChatChannel, BusinessChatMessage, BusinessTaskComment,
+    GmailConnection,
     TasksSync, EventsSync, TimeBlocksSync, RemindersSync, NotesSync, CustomCategoriesSync,
     IdempotentMutation, ChangeFeed, AIUsage, SecurityEvent
 )
@@ -189,6 +190,11 @@ class BusinessTaskCommentAdmin(ModelView, model=BusinessTaskComment):
     column_searchable_list = ["content"]
     icon = "fa-solid fa-comment-dots"
 
+class GmailConnectionAdmin(ModelView, model=GmailConnection):
+    column_list = ["id", "user_id", "email_address", "is_active", "scopes", "last_synced_at", "created_at"]
+    column_searchable_list = ["email_address"]
+    icon = "fa-solid fa-envelope"
+
 authentication_backend = AdminAuth(secret_key=settings.JWT_PRIVATE_KEY[:32])
 
 def setup_admin(app, engine):
@@ -212,6 +218,7 @@ def setup_admin(app, engine):
     admin.add_view(BusinessChatChannelAdmin)
     admin.add_view(BusinessChatMessageAdmin)
     admin.add_view(BusinessTaskCommentAdmin)
+    admin.add_view(GmailConnectionAdmin)
     admin.add_view(TasksSyncAdmin)
     admin.add_view(EventsSyncAdmin)
     admin.add_view(TimeBlocksSyncAdmin)

@@ -214,3 +214,73 @@ export interface LocalBusinessMeetingRecipientRow {
   email?: string;
   created_at: string;
 }
+
+/** Local Gmail connection state in SQLite. */
+export interface LocalGmailConnectionRow {
+  user_id: string;
+  email_address: string;
+  is_connected: number;
+  last_synced_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Local Gmail cached thread summary row in SQLite. */
+export interface LocalGmailThreadCacheRow {
+  user_id: string;
+  thread_id: string;
+  history_id: string;
+  snippet: string;
+  subject: string;
+  from_address: string;
+  to_address: string;
+  date: string;
+  unread: number;
+  message_count: number;
+  has_attachments: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Attachment metadata for email view without downloading binary payload. */
+export interface GmailAttachmentInfo {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size: number;
+}
+
+/** Local Gmail cached full message body and metadata row in SQLite. */
+export interface LocalGmailMessageCacheRow {
+  user_id: string;
+  message_id: string;
+  thread_id: string;
+  subject: string;
+  from_address: string;
+  to_address: string;
+  cc_address: string | null;
+  bcc_address: string | null;
+  date: string;
+  snippet: string;
+  body_plain: string;
+  body_html: string | null;
+  attachments_json: string | null; // JSON array of GmailAttachmentInfo
+  is_read: number;
+  cached_at: string;
+}
+
+/** Local Gmail draft row in SQLite. */
+export interface LocalGmailDraftRow {
+  id: string;
+  user_id: string;
+  remote_draft_id: string | null;
+  thread_id: string | null;
+  to_address: string;
+  cc_address: string | null;
+  bcc_address: string | null;
+  subject: string;
+  body: string;
+  status: 'draft' | 'sending' | 'failed';
+  updated_at: string;
+  created_at: string;
+}
