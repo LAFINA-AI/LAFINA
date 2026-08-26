@@ -233,7 +233,7 @@ async def start_gmail_connect(
 
     code_verifier, code_challenge = generate_pkce_pair()
     state = secrets.token_hex(24)
-    redirect_uri = settings.GOOGLE_REDIRECT_URI
+    redirect_uri = settings.get_google_redirect_uri()
     expires_at = utc_now() + timedelta(minutes=10)
 
     # Clean old uncompleted states for this user

@@ -33,6 +33,7 @@ INVALID_PLACEHOLDER_KEYS = {
 
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
+    API_BASE_URL: str = "http://localhost:8000"
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/lafina"
     # Optional Admin Account Seeding from Environment Variables
     ADMIN_EMAIL: Optional[str] = None
@@ -76,7 +77,7 @@ class Settings(BaseSettings):
     # Google OAuth & Gmail Configuration
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[SecretStr] = None
-    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/v1/email/gmail/connect/callback"
+    GOOGLE_REDIRECT_URI: Optional[str] = None
     GMAIL_TOKEN_ENCRYPTION_KEY: Optional[SecretStr] = None
 
     # Password blocklist (common passwords to reject)
@@ -110,6 +111,12 @@ class Settings(BaseSettings):
 
     def is_gemini_key_valid(self) -> bool:
         return self.get_gemini_key_invalid_reason() is None
+
+    def get_google_redirect_uri(self) -> str:
+        """Return the explicit Gmail callback or derive it from the public API URL."""
+        if self.GOOGLE_REDIRECT_URI:
+            return self.GOOGLE_REDIRECT_URI
+        return f"{self.API_BASE_URL.rstrip('/')}/v1/email/gmail/connect/callback"
 
     @model_validator(mode="after")
     def validate_deepseek_config(self) -> "Settings":

@@ -23,7 +23,11 @@ export interface CloudResult<T> {
 
 let inMemoryAccessToken: string | null = null;
 let inMemoryUserId: string | null = null;
-let apiBaseUrl: string = 'http://127.0.0.1:8000'; // Default dev URL (supports adb reverse tcp:8000 tcp:8000)
+export const CLOUD_API_BASE_URL = 'https://lafina.onrender.com';
+export const LOCAL_API_BASE_URL = 'http://127.0.0.1:8000';
+
+const defaultApiBaseUrls: readonly string[] = [CLOUD_API_BASE_URL, LOCAL_API_BASE_URL];
+let apiBaseUrls: readonly string[] = defaultApiBaseUrls;
 const androidConnectivityModule = NativeModules.AndroidConnectivityModule as
   | { isOnline: () => Promise<boolean> }
   | undefined;
@@ -35,12 +39,19 @@ export const setMockOnlineState = (online: boolean | null) => {
 };
 
 export const cloudClient = {
+  /** Overrides endpoint failover for local development and isolated tests. */
   setBaseUrl: (url: string) => {
-    apiBaseUrl = url;
+    apiBaseUrls = [url.replace(/\/+$/, '')];
   },
 
+  /** Returns the currently configured primary FastAPI endpoint. */
   getBaseUrl: (): string => {
-    return apiBaseUrl;
+    return apiBaseUrls[0];
+  },
+
+  /** Restores the deployed-cloud-first endpoint order. */
+  resetBaseUrls: (): void => {
+    apiBaseUrls = defaultApiBaseUrls;
   },
 
   /** Persists a replacement access token for the active local user. */
@@ -168,57 +179,80 @@ export const cloudClient = {
       headers.Authorization = `Bearer ${token}`;
     }
 
-    try {
-      const response = await fetch(`${apiBaseUrl}${endpoint}`, {
-        ...options,
-        headers,
-      });
+    let response: Response | null = null;
+    let lastConnectionError: unknown = null;
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: null }));
-        const detail =
-          typeof errorData.detail === 'string' ? errorData.detail : 'FastAPI request failed.';
+    for (let index = 0; index < apiBaseUrls.length; index += 1) {
+      const baseUrl = apiBaseUrls[index];
+      const hasFallback = index < apiBaseUrls.length - 1;
 
-        if (response.status === 401) {
-          return {
-            status: 'auth_required',
-            error: requiresAuth ? 'Cloud session expired. Sign in again while online.' : detail,
-            httpStatus: response.status,
-          };
+      try {
+        const candidateResponse = await fetch(`${baseUrl}${endpoint}`, {
+          ...options,
+          headers,
+        });
+
+        const isTemporarilyUnavailable = [502, 503, 504].includes(candidateResponse.status);
+        if (isTemporarilyUnavailable && hasFallback) {
+          continue;
         }
-        if (response.status === 403) {
-          const isDisabled = detail.toLowerCase().includes('disabled');
-          return {
-            status: isDisabled ? 'account_disabled' : 'subscription_required',
-            error: detail,
-            httpStatus: response.status,
-          };
+
+        response = candidateResponse;
+        break;
+      } catch (error: unknown) {
+        lastConnectionError = error;
+        if (!hasFallback) {
+          break;
         }
-        if (response.status === 409) {
-          return { status: 'conflict', error: detail, httpStatus: response.status };
-        }
-        if (response.status === 429) {
-          return { status: 'rate_limited', error: detail, httpStatus: response.status };
-        }
-        if (response.status >= 500) {
-          return {
-            status: 'server_error',
-            error: 'FastAPI encountered a server error. Please try again.',
-            httpStatus: response.status,
-          };
-        }
-        return { status: 'validation_error', error: detail, httpStatus: response.status };
       }
+    }
 
-      const data = await response.json().catch(() => ({}));
-      return { status: 'success', data: data as T, httpStatus: response.status };
-    } catch (error: unknown) {
+    if (!response) {
       return {
         status: 'server_unavailable',
-        error: error instanceof Error
-          ? `FastAPI server unavailable: ${error.message}`
-          : 'FastAPI server unavailable.',
+        error: lastConnectionError instanceof Error
+          ? `FastAPI servers unavailable: ${lastConnectionError.message}`
+          : 'FastAPI cloud and local servers are unavailable.',
       };
     }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ detail: null }));
+      const detail =
+        typeof errorData.detail === 'string' ? errorData.detail : 'FastAPI request failed.';
+
+      if (response.status === 401) {
+        return {
+          status: 'auth_required',
+          error: requiresAuth ? 'Cloud session expired. Sign in again while online.' : detail,
+          httpStatus: response.status,
+        };
+      }
+      if (response.status === 403) {
+        const isDisabled = detail.toLowerCase().includes('disabled');
+        return {
+          status: isDisabled ? 'account_disabled' : 'subscription_required',
+          error: detail,
+          httpStatus: response.status,
+        };
+      }
+      if (response.status === 409) {
+        return { status: 'conflict', error: detail, httpStatus: response.status };
+      }
+      if (response.status === 429) {
+        return { status: 'rate_limited', error: detail, httpStatus: response.status };
+      }
+      if (response.status >= 500) {
+        return {
+          status: 'server_error',
+          error: 'FastAPI encountered a server error. Please try again.',
+          httpStatus: response.status,
+        };
+      }
+      return { status: 'validation_error', error: detail, httpStatus: response.status };
+    }
+
+    const data = await response.json().catch(() => ({}));
+    return { status: 'success', data: data as T, httpStatus: response.status };
   }
 };
