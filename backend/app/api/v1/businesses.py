@@ -155,6 +155,7 @@ async def create_business(
     # Owner is automatically an active manager and consumes 1 seat
     owner_membership = BusinessMembership(
         business_id=business.id,
+        business_owner_id=business.owner_id,
         user_id=account.id,
         member_role="manager",
         membership_status="active",
@@ -500,10 +501,12 @@ async def accept_invitation(
     if membership:
         membership.member_role = invitation.member_role
         membership.membership_status = "active"
+        membership.business_owner_id = business.owner_id
         membership.updated_at = now
     else:
         membership = BusinessMembership(
             business_id=business.id,
+            business_owner_id=business.owner_id,
             user_id=account.id,
             member_role=invitation.member_role,
             membership_status="active",

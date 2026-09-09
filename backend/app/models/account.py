@@ -25,5 +25,12 @@ class Account(Base):
     sessions = relationship("AuthSession", back_populates="account", cascade="all, delete-orphan")
     recovery_codes = relationship("RecoveryCode", back_populates="account", cascade="all, delete-orphan")
     businesses_owned = relationship("Business", back_populates="owner", cascade="all, delete-orphan", foreign_keys="[Business.owner_id]")
-    memberships = relationship("BusinessMembership", back_populates="user", cascade="all, delete-orphan")
+    # BusinessMembership carries two foreign keys to accounts (the member and
+    # the denormalized business owner), so the join column must be explicit.
+    memberships = relationship(
+        "BusinessMembership",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="[BusinessMembership.user_id]",
+    )
     invitations_sent = relationship("BusinessInvitation", back_populates="inviter", cascade="all, delete-orphan", foreign_keys="[BusinessInvitation.invited_by]")

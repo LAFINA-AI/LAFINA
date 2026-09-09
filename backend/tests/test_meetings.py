@@ -117,6 +117,7 @@ async def test_meeting_creation_and_selective_sharing(async_client: AsyncClient)
         mem_mgr = BusinessMembership(
             id=uuid.uuid4(),
             business_id=biz_id,
+            business_owner_id=mgr_id,
             user_id=mgr_id,
             member_role="manager",
             membership_status="active",
@@ -124,6 +125,7 @@ async def test_meeting_creation_and_selective_sharing(async_client: AsyncClient)
         mem_emp = BusinessMembership(
             id=uuid.uuid4(),
             business_id=biz_id,
+            business_owner_id=mgr_id,
             user_id=emp_id,
             member_role="employee",
             membership_status="active",
@@ -131,6 +133,7 @@ async def test_meeting_creation_and_selective_sharing(async_client: AsyncClient)
         mem_other = BusinessMembership(
             id=uuid.uuid4(),
             business_id=biz_id,
+            business_owner_id=mgr_id,
             user_id=other_emp_id,
             member_role="employee",
             membership_status="active",

@@ -51,6 +51,7 @@ async def test_capabilities_resolution_tiers():
 
         membership = BusinessMembership(
             business_id=biz.id,
+            business_owner_id=owner.id,
             user_id=owner.id,
             member_role="manager",
             membership_status="active",
@@ -122,8 +123,8 @@ async def test_business_employee_and_manager_ai_access(async_client):
         await db.flush()
 
         db.add_all([
-            BusinessMembership(business_id=biz.id, user_id=mgr.id, member_role="manager", membership_status="active"),
-            BusinessMembership(business_id=biz.id, user_id=emp.id, member_role="employee", membership_status="active"),
+            BusinessMembership(business_id=biz.id, business_owner_id=mgr.id, user_id=mgr.id, member_role="manager", membership_status="active"),
+            BusinessMembership(business_id=biz.id, business_owner_id=mgr.id, user_id=emp.id, member_role="employee", membership_status="active"),
         ])
         await db.commit()
 

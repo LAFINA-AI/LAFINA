@@ -47,6 +47,7 @@ async def test_gmail_oauth_flow_and_connection(async_client: AsyncClient):
         )
         membership = BusinessMembership(
             business_id=business_id,
+            business_owner_id=owner_id,
             user_id=owner_id,
             member_role="manager",
             membership_status="active",
@@ -159,6 +160,7 @@ async def test_gmail_threads_and_messages(async_client: AsyncClient):
         )
         membership = BusinessMembership(
             business_id=biz_id,
+            business_owner_id=user_id,
             user_id=user_id,
             member_role="employee",
             membership_status="active",
@@ -364,12 +366,14 @@ async def test_gmail_permissions_and_account_isolation(async_client: AsyncClient
         )
         mem_manager = BusinessMembership(
             business_id=biz_id,
+            business_owner_id=manager_id,
             user_id=manager_id,
             member_role="manager",
             membership_status="active",
         )
         mem_employee = BusinessMembership(
             business_id=biz_id,
+            business_owner_id=manager_id,
             user_id=employee_id,
             member_role="employee",
             membership_status="active",
@@ -449,6 +453,7 @@ async def test_gmail_token_refresh_on_expiry(async_client: AsyncClient):
         )
         membership = BusinessMembership(
             business_id=biz_id,
+            business_owner_id=user_id,
             user_id=user_id,
             member_role="manager",
             membership_status="active",

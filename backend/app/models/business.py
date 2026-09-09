@@ -35,6 +35,11 @@ class BusinessMembership(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     business_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Denormalized copy of businesses.owner_id. The row-level-security policy on
+    # this table must stay free of subqueries, otherwise it re-enters the policy
+    # on ``businesses`` and PostgreSQL raises "infinite recursion detected in
+    # policy". Kept in step by a trigger on businesses (migration 009).
+    business_owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
     member_role: Mapped[str] = mapped_column(String(32), default="employee", nullable=False)  # 'manager' | 'employee'
     membership_status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)  # 'invited' | 'active' | 'suspended' | 'removed'
 
@@ -42,7 +47,7 @@ class BusinessMembership(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
     business = relationship("Business", back_populates="memberships")
-    user = relationship("Account", back_populates="memberships")
+    user = relationship("Account", back_populates="memberships", foreign_keys=[user_id])
 
     __table_args__ = (
         UniqueConstraint("business_id", "user_id", name="uq_business_membership_user"),

@@ -52,8 +52,8 @@ async def test_business_chat_and_comments_workflow(async_client: AsyncClient):
         await db.flush()
 
         db.add_all([
-            BusinessMembership(business_id=biz.id, user_id=mgr.id, member_role="manager", membership_status="active"),
-            BusinessMembership(business_id=biz.id, user_id=emp.id, member_role="employee", membership_status="active"),
+            BusinessMembership(business_id=biz.id, business_owner_id=mgr.id, user_id=mgr.id, member_role="manager", membership_status="active"),
+            BusinessMembership(business_id=biz.id, business_owner_id=mgr.id, user_id=emp.id, member_role="employee", membership_status="active"),
         ])
         await db.flush()
 
