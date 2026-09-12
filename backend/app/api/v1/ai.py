@@ -1,3 +1,7 @@
+import asyncio
+import base64
+import binascii
+import re
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Literal, Annotated
@@ -15,6 +19,15 @@ from backend.app.security.auth import get_current_user_and_session
 from backend.app.services.capabilities import resolve_account_capabilities
 from backend.app.clients.deepseek import DeepSeekClient, DeepSeekError
 from backend.app.clients.gemini_tts import GeminiTtsClient, GeminiTtsError
+from backend.app.services.flashcards import (
+    FLASHCARD_SYSTEM_PROMPT,
+    Flashcard,
+    FlashcardParseError,
+    build_user_prompt,
+    merge_cards,
+    parse_flashcard_json,
+)
+from backend.app.services.pdf_text import PdfTextError, chunk_text, extract_pdf_text
 
 router = APIRouter(prefix="/v1/ai", tags=["ai"])
 settings = get_settings()
@@ -266,4 +279,241 @@ async def tts_proxy(
         model=settings.GEMINI_TTS_MODEL,
         voice=settings.GEMINI_TTS_VOICE,
         createdAt=now_str
+    )
+
+
+# ── Flashcards ────────────────────────────────────────────────────────────
+# A PDF is not something DeepSeek accepts, so the document is turned into text
+# here and only the text is sent upstream. One upload becomes several model
+# calls — one per chunk — which is why this endpoint has a budget of its own
+# rather than sharing the chat allowance.
+
+MAX_FLASHCARD_PDF_BYTES = 15 * 1024 * 1024
+MAX_FLASHCARD_PAGES = 40
+MAX_FLASHCARD_CHUNKS = 6
+MAX_FLASHCARD_CONCURRENCY = 3
+MAX_FLASHCARD_REQUESTS_PER_MIN = 3
+MAX_FLASHCARD_REQUESTS_PER_DAY = 20
+MAX_FLASHCARDS_PER_DECK = 200
+
+
+class FlashcardItem(BaseModel):
+    question: str
+    answer: str
+
+
+class AIFlashcardRequest(BaseModel):
+    requestId: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    filename: str = Field(default="document.pdf", max_length=255)
+    contentBase64: str = Field(..., min_length=16)
+    maxCards: int = Field(default=40, ge=5, le=120)
+
+
+class AIFlashcardResponse(BaseModel):
+    requestId: str
+    deckTitle: str
+    cards: list[FlashcardItem]
+    totalPages: int
+    pagesRead: int
+    ocrPages: list[int]
+    chunkCount: int
+    model: str
+    usage: dict
+    warnings: list[str]
+    createdAt: str
+
+
+def _is_ai_entitled(account: Account, cap_res) -> bool:
+    return (
+        account.role in ("student_pro", "admin", "business")
+        or account.system_role == "admin"
+        or account.subscription_plan in ("student_pro", "business")
+        or cap_res.effective_subscription_plan in ("student_pro", "business")
+        or cap_res.system_role == "admin"
+    )
+
+
+async def _enforce_flashcard_quota(db: AsyncSession, owner_id, now: datetime) -> None:
+    for window, limit, message in (
+        (
+            timedelta(minutes=1),
+            MAX_FLASHCARD_REQUESTS_PER_MIN,
+            "Give the last deck a moment to finish before generating another.",
+        ),
+        (
+            timedelta(hours=24),
+            MAX_FLASHCARD_REQUESTS_PER_DAY,
+            f"Daily flashcard limit reached ({MAX_FLASHCARD_REQUESTS_PER_DAY} documents/day).",
+        ),
+    ):
+        stmt = select(func.count(AIUsage.id)).where(
+            AIUsage.owner_id == owner_id,
+            AIUsage.request_type == "flashcards",
+            AIUsage.created_at >= now - window,
+        )
+        used = (await db.execute(stmt)).scalar() or 0
+        if used >= limit:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=message,
+            )
+
+
+def _deck_title(filename: str) -> str:
+    stem = (filename or "document.pdf").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    if stem.lower().endswith(".pdf"):
+        stem = stem[:-4]
+    stem = re.sub(r"[_\-]+", " ", stem).strip()
+    return (stem[:80] or "Flashcards").strip()
+
+
+@router.post("/flashcards", response_model=AIFlashcardResponse)
+async def flashcards_from_pdf(
+    req: AIFlashcardRequest,
+    auth_data: Annotated[tuple[Account, AuthSession], Depends(get_current_user_and_session)],
+    db: AsyncSession = Depends(get_db),
+    deepseek: DeepSeekClient = Depends(get_deepseek_client),
+):
+    """Builds a flashcard deck from an uploaded PDF.
+
+    The PDF arrives base64-encoded because the desktop app's cloud transport
+    carries JSON only. Extraction and OCR are blocking work, so they run in a
+    worker thread rather than on the event loop.
+    """
+    account, _ = auth_data
+
+    cap_res = await resolve_account_capabilities(account, db)
+    if not _is_ai_entitled(account, cap_res) or not account.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Flashcard generation requires a student_pro or business subscription. "
+                "Please upgrade your account."
+            ),
+        )
+
+    now = datetime.now(timezone.utc)
+    await _enforce_flashcard_quota(db, account.id, now)
+
+    try:
+        pdf_bytes = base64.b64decode(req.contentBase64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded file could not be decoded.",
+        )
+
+    if len(pdf_bytes) > MAX_FLASHCARD_PDF_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"That PDF is larger than {MAX_FLASHCARD_PDF_BYTES // (1024 * 1024)} MB. "
+                "Split it and try again."
+            ),
+        )
+
+    try:
+        document = await asyncio.to_thread(
+            extract_pdf_text, pdf_bytes, max_pages=MAX_FLASHCARD_PAGES
+        )
+    except PdfTextError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.message)
+
+    chunks = chunk_text(document.text)
+    warnings = list(document.warnings)
+    if len(chunks) > MAX_FLASHCARD_CHUNKS:
+        warnings.append(
+            f"The document was long, so cards come from the first {MAX_FLASHCARD_CHUNKS} sections."
+        )
+        chunks = chunks[:MAX_FLASHCARD_CHUNKS]
+    if not chunks:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No readable text was found in that PDF.",
+        )
+
+    deck_title = _deck_title(req.filename)
+    per_chunk = max(6, min(40, -(-req.maxCards // len(chunks)) + 2))
+    semaphore = asyncio.Semaphore(MAX_FLASHCARD_CONCURRENCY)
+    totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    async def run_chunk(index: int, chunk: str) -> list[Flashcard]:
+        async with semaphore:
+            reply, usage = await deepseek.json_completion(
+                messages=[
+                    {"role": "system", "content": FLASHCARD_SYSTEM_PROMPT},
+                    {"role": "user", "content": build_user_prompt(chunk, per_chunk, deck_title)},
+                ],
+                user_id=str(account.id),
+                request_id=f"{req.requestId}#{index}",
+                model=settings.DEEPSEEK_FLASHCARD_MODEL,
+            )
+        for key in totals:
+            totals[key] += usage.get(key, 0)
+        return parse_flashcard_json(reply)
+
+    results = await asyncio.gather(
+        *(run_chunk(index, chunk) for index, chunk in enumerate(chunks)),
+        return_exceptions=True,
+    )
+
+    batches: list[list[Flashcard]] = []
+    failures: list[BaseException] = []
+    for result in results:
+        if isinstance(result, BaseException):
+            failures.append(result)
+        else:
+            batches.append(result)
+
+    if not batches:
+        first = failures[0] if failures else None
+        if isinstance(first, DeepSeekError):
+            raise HTTPException(status_code=first.status_code, detail=first.message)
+        if isinstance(first, FlashcardParseError):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="The model did not return usable flashcards. Try again.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Flashcards could not be generated from that document.",
+        )
+
+    if failures:
+        # A partial deck is still worth having; say so rather than pretending
+        # the document was fully covered.
+        warnings.append(
+            f"{len(failures)} of {len(chunks)} sections could not be processed and were skipped."
+        )
+
+    cards = merge_cards(batches, limit=min(MAX_FLASHCARDS_PER_DECK, req.maxCards))
+    if not cards:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Nothing testable was found in that document.",
+        )
+
+    db.add(
+        AIUsage(
+            owner_id=account.id,
+            request_type="flashcards",
+            prompt_tokens=totals["prompt_tokens"],
+            completion_tokens=totals["completion_tokens"],
+            created_at=now,
+        )
+    )
+    await db.commit()
+
+    return AIFlashcardResponse(
+        requestId=req.requestId,
+        deckTitle=deck_title,
+        cards=[FlashcardItem(**card.as_dict()) for card in cards],
+        totalPages=document.total_pages,
+        pagesRead=document.pages_read,
+        ocrPages=document.ocr_page_numbers,
+        chunkCount=len(chunks),
+        model=settings.DEEPSEEK_FLASHCARD_MODEL,
+        usage=totals,
+        warnings=warnings,
+        createdAt=now.isoformat(),
     )

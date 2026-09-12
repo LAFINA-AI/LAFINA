@@ -51,15 +51,35 @@ app = FastAPI(
     redoc_url=None
 )
 
-# Enforce 1 MiB max body size middleware
+# Paths that carry an uploaded document rather than a record, and so are held
+# to the upload ceiling instead of the 1 MiB one.
+UPLOAD_PATHS = ("/v1/ai/flashcards",)
+
+
+# Enforce max body size middleware
 @app.middleware("http")
 async def limit_body_size_middleware(request: Request, call_next):
     content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > settings.MAX_BODY_SIZE_BYTES:
-        return JSONResponse(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            content={"detail": "Request payload exceeds maximum allowed size of 1 MiB."}
-        )
+    is_upload = request.url.path in UPLOAD_PATHS
+    limit = settings.MAX_UPLOAD_BODY_SIZE_BYTES if is_upload else settings.MAX_BODY_SIZE_BYTES
+    if content_length:
+        try:
+            declared = int(content_length)
+        except ValueError:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"detail": "Invalid Content-Length header."},
+            )
+        if declared > limit:
+            return JSONResponse(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                content={
+                    "detail": (
+                        f"Request payload exceeds maximum allowed size of "
+                        f"{limit // (1024 * 1024)} MiB."
+                    )
+                },
+            )
     return await call_next(request)
 
 # Security headers middleware

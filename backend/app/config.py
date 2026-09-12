@@ -54,6 +54,10 @@ class Settings(BaseSettings):
 
     # Security & Rate Limiting
     MAX_BODY_SIZE_BYTES: int = 1048576  # 1 MiB
+    # A document upload is the one body that is legitimately large. It gets its
+    # own ceiling so the 1 MiB rule can stay tight for everything else; the
+    # flashcards endpoint checks the decoded PDF against its own limit again.
+    MAX_UPLOAD_BODY_SIZE_BYTES: int = 22020096  # 21 MiB: 15 MB of PDF, base64
     MAX_LOGIN_FAILURES_PER_15MIN: int = 10
     MAX_REGISTRATIONS_PER_IP_PER_HOUR: int = 100
     MAX_AI_REQUESTS_PER_MIN: int = 10
@@ -65,6 +69,9 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: SecretStr | None = None
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-v4-flash"
+    # Flashcards need a model that follows a strict output shape over a long
+    # reply, which is a different job from the conversational assistant.
+    DEEPSEEK_FLASHCARD_MODEL: str = "deepseek-chat"
     DEEPSEEK_TIMEOUT_SECONDS: float = 120.0
 
     # Gemini TTS Configuration

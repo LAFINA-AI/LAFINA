@@ -40,6 +40,10 @@ class RecoverRequest(BaseModel):
     recovery_code: str
     new_password: str
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
 class AuthTokenResponse(BaseModel):
     access_token: str
     refresh_token: str
@@ -252,6 +256,48 @@ async def recover(req: RecoverRequest, db: AsyncSession = Depends(get_db)):
 
     await db.commit()
     return {"detail": "Password successfully reset. Please log in with your new password."}
+
+@router.post("/password", status_code=status.HTTP_200_OK)
+async def change_password(
+    req: ChangePasswordRequest,
+    auth_data: tuple[Account, AuthSession] = Depends(get_current_user_and_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Changes the password of the signed-in account.
+
+    The current password is required, so a borrowed access token alone cannot
+    lock the owner out. Every other session is revoked because a password
+    change is what someone does when they think a device is compromised; the
+    session making the change survives so the app stays signed in.
+    """
+    account, session = auth_data
+
+    # 400 rather than 401: the request itself is authenticated, and a client
+    # that reads 401 as "session expired" would sign the user out over a typo.
+    if not verify_password(req.current_password, account.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect.",
+        )
+
+    validate_password_strength(req.new_password)
+
+    if verify_password(req.new_password, account.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The new password must be different from the current one.",
+        )
+
+    account.password_hash = hash_password(req.new_password)
+
+    await db.execute(
+        update(AuthSession)
+        .where(AuthSession.owner_id == account.id, AuthSession.id != session.id)
+        .values(is_revoked=True)
+    )
+
+    await db.commit()
+    return {"detail": "Password changed. Other devices will need the new password."}
 
 @router.get("/me", response_model=UserProfileResponse)
 async def get_me(
