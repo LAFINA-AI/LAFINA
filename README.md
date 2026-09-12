@@ -190,6 +190,25 @@ DEEPSEEK_API_KEY=sk-your-deepseek-api-key
    - Revoke the previous key on the DeepSeek Platform.
 
 
+### Flashcards: PDF Reading (Render)
+Flashcard generation reads the uploaded PDF on the server, so `pdfplumber` must
+be installed there. It is listed in `backend/requirements.txt`, so a Render
+deploy that runs `pip install -r backend/requirements.txt` picks it up; if
+`/v1/ai/flashcards` answers *"PDF reading is not installed on the server"*, the
+service is running a build from before that line was added and needs a redeploy.
+
+Scanned PDFs additionally need text recognition, which is **optional**:
+
+```sh
+pip install pytesseract pillow      # the Python wrapper
+```
+
+The wrapper drives the Tesseract program, which is a system package rather than
+a Python one. Render's native Python runtime cannot install it, so OCR needs a
+Docker deploy whose image runs `apt-get install -y tesseract-ocr`. Without it
+everything else still works: pages with selectable text are read normally, and a
+scanned PDF is refused with an explanation instead of producing an empty deck.
+
 ## 3. Creating Admin Accounts (No Hardcoded Credentials)
 To create an admin account or promote an existing account without hardcoding passwords:
 
