@@ -16,6 +16,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from backend.app.services.json_reply import clean_text, json_candidates
+
 logger = logging.getLogger("lafina.flashcards")
 
 MAX_QUESTION_CHARS = 500
@@ -25,8 +27,6 @@ MIN_FIELD_CHARS = 2
 # Keys seen in the wild when a model ignores the schema it was given.
 _QUESTION_KEYS = ("question", "front", "q", "term", "prompt")
 _ANSWER_KEYS = ("answer", "back", "a", "definition", "response")
-
-_FENCE = re.compile(r"^\s*```(?:json|JSON)?\s*|\s*```\s*$")
 
 FLASHCARD_SYSTEM_PROMPT = (
     "You are a study-material generator that outputs only raw JSON.\n"
@@ -72,47 +72,6 @@ def build_user_prompt(chunk: str, max_cards: int, source_hint: str = "") -> str:
     )
 
 
-def _strip_fences(text: str) -> str:
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = _FENCE.sub("", stripped)
-    return stripped.strip()
-
-
-def _extract_json_span(text: str) -> str | None:
-    """Finds the outermost JSON array or object in a reply with prose around it.
-
-    Brackets inside string literals are skipped, so an answer containing "[" of
-    its own does not end the span early.
-    """
-    for opener, closer in (("[", "]"), ("{", "}")):
-        start = text.find(opener)
-        if start == -1:
-            continue
-        depth = 0
-        in_string = False
-        escaped = False
-        for index in range(start, len(text)):
-            char = text[index]
-            if in_string:
-                if escaped:
-                    escaped = False
-                elif char == "\\":
-                    escaped = True
-                elif char == '"':
-                    in_string = False
-                continue
-            if char == '"':
-                in_string = True
-            elif char == opener:
-                depth += 1
-            elif char == closer:
-                depth -= 1
-                if depth == 0:
-                    return text[start : index + 1]
-    return None
-
-
 def _first_value(entry: dict, keys: tuple[str, ...]) -> str:
     for key in keys:
         for candidate in (key, key.upper(), key.capitalize()):
@@ -122,15 +81,6 @@ def _first_value(entry: dict, keys: tuple[str, ...]) -> str:
             if isinstance(value, (int, float)):
                 return str(value)
     return ""
-
-
-def _clean_field(value: str, limit: int) -> str:
-    text = re.sub(r"\s+", " ", str(value)).strip()
-    # A model that ignores rule 3 tends to bold its terms as well.
-    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
-    if len(text) > limit:
-        text = text[:limit].rstrip() + "…"
-    return text
 
 
 def parse_flashcard_json(raw: str) -> list[Flashcard]:
@@ -143,13 +93,8 @@ def parse_flashcard_json(raw: str) -> list[Flashcard]:
     if not raw or not raw.strip():
         raise FlashcardParseError("The model returned an empty reply.")
 
-    candidates = [_strip_fences(raw)]
-    span = _extract_json_span(candidates[0])
-    if span and span != candidates[0]:
-        candidates.append(span)
-
     data = None
-    for candidate in candidates:
+    for candidate in json_candidates(raw):
         try:
             data = json.loads(candidate)
             break
@@ -174,8 +119,8 @@ def parse_flashcard_json(raw: str) -> list[Flashcard]:
     for entry in data:
         if not isinstance(entry, dict):
             continue
-        question = _clean_field(_first_value(entry, _QUESTION_KEYS), MAX_QUESTION_CHARS)
-        answer = _clean_field(_first_value(entry, _ANSWER_KEYS), MAX_ANSWER_CHARS)
+        question = clean_text(_first_value(entry, _QUESTION_KEYS), MAX_QUESTION_CHARS)
+        answer = clean_text(_first_value(entry, _ANSWER_KEYS), MAX_ANSWER_CHARS)
         if len(question) < MIN_FIELD_CHARS or len(answer) < MIN_FIELD_CHARS:
             continue
         cards.append(Flashcard(question=question, answer=answer))

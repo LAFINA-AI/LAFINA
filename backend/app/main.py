@@ -53,7 +53,7 @@ app = FastAPI(
 
 # Paths that carry an uploaded document rather than a record, and so are held
 # to the upload ceiling instead of the 1 MiB one.
-UPLOAD_PATHS = ("/v1/ai/flashcards",)
+UPLOAD_PATHS = ("/v1/ai/flashcards", "/v1/ai/study-notes")
 
 
 # Enforce max body size middleware

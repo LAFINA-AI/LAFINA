@@ -28,6 +28,15 @@ from backend.app.services.flashcards import (
     parse_flashcard_json,
 )
 from backend.app.services.pdf_text import PdfTextError, chunk_text, extract_pdf_text
+from backend.app.services.document_text import extract_document_text
+from backend.app.services.study_notes import (
+    STUDY_NOTES_SYSTEM_PROMPT,
+    StudySummary,
+    merge_summaries,
+    parse_study_notes_json,
+    to_markdown,
+)
+from backend.app.services.study_notes import build_user_prompt as build_study_prompt
 
 router = APIRouter(prefix="/v1/ai", tags=["ai"])
 settings = get_settings()
@@ -333,22 +342,29 @@ def _is_ai_entitled(account: Account, cap_res) -> bool:
     )
 
 
-async def _enforce_flashcard_quota(db: AsyncSession, owner_id, now: datetime) -> None:
+async def _enforce_ai_quota(
+    db: AsyncSession,
+    owner_id,
+    now: datetime,
+    *,
+    request_type: str,
+    per_minute: int,
+    per_day: int,
+    wait_message: str,
+    day_message: str,
+) -> None:
+    """Holds one kind of document job to its own allowance.
+
+    Each upload costs several model calls, so these jobs are counted apart from
+    the chat allowance and from each other.
+    """
     for window, limit, message in (
-        (
-            timedelta(minutes=1),
-            MAX_FLASHCARD_REQUESTS_PER_MIN,
-            "Give the last deck a moment to finish before generating another.",
-        ),
-        (
-            timedelta(hours=24),
-            MAX_FLASHCARD_REQUESTS_PER_DAY,
-            f"Daily flashcard limit reached ({MAX_FLASHCARD_REQUESTS_PER_DAY} documents/day).",
-        ),
+        (timedelta(minutes=1), per_minute, wait_message),
+        (timedelta(hours=24), per_day, day_message),
     ):
         stmt = select(func.count(AIUsage.id)).where(
             AIUsage.owner_id == owner_id,
-            AIUsage.request_type == "flashcards",
+            AIUsage.request_type == request_type,
             AIUsage.created_at >= now - window,
         )
         used = (await db.execute(stmt)).scalar() or 0
@@ -357,6 +373,26 @@ async def _enforce_flashcard_quota(db: AsyncSession, owner_id, now: datetime) ->
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=message,
             )
+
+
+def _decode_upload(content_base64: str) -> bytes:
+    """Turns the uploaded payload back into bytes, refusing what cannot work."""
+    try:
+        data = base64.b64decode(content_base64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded file could not be decoded.",
+        )
+    if len(data) > MAX_FLASHCARD_PDF_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"That file is larger than {MAX_FLASHCARD_PDF_BYTES // (1024 * 1024)} MB. "
+                "Split it and try again."
+            ),
+        )
+    return data
 
 
 def _deck_title(filename: str) -> str:
@@ -393,24 +429,20 @@ async def flashcards_from_pdf(
         )
 
     now = datetime.now(timezone.utc)
-    await _enforce_flashcard_quota(db, account.id, now)
+    await _enforce_ai_quota(
+        db,
+        account.id,
+        now,
+        request_type="flashcards",
+        per_minute=MAX_FLASHCARD_REQUESTS_PER_MIN,
+        per_day=MAX_FLASHCARD_REQUESTS_PER_DAY,
+        wait_message="Give the last deck a moment to finish before generating another.",
+        day_message=(
+            f"Daily flashcard limit reached ({MAX_FLASHCARD_REQUESTS_PER_DAY} documents/day)."
+        ),
+    )
 
-    try:
-        pdf_bytes = base64.b64decode(req.contentBase64, validate=True)
-    except (binascii.Error, ValueError):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The uploaded file could not be decoded.",
-        )
-
-    if len(pdf_bytes) > MAX_FLASHCARD_PDF_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=(
-                f"That PDF is larger than {MAX_FLASHCARD_PDF_BYTES // (1024 * 1024)} MB. "
-                "Split it and try again."
-            ),
-        )
+    pdf_bytes = _decode_upload(req.contentBase64)
 
     try:
         document = await asyncio.to_thread(
@@ -508,6 +540,193 @@ async def flashcards_from_pdf(
         requestId=req.requestId,
         deckTitle=deck_title,
         cards=[FlashcardItem(**card.as_dict()) for card in cards],
+        totalPages=document.total_pages,
+        pagesRead=document.pages_read,
+        ocrPages=document.ocr_page_numbers,
+        chunkCount=len(chunks),
+        model=settings.DEEPSEEK_FLASHCARD_MODEL,
+        usage=totals,
+        warnings=warnings,
+        createdAt=now.isoformat(),
+    )
+
+
+# ── Study notes ───────────────────────────────────────────────────────────
+# The same shape as flashcards — upload, extract, summarise, merge — over Word
+# and PowerPoint as well as PDF, because lecture material arrives in all three.
+
+MAX_STUDY_NOTE_CHUNKS = 5
+MAX_STUDY_NOTE_REQUESTS_PER_MIN = 3
+MAX_STUDY_NOTE_REQUESTS_PER_DAY = 20
+
+
+class StudyNoteSection(BaseModel):
+    heading: str
+    points: list[str]
+
+
+class StudyNoteTerm(BaseModel):
+    term: str
+    meaning: str
+
+
+class AIStudyNotesRequest(BaseModel):
+    requestId: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    filename: str = Field(default="document.pdf", max_length=255)
+    contentBase64: str = Field(..., min_length=16)
+
+
+class AIStudyNotesResponse(BaseModel):
+    requestId: str
+    title: str
+    overview: str
+    sections: list[StudyNoteSection]
+    keyTerms: list[StudyNoteTerm]
+    markdown: str
+    sourceKind: str
+    totalPages: int
+    pagesRead: int
+    ocrPages: list[int]
+    chunkCount: int
+    model: str
+    usage: dict
+    warnings: list[str]
+    createdAt: str
+
+
+@router.post("/study-notes", response_model=AIStudyNotesResponse)
+async def study_notes_from_document(
+    req: AIStudyNotesRequest,
+    auth_data: Annotated[tuple[Account, AuthSession], Depends(get_current_user_and_session)],
+    db: AsyncSession = Depends(get_db),
+    deepseek: DeepSeekClient = Depends(get_deepseek_client),
+):
+    """Summarises a PDF, Word or PowerPoint document into revision notes."""
+    account, _ = auth_data
+
+    cap_res = await resolve_account_capabilities(account, db)
+    if not _is_ai_entitled(account, cap_res) or not account.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Study notes require a student_pro or business subscription. "
+                "Please upgrade your account."
+            ),
+        )
+
+    now = datetime.now(timezone.utc)
+    await _enforce_ai_quota(
+        db,
+        account.id,
+        now,
+        request_type="study_notes",
+        per_minute=MAX_STUDY_NOTE_REQUESTS_PER_MIN,
+        per_day=MAX_STUDY_NOTE_REQUESTS_PER_DAY,
+        wait_message="Give the last summary a moment to finish before starting another.",
+        day_message=(
+            f"Daily study-notes limit reached ({MAX_STUDY_NOTE_REQUESTS_PER_DAY} documents/day)."
+        ),
+    )
+
+    file_bytes = _decode_upload(req.contentBase64)
+
+    try:
+        document, kind = await asyncio.to_thread(
+            extract_document_text, file_bytes, req.filename, max_pages=MAX_FLASHCARD_PAGES
+        )
+    except PdfTextError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.message)
+
+    chunks = chunk_text(document.text)
+    warnings = list(document.warnings)
+    if len(chunks) > MAX_STUDY_NOTE_CHUNKS:
+        warnings.append(
+            f"The document was long, so the notes cover its first {MAX_STUDY_NOTE_CHUNKS} sections."
+        )
+        chunks = chunks[:MAX_STUDY_NOTE_CHUNKS]
+    if not chunks:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No readable text was found in that document.",
+        )
+
+    fallback_title = _deck_title(req.filename)
+    semaphore = asyncio.Semaphore(MAX_FLASHCARD_CONCURRENCY)
+    totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    async def summarise(index: int, chunk: str) -> StudySummary:
+        part = f"part {index + 1} of {len(chunks)}" if len(chunks) > 1 else ""
+        async with semaphore:
+            reply, usage = await deepseek.json_completion(
+                messages=[
+                    {"role": "system", "content": STUDY_NOTES_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": build_study_prompt(chunk, fallback_title, part),
+                    },
+                ],
+                user_id=str(account.id),
+                request_id=f"{req.requestId}#{index}",
+                model=settings.DEEPSEEK_FLASHCARD_MODEL,
+            )
+        for key in totals:
+            totals[key] += usage.get(key, 0)
+        return parse_study_notes_json(reply)
+
+    results = await asyncio.gather(
+        *(summarise(index, chunk) for index, chunk in enumerate(chunks)),
+        return_exceptions=True,
+    )
+
+    parts: list[StudySummary] = []
+    failures: list[BaseException] = []
+    for result in results:
+        if isinstance(result, BaseException):
+            failures.append(result)
+        else:
+            parts.append(result)
+
+    if not parts:
+        first = failures[0] if failures else None
+        if isinstance(first, DeepSeekError):
+            raise HTTPException(status_code=first.status_code, detail=first.message)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Study notes could not be generated from that document.",
+        )
+    if failures:
+        warnings.append(
+            f"{len(failures)} of {len(chunks)} sections could not be summarised and were skipped."
+        )
+
+    summary = merge_summaries(parts)
+    if summary.is_empty:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="There was nothing worth summarising in that document.",
+        )
+    if not summary.title:
+        summary.title = fallback_title
+
+    db.add(
+        AIUsage(
+            owner_id=account.id,
+            request_type="study_notes",
+            prompt_tokens=totals["prompt_tokens"],
+            completion_tokens=totals["completion_tokens"],
+            created_at=now,
+        )
+    )
+    await db.commit()
+
+    return AIStudyNotesResponse(
+        requestId=req.requestId,
+        title=summary.title,
+        overview=summary.overview,
+        sections=[StudyNoteSection(**section.as_dict()) for section in summary.sections],
+        keyTerms=[StudyNoteTerm(**term.as_dict()) for term in summary.key_terms],
+        markdown=to_markdown(summary),
+        sourceKind=kind,
         totalPages=document.total_pages,
         pagesRead=document.pages_read,
         ocrPages=document.ocr_page_numbers,
