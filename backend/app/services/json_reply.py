@@ -25,10 +25,15 @@ def extract_json_span(text: str) -> str | None:
     """Finds the outermost JSON array or object in a reply with prose around it.
 
     Brackets inside string literals are skipped, so a sentence containing "["
-    of its own does not end the span early.
+    of its own does not end the span early. Whichever bracket opens first is
+    the outermost value: trying arrays first would pull the first list out of
+    the middle of an object reply.
     """
-    for opener, closer in (("[", "]"), ("{", "}")):
-        start = text.find(opener)
+    openers = sorted(
+        ((text.find(opener), opener, closer) for opener, closer in (("[", "]"), ("{", "}"))),
+        key=lambda entry: (entry[0] == -1, entry[0]),
+    )
+    for start, opener, closer in openers:
         if start == -1:
             continue
         depth = 0
