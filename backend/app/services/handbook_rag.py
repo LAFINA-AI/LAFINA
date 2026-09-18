@@ -239,10 +239,51 @@ def _clean_passage(text: str) -> str:
     return text[:MAX_PASSAGE_CHARS]
 
 
+@dataclass
+class HandbookHealth:
+    """Whether the handbook can answer right now, and if not, why not."""
+
+    functional: bool
+    passages: int
+    detail: str | None
+    checked_at: float
+
+
+# A status check costs one Pinecone stats call; the badge asks for it often,
+# and the answer changes only when someone re-indexes or Pinecone falls over.
+HEALTH_TTL_SECONDS = 60.0
+
+
 class HandbookRetriever:
     def __init__(self, settings: Settings, index: PineconeIndexClient):
         self.settings = settings
         self.index = index
+        self._health: HandbookHealth | None = None
+
+    async def health(self, *, now: float | None = None) -> HandbookHealth:
+        """Is the index reachable and does it hold the handbook? Remembered for a minute."""
+        import time
+
+        current = time.monotonic() if now is None else now
+        if self._health and current - self._health.checked_at < HEALTH_TTL_SECONDS:
+            return self._health
+        if not self.configured:
+            health = HandbookHealth(
+                False, 0, "The Student Handbook index is not configured on the server.", current
+            )
+        else:
+            try:
+                count = await self.index.namespace_count(self.settings.HANDBOOK_NAMESPACE)
+                health = (
+                    HandbookHealth(True, count, None, current)
+                    if count > 0
+                    else HandbookHealth(False, 0, "The Student Handbook has not been indexed yet.", current)
+                )
+            except PineconeError as err:
+                logger.warning(f"Student Handbook health check failed: {err.message}")
+                health = HandbookHealth(False, 0, "The Student Handbook index cannot be reached.", current)
+        self._health = health
+        return health
 
     @property
     def configured(self) -> bool:

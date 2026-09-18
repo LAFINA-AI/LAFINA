@@ -16,6 +16,8 @@ from backend.app.clients.pinecone_index import (
 )
 from backend.app.config import Settings
 from backend.app.services.handbook_rag import (
+    HEALTH_TTL_SECONDS,
+    HandbookHealth,
     HandbookPassage,
     HandbookRetriever,
     build_chunks,
@@ -297,17 +299,23 @@ class FakeDeepSeek:
 
 
 class FakeRetriever:
-    def __init__(self, passages=None, error=None, configured=True):
+    def __init__(self, passages=None, error=None, configured=True, health=None):
         self.passages = passages or []
         self.error = error
         self.configured = configured
         self.queries = []
+        self.health_checks = 0
+        self._health = health or HandbookHealth(True, 200, None, 0.0)
 
     async def retrieve(self, query):
         self.queries.append(query)
         if self.error:
             raise self.error
         return self.passages
+
+    async def health(self):
+        self.health_checks += 1
+        return self._health
 
 
 HAZING = HandbookPassage(
@@ -478,3 +486,108 @@ async def test_the_switch_starts_on_and_an_admin_can_flip_it_in_the_admin_panel(
 
     async with TestingSessionLocal() as db:
         assert await is_enabled(db, HANDBOOK_RAG) is False
+
+
+# ── The student's own switch, and the status badge ───────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_student_who_turned_the_handbook_off_gets_a_plain_answer(async_client, chat_fakes):
+    deepseek, use = chat_fakes
+    retriever = use(FakeRetriever(passages=[HAZING]))
+    headers = await _pro_headers(async_client, "rag_student_off@ustp.edu.ph")
+
+    res = await async_client.post(
+        "/v1/ai/chat",
+        headers=headers,
+        json={"useHandbook": False, "messages": [{"role": "user", "content": "Is hazing allowed?"}]},
+    )
+    assert res.status_code == 200
+    assert res.json()["sources"] == []
+    assert retriever.queries == []
+    assert [message["role"] for message in deepseek.calls[0]] == ["system", "user"]
+
+
+@pytest.mark.asyncio
+async def test_the_student_switch_cannot_override_the_admin_switch(async_client, chat_fakes):
+    _, use = chat_fakes
+    retriever = use(FakeRetriever(passages=[HAZING]))
+    headers = await _pro_headers(async_client, "rag_student_on@ustp.edu.ph")
+    await _set_flag(False)
+
+    res = await async_client.post(
+        "/v1/ai/chat",
+        headers=headers,
+        json={"useHandbook": True, "messages": [{"role": "user", "content": "Is hazing allowed?"}]},
+    )
+    assert res.json()["sources"] == []
+    assert retriever.queries == []
+
+
+@pytest.mark.asyncio
+async def test_the_status_reports_a_working_handbook_while_the_switch_is_on(async_client, chat_fakes):
+    _, use = chat_fakes
+    retriever = use(FakeRetriever())
+    headers = await _pro_headers(async_client, "rag_status_on@ustp.edu.ph")
+
+    assert (await async_client.get("/v1/ai/handbook/status")).status_code == 401
+
+    res = await async_client.get("/v1/ai/handbook/status", headers=headers)
+    assert res.status_code == 200
+    assert res.json() == {"enabled": True, "functional": True, "passages": 200, "detail": None}
+
+    await _set_flag(False)
+    off = await async_client.get("/v1/ai/handbook/status", headers=headers)
+    assert off.json() == {"enabled": False, "functional": False, "passages": 0, "detail": None}
+    assert retriever.health_checks == 1, "with the switch off, Pinecone is not asked"
+
+
+@pytest.mark.asyncio
+async def test_the_status_says_why_a_switched_on_handbook_is_not_working(async_client, chat_fakes):
+    _, use = chat_fakes
+    use(FakeRetriever(health=HandbookHealth(False, 0, "The Student Handbook index cannot be reached.", 0.0)))
+    headers = await _pro_headers(async_client, "rag_status_down@ustp.edu.ph")
+
+    res = await async_client.get("/v1/ai/handbook/status", headers=headers)
+    assert res.json() == {
+        "enabled": True,
+        "functional": False,
+        "passages": 0,
+        "detail": "The Student Handbook index cannot be reached.",
+    }
+
+
+@pytest.mark.asyncio
+async def test_the_health_check_is_remembered_for_a_minute_and_explains_failures():
+    class CountingIndex(FakeIndex):
+        def __init__(self, count=200, error=None):
+            super().__init__([])
+            self.count = count
+            self.stat_error = error
+            self.stat_calls = 0
+
+        async def namespace_count(self, namespace):
+            self.stat_calls += 1
+            if self.stat_error:
+                raise self.stat_error
+            return self.count
+
+    index = CountingIndex()
+    retriever = HandbookRetriever(_settings(), index)
+    first = await retriever.health(now=100.0)
+    assert (first.functional, first.passages, first.detail) == (True, 200, None)
+    await retriever.health(now=100.0 + HEALTH_TTL_SECONDS - 1)
+    assert index.stat_calls == 1
+    await retriever.health(now=100.0 + HEALTH_TTL_SECONDS + 1)
+    assert index.stat_calls == 2
+
+    empty = await HandbookRetriever(_settings(), CountingIndex(count=0)).health(now=0.0)
+    assert not empty.functional and "not been indexed" in empty.detail
+
+    down = await HandbookRetriever(
+        _settings(), CountingIndex(error=PineconeError("Could not reach Pinecone.", 503))
+    ).health(now=0.0)
+    assert not down.functional and "cannot be reached" in down.detail
+
+    unset = await HandbookRetriever(_settings(PINECONE_API_KEY=None), CountingIndex()).health(now=0.0)
+    assert not unset.functional and "not configured" in unset.detail

@@ -146,6 +146,10 @@ class ChatMessage(BaseModel):
 class AIChatRequest(BaseModel):
     requestId: str = Field(default_factory=lambda: str(uuid.uuid4()))
     messages: list[ChatMessage] = Field(..., min_length=1, max_length=10)
+    # The student's own switch for the Student Handbook. It can only turn the
+    # handbook off: the admin panel's `handbook_rag` flag still has the final
+    # say, and clients that never send it (mobile, older desktops) keep it on.
+    useHandbook: bool = True
 
 
 class HandbookSource(BaseModel):
@@ -246,7 +250,11 @@ async def chat_proxy(
 
     # Student Handbook passages ride along as a second system message, so they
     # are reference material the model weighs, never the student's own words.
-    passages = await _handbook_passages(handbook, db, req.messages, req.requestId)
+    passages = (
+        await _handbook_passages(handbook, db, req.messages, req.requestId)
+        if req.useHandbook
+        else []
+    )
     handbook_context = (
         [{"role": "system", "content": build_handbook_prompt(passages, settings.HANDBOOK_TITLE)}]
         if passages
@@ -287,6 +295,45 @@ async def chat_proxy(
         usage=usage_data,
         createdAt=now_str,
         sources=[HandbookSource(**passage.as_source()) for passage in passages],
+    )
+
+
+class HandbookStatusResponse(BaseModel):
+    # The admin panel's `handbook_rag` switch. Off means the feature is not
+    # offered at all, and clients hide everything about it.
+    enabled: bool
+    # Configured, reachable, and holding the handbook: answers will be grounded.
+    functional: bool
+    passages: int
+    detail: str | None = None
+
+
+@router.get("/handbook/status", response_model=HandbookStatusResponse)
+async def handbook_status(
+    auth_data: Annotated[tuple[Account, AuthSession], Depends(get_current_user_and_session)],
+    db: AsyncSession = Depends(get_db),
+    handbook: HandbookRetriever | None = Depends(get_handbook_retriever),
+):
+    """Whether the Student Handbook is switched on, and whether it works right now.
+
+    Cheap to call: the Pinecone side is checked at most once a minute, and not
+    at all while the switch is off.
+    """
+    if not await is_enabled(db, HANDBOOK_RAG):
+        return HandbookStatusResponse(enabled=False, functional=False, passages=0)
+    if handbook is None:
+        return HandbookStatusResponse(
+            enabled=True,
+            functional=False,
+            passages=0,
+            detail="The Student Handbook index is not configured on the server.",
+        )
+    health = await handbook.health()
+    return HandbookStatusResponse(
+        enabled=True,
+        functional=health.functional,
+        passages=health.passages,
+        detail=health.detail,
     )
 
 
