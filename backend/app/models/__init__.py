@@ -9,6 +9,7 @@ from backend.app.models.mutations import IdempotentMutation
 from backend.app.models.change_feed import ChangeFeed
 from backend.app.models.sync_head import SyncHead
 from backend.app.models.ai_usage import AIUsage, SecurityEvent
+from backend.app.models.feature_flag import FeatureFlag
 from backend.app.models.business import Business, BusinessMembership, BusinessInvitation
 from backend.app.models.business_collaboration import (
     BusinessTask,
@@ -64,4 +65,5 @@ __all__ = [
     "SyncHead",
     "AIUsage",
     "SecurityEvent",
+    "FeatureFlag",
 ]

@@ -81,6 +81,35 @@ class Settings(BaseSettings):
     GEMINI_TTS_VOICE: str = "Aoede"
     GEMINI_TTS_TIMEOUT_SECONDS: float = 20.0
 
+    # Student Handbook RAG. The handbook lives in a Pinecone index, embedded by
+    # Pinecone's own hosted model, and the online assistant quotes it when a
+    # question is about the university. Switched on and off at runtime from the
+    # admin panel (the `handbook_rag` feature flag) — these settings only say
+    # where it lives.
+    PINECONE_API_KEY: SecretStr | None = None
+    PINECONE_INDEX_NAME: Optional[str] = None
+    # Skips the control-plane lookup of the index host when set.
+    PINECONE_INDEX_HOST: Optional[str] = None
+    PINECONE_CONTROL_URL: str = "https://api.pinecone.io"
+    PINECONE_API_VERSION: str = "2025-04"
+    HANDBOOK_NAMESPACE: str = "ustp-handbook-2023"
+    HANDBOOK_TITLE: str = "USTP Student Handbook 2023"
+    # Pinecone Inference. Must match the index: `lafina-rag` is 768-dimensional,
+    # cosine, and llama-text-embed-v2 can produce 768 dimensions.
+    HANDBOOK_EMBED_MODEL: str = "llama-text-embed-v2"
+    HANDBOOK_EMBED_DIMENSIONS: int = 768
+    HANDBOOK_TOP_K: int = 5
+    # Passages scoring below this are not about the question and are dropped.
+    # Measured against llama-text-embed-v2 on the 2023 handbook: questions
+    # about the university score 0.30-0.57, unrelated ones 0.27 at most.
+    HANDBOOK_MIN_SCORE: float = 0.30
+    # Passages this far below the best match are left out too: they are what
+    # the index returns to fill the top-k, not what the question is about.
+    HANDBOOK_RELATIVE_MARGIN: float = 0.15
+    # The chat never waits longer than this for the handbook; past it the
+    # reply goes ahead without handbook context.
+    HANDBOOK_TIMEOUT_SECONDS: float = 8.0
+
     # Google OAuth & Gmail Configuration
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[SecretStr] = None
@@ -118,6 +147,20 @@ class Settings(BaseSettings):
 
     def is_gemini_key_valid(self) -> bool:
         return self.get_gemini_key_invalid_reason() is None
+
+    def get_pinecone_invalid_reason(self) -> str | None:
+        if self.PINECONE_API_KEY is None:
+            return "PINECONE_API_KEY environment variable is not set (None)"
+        raw_key = self.PINECONE_API_KEY.get_secret_value().strip().strip("'\"")
+        if not raw_key or raw_key.lower() in INVALID_PLACEHOLDER_KEYS:
+            return "PINECONE_API_KEY is blank or a placeholder"
+        if not (self.PINECONE_INDEX_NAME or "").strip():
+            return "PINECONE_INDEX_NAME environment variable is not set"
+        return None
+
+    def is_handbook_configured(self) -> bool:
+        """Pinecone both embeds and stores the handbook, so its key and index are all it needs."""
+        return self.get_pinecone_invalid_reason() is None
 
     def get_google_redirect_uri(self) -> str:
         """Return the explicit Gmail callback or derive it from the public API URL."""

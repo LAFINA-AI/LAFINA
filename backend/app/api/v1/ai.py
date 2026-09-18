@@ -59,6 +59,14 @@ from backend.app.services.document_guardrails import (
     safe_filename,
 )
 from backend.app.services.document_render import MIME_TYPES, RENDERERS
+from backend.app.clients.pinecone_index import PineconeIndexClient
+from backend.app.services.feature_flags import HANDBOOK_RAG, is_enabled
+from backend.app.services.handbook_rag import (
+    HandbookPassage,
+    HandbookRetriever,
+    build_handbook_prompt,
+    retrieval_query,
+)
 
 router = APIRouter(prefix="/v1/ai", tags=["ai"])
 settings = get_settings()
@@ -91,6 +99,45 @@ def get_gemini_tts_client(request: Request) -> GeminiTtsClient:
     return client
 
 
+def get_handbook_retriever(request: Request) -> HandbookRetriever | None:
+    """Dependency helper providing the application-scoped Student Handbook retriever."""
+    retriever: HandbookRetriever | None = getattr(request.app.state, "handbook_retriever", None)
+    if retriever is None:
+        return HandbookRetriever(settings, PineconeIndexClient(settings))
+    return retriever
+
+
+async def _handbook_passages(
+    retriever: HandbookRetriever | None,
+    db: AsyncSession,
+    messages: list["ChatMessage"],
+    request_id: str,
+) -> list[HandbookPassage]:
+    """Handbook passages for this question, or none.
+
+    Nothing here can fail the chat: with the flag off, the index unconfigured,
+    or Pinecone slow or down, the reply simply goes ahead without handbook
+    context.
+    """
+    if retriever is None or not retriever.configured:
+        return []
+    if not await is_enabled(db, HANDBOOK_RAG):
+        return []
+    query = retrieval_query(messages)
+    if not query:
+        return []
+    try:
+        return await asyncio.wait_for(
+            retriever.retrieve(query), timeout=settings.HANDBOOK_TIMEOUT_SECONDS
+        )
+    except Exception as exc:
+        logger.warning(
+            f"Student Handbook lookup skipped ({type(exc).__name__}: {getattr(exc, 'message', exc)}) "
+            f"[requestId={request_id}]"
+        )
+        return []
+
+
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(..., max_length=4090)
@@ -101,12 +148,21 @@ class AIChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(..., min_length=1, max_length=10)
 
 
+class HandbookSource(BaseModel):
+    page: str
+    pageEnd: str
+    section: str
+    score: float
+
+
 class AIChatResponse(BaseModel):
     requestId: str
     reply: str
     model: str
     usage: dict
     createdAt: str
+    # Student Handbook passages the reply drew on; empty when none were relevant.
+    sources: list[HandbookSource] = Field(default_factory=list)
 
 
 class AITtsRequest(BaseModel):
@@ -129,6 +185,7 @@ async def chat_proxy(
     auth_data: Annotated[tuple[Account, AuthSession], Depends(get_current_user_and_session)],
     db: AsyncSession = Depends(get_db),
     deepseek: DeepSeekClient = Depends(get_deepseek_client),
+    handbook: HandbookRetriever | None = Depends(get_handbook_retriever),
 ):
     account, _ = auth_data
     owner_id = account.id
@@ -187,9 +244,19 @@ async def chat_proxy(
             detail="Daily AI request quota reached (100 requests/day)."
         )
 
-    formatted_messages = [
-        {"role": "system", "content": LAFINA_SYSTEM_INSTRUCTION}
-    ] + [{"role": m.role, "content": m.content} for m in req.messages]
+    # Student Handbook passages ride along as a second system message, so they
+    # are reference material the model weighs, never the student's own words.
+    passages = await _handbook_passages(handbook, db, req.messages, req.requestId)
+    handbook_context = (
+        [{"role": "system", "content": build_handbook_prompt(passages, settings.HANDBOOK_TITLE)}]
+        if passages
+        else []
+    )
+    formatted_messages = (
+        [{"role": "system", "content": LAFINA_SYSTEM_INSTRUCTION}]
+        + handbook_context
+        + [{"role": m.role, "content": m.content} for m in req.messages]
+    )
 
     try:
         reply_text, usage_data = await deepseek.chat_completion(
@@ -218,7 +285,8 @@ async def chat_proxy(
         reply=reply_text,
         model=settings.DEEPSEEK_MODEL,
         usage=usage_data,
-        createdAt=now_str
+        createdAt=now_str,
+        sources=[HandbookSource(**passage.as_source()) for passage in passages],
     )
 
 

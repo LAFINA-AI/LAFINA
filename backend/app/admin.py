@@ -14,7 +14,8 @@ from backend.app.models import (
     BusinessChatChannel, BusinessChatMessage, BusinessTaskComment,
     GmailConnection,
     TasksSync, EventsSync, TimeBlocksSync, RemindersSync, NotesSync, CustomCategoriesSync,
-    IdempotentMutation, ChangeFeed, AIUsage, SecurityEvent
+    IdempotentMutation, ChangeFeed, AIUsage, SecurityEvent,
+    FeatureFlag,
 )
 from backend.app.security.auth import verify_password
 
@@ -139,6 +140,18 @@ class AIUsageAdmin(ModelView, model=AIUsage):
     column_list = ["id", "owner_id", "request_type", "prompt_tokens", "completion_tokens", "created_at"]
     icon = "fa-solid fa-robot"
 
+class FeatureFlagAdmin(ModelView, model=FeatureFlag):
+    """Runtime switches. Only `enabled` can be edited; the next request sees it."""
+    name = "Feature Flag"
+    name_plural = "Feature Flags"
+    column_list = ["key", "enabled", "description", "updated_at"]
+    column_labels = {"key": "Flag", "enabled": "On"}
+    form_columns = ["enabled"]
+    # The code looks flags up by key, so they are neither added nor removed here.
+    can_create = False
+    can_delete = False
+    icon = "fa-solid fa-toggle-on"
+
 class SecurityEventAdmin(ModelView, model=SecurityEvent):
     column_list = ["id", "owner_id", "event_type", "ip_address", "created_at"]
     icon = "fa-solid fa-shield-virus"
@@ -227,6 +240,7 @@ def setup_admin(app, engine):
     admin.add_view(CustomCategoriesSyncAdmin)
     admin.add_view(IdempotentMutationAdmin)
     admin.add_view(ChangeFeedAdmin)
+    admin.add_view(FeatureFlagAdmin)
     admin.add_view(AIUsageAdmin)
     admin.add_view(SecurityEventAdmin)
     app.state.admin = admin

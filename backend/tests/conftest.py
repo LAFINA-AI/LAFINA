@@ -69,6 +69,14 @@ async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
 
 app.dependency_overrides[get_db] = override_get_db
 
+# Settings read backend/.env, which may hold a real Pinecone key: no test
+# reaches the Student Handbook index unless it installs its own retriever.
+# setdefault, because tests also import this module as backend.tests.conftest,
+# which runs it a second time and must not undo an override a test has set.
+from backend.app.api.v1.ai import get_handbook_retriever  # noqa: E402
+
+app.dependency_overrides.setdefault(get_handbook_retriever, lambda: None)
+
 @pytest_asyncio.fixture
 async def async_client():
     transport = ASGITransport(app=app)

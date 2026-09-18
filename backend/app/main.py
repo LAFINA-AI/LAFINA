@@ -12,24 +12,39 @@ from backend.app.services.capabilities import resolve_account_capabilities
 from backend.app.admin import setup_admin
 from backend.app.clients.deepseek import DeepSeekClient
 from backend.app.clients.gemini_tts import GeminiTtsClient
+from backend.app.clients.pinecone_index import PineconeIndexClient
+from backend.app.services.handbook_rag import HandbookRetriever
 from sqlalchemy.ext.asyncio import AsyncSession
 
 settings = get_settings()
 deepseek_client = DeepSeekClient(settings=settings)
 gemini_tts_client = GeminiTtsClient(settings=settings)
+handbook_retriever = HandbookRetriever(settings, PineconeIndexClient(settings))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize HTTP client pools
     await deepseek_client.start()
     await gemini_tts_client.start()
+    await handbook_retriever.start()
     app.state.deepseek_client = deepseek_client
     app.state.gemini_tts_client = gemini_tts_client
+    app.state.handbook_retriever = handbook_retriever
+    if not settings.is_handbook_configured():
+        print(
+            f"[Info] Student Handbook RAG is off: {settings.get_pinecone_invalid_reason()}"
+        )
 
     # Auto-create tables in dev/test environment if PostgreSQL is available
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+
+        # Feature flag rows appear in the admin panel ready to flip.
+        from backend.app.database import AsyncSessionLocal
+        from backend.app.services.feature_flags import ensure_default_flags
+        async with AsyncSessionLocal() as flag_session:
+            await ensure_default_flags(flag_session)
 
         if settings.ADMIN_EMAIL and settings.ADMIN_PASSWORD:
             from backend.scripts.create_admin import create_admin
@@ -39,6 +54,7 @@ async def lifespan(app: FastAPI):
     yield
     await deepseek_client.close()
     await gemini_tts_client.close()
+    await handbook_retriever.close()
     await engine.dispose()
 
 
