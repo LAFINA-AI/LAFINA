@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import binascii
+import logging
 import re
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -17,7 +18,11 @@ from backend.app.models.session import AuthSession
 from backend.app.models.ai_usage import AIUsage
 from backend.app.security.auth import get_current_user_and_session
 from backend.app.services.capabilities import resolve_account_capabilities
-from backend.app.clients.deepseek import DeepSeekClient, DeepSeekError
+from backend.app.clients.deepseek import (
+    DeepSeekClient,
+    DeepSeekError,
+    DeepSeekMalformedResponseError,
+)
 from backend.app.clients.gemini_tts import GeminiTtsClient, GeminiTtsError
 from backend.app.services.flashcards import (
     FLASHCARD_SYSTEM_PROMPT,
@@ -37,9 +42,27 @@ from backend.app.services.study_notes import (
     to_markdown,
 )
 from backend.app.services.study_notes import build_user_prompt as build_study_prompt
+from backend.app.services.document_spec import (
+    REPAIR_PROMPT,
+    DocumentFormat,
+    DocumentRefusal,
+    DocumentSpec,
+    DocumentSpecParseError,
+    build_system_prompt,
+    parse_document_spec,
+)
+from backend.app.services.document_guardrails import (
+    MAX_DOCUMENT_BYTES,
+    GuardrailError,
+    apply_output_limits,
+    check_request,
+    safe_filename,
+)
+from backend.app.services.document_render import MIME_TYPES, RENDERERS
 
 router = APIRouter(prefix="/v1/ai", tags=["ai"])
 settings = get_settings()
+logger = logging.getLogger("lafina.ai")
 
 LAFINA_SYSTEM_INSTRUCTION = (
     "You are LAFINA, an intelligent, warm, voice-first AI academic scheduling assistant for students. "
@@ -732,6 +755,188 @@ async def study_notes_from_document(
         ocrPages=document.ocr_page_numbers,
         chunkCount=len(chunks),
         model=settings.DEEPSEEK_FLASHCARD_MODEL,
+        usage=totals,
+        warnings=warnings,
+        createdAt=now.isoformat(),
+    )
+
+
+# ── Documents ─────────────────────────────────────────────────────────────
+# A student asks the chat for a file. DeepSeek describes the document as JSON,
+# the guardrails check and clip that description, and a fixed renderer builds
+# the PDF, Word, Excel or PowerPoint file. The model never writes code and
+# never touches a file itself. Student Pro only, not the wider paid-AI group.
+
+MAX_DOCUMENT_REQUESTS_PER_MIN = 3
+MAX_DOCUMENT_REQUESTS_PER_DAY = 20
+MAX_DOCUMENT_TOKENS = 8192
+MAX_DOCUMENT_ATTEMPTS = 2
+
+
+class AIDocumentRequest(BaseModel):
+    requestId: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    format: DocumentFormat
+    messages: list[ChatMessage] = Field(..., min_length=1, max_length=10)
+
+
+class AIDocumentResponse(BaseModel):
+    requestId: str
+    format: str
+    title: str
+    summary: str
+    filename: str
+    mimeType: str
+    sizeBytes: int
+    contentBase64: str
+    model: str
+    usage: dict
+    warnings: list[str]
+    createdAt: str
+
+
+def _is_student_pro(account: Account, cap_res) -> bool:
+    """The Student Pro plan itself. Admin and business accounts are not included."""
+    return bool(account.is_active) and (
+        account.role == "student_pro"
+        or account.subscription_plan == "student_pro"
+        or cap_res.effective_subscription_plan == "student_pro"
+    )
+
+
+@router.post("/documents", response_model=AIDocumentResponse)
+async def generate_document(
+    req: AIDocumentRequest,
+    auth_data: Annotated[tuple[Account, AuthSession], Depends(get_current_user_and_session)],
+    db: AsyncSession = Depends(get_db),
+    deepseek: DeepSeekClient = Depends(get_deepseek_client),
+):
+    """Writes a downloadable file from the chat conversation."""
+    account, _ = auth_data
+
+    cap_res = await resolve_account_capabilities(account, db)
+    if not _is_student_pro(account, cap_res):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "File generation is exclusive to student_pro accounts. "
+                "Please upgrade your account."
+            ),
+        )
+
+    try:
+        check_request(req.format, req.messages)
+    except GuardrailError as err:
+        raise HTTPException(status_code=err.status_code, detail=err.message)
+
+    now = datetime.now(timezone.utc)
+    await _enforce_ai_quota(
+        db,
+        account.id,
+        now,
+        request_type="document",
+        per_minute=MAX_DOCUMENT_REQUESTS_PER_MIN,
+        per_day=MAX_DOCUMENT_REQUESTS_PER_DAY,
+        wait_message="Give the last file a moment to finish before asking for another.",
+        day_message=f"Daily file limit reached ({MAX_DOCUMENT_REQUESTS_PER_DAY} files/day).",
+    )
+
+    conversation: list[dict[str, str]] = [
+        {"role": "system", "content": build_system_prompt(req.format, now.date().isoformat())},
+        *({"role": m.role, "content": m.content} for m in req.messages),
+    ]
+    totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    spec: DocumentSpec | None = None
+    model_answered = False
+
+    async def record_usage() -> None:
+        # Counted whenever the model answered, not only when a file came out: a
+        # request that keeps being refused, or keeps failing to parse, still
+        # spent tokens and must still use up the allowance.
+        db.add(
+            AIUsage(
+                owner_id=account.id,
+                request_type="document",
+                prompt_tokens=totals["prompt_tokens"],
+                completion_tokens=totals["completion_tokens"],
+                created_at=now,
+            )
+        )
+        await db.commit()
+
+    for attempt in range(MAX_DOCUMENT_ATTEMPTS):
+        try:
+            reply, usage = await deepseek.json_completion(
+                messages=conversation,
+                user_id=str(account.id),
+                request_id=f"{req.requestId}#{attempt}",
+                model=settings.DEEPSEEK_MODEL,
+                max_tokens=MAX_DOCUMENT_TOKENS,
+                json_mode=True,
+            )
+        except DeepSeekMalformedResponseError:
+            # JSON mode occasionally answers with nothing at all; ask again.
+            continue
+        except DeepSeekError as err:
+            if model_answered:
+                await record_usage()
+            raise HTTPException(status_code=err.status_code, detail=err.message)
+
+        model_answered = True
+        for key in totals:
+            totals[key] += usage.get(key, 0)
+        try:
+            spec = parse_document_spec(reply, req.format)
+            break
+        except DocumentRefusal as refusal:
+            await record_usage()
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"LAFINA can't create that file. {refusal.reason}",
+            )
+        except DocumentSpecParseError as err:
+            logger.warning(f"Document spec rejected ({err}) [requestId={req.requestId}#{attempt}]")
+            conversation = [
+                *conversation,
+                {"role": "assistant", "content": reply[:4000]},
+                {"role": "user", "content": REPAIR_PROMPT},
+            ]
+
+    if spec is None:
+        if model_answered:
+            await record_usage()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The model did not describe a usable file. Try again, or rephrase the request.",
+        )
+
+    warnings = apply_output_limits(spec, req.format)
+    try:
+        file_bytes = await asyncio.to_thread(RENDERERS[req.format], spec)
+    except Exception:
+        logger.exception(f"Rendering a {req.format} file failed [requestId={req.requestId}]")
+        await record_usage()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The file could not be built from the model's content. Try again.",
+        )
+
+    await record_usage()
+    if len(file_bytes) > MAX_DOCUMENT_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="That file came out too large. Ask for a shorter document.",
+        )
+
+    return AIDocumentResponse(
+        requestId=req.requestId,
+        format=req.format,
+        title=spec.title,
+        summary=spec.summary or f"Here is your file: {spec.title}.",
+        filename=safe_filename(spec.title, req.format),
+        mimeType=MIME_TYPES[req.format],
+        sizeBytes=len(file_bytes),
+        contentBase64=base64.b64encode(file_bytes).decode("ascii"),
+        model=settings.DEEPSEEK_MODEL,
         usage=totals,
         warnings=warnings,
         createdAt=now.isoformat(),

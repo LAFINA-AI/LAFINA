@@ -181,13 +181,15 @@ class DeepSeekClient:
         request_id: str = "",
         model: Optional[str] = None,
         max_tokens: int = 4096,
+        json_mode: bool = False,
     ) -> tuple[str, dict[str, int]]:
         """Completion tuned for callers that need machine-readable output.
 
         Same OpenAI-compatible endpoint as the chat proxy, with a near-zero
         temperature and room for a long reply, because a deck of flashcards is
         both longer than a chat turn and worthless if the model gets creative
-        with the shape of it.
+        with the shape of it. ``json_mode`` also asks the provider to return a
+        JSON object; the prompt must say "JSON" for DeepSeek to accept it.
         """
         return await self._completion(
             messages=messages,
@@ -196,6 +198,7 @@ class DeepSeekClient:
             max_tokens=max_tokens,
             temperature=0.1,
             model=model,
+            json_mode=json_mode,
         )
 
     async def _completion(
@@ -206,6 +209,7 @@ class DeepSeekClient:
         max_tokens: int = 1024,
         temperature: float = 0.7,
         model: Optional[str] = None,
+        json_mode: bool = False,
     ) -> tuple[str, dict[str, int]]:
         reason = self.settings.get_deepseek_key_invalid_reason()
         if reason is not None:
@@ -235,6 +239,8 @@ class DeepSeekClient:
             "temperature": temperature,
             "user": user_id
         }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
 
         url = f"{self.settings.DEEPSEEK_BASE_URL.rstrip('/')}/chat/completions"
         start_time = time.monotonic()

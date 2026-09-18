@@ -2,9 +2,10 @@
 
 PDFs go through the pdfplumber path with its OCR fallback. Word and PowerPoint
 files are Open XML — a zip of XML parts — so they are read here with the
-standard library rather than by adding python-docx and python-pptx to a
-deployment that would then have to carry them. What those libraries add beyond
-this is styling and document structure, and a summary needs neither.
+standard library. python-docx and python-pptx are deployed for *writing* the
+files the chat assistant generates (see document_render.py), but reading does
+not need them: what they add is styling and document structure, and a summary
+needs neither.
 """
 
 from __future__ import annotations

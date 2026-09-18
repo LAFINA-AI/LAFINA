@@ -14,6 +14,12 @@ argon2-cffi>=23.1.0
 # PDF text extraction for flashcard generation. Pulls in pdfminer.six,
 # Pillow and pypdfium2, all of which ship Linux wheels.
 pdfplumber>=0.11.0
+# Writing the files the chat assistant generates: PDF, Excel, Word and
+# PowerPoint. All four are pure Python or ship Linux wheels.
+reportlab>=4.2
+openpyxl>=3.1
+python-docx>=1.1
+python-pptx>=1.0
 # Text recognition for scanned PDFs is deliberately NOT here: pytesseract
 # drives the Tesseract program, which Render's Python runtime cannot
 # install. Its import is optional at runtime. See `[ocr]` in pyproject.toml.
