@@ -157,6 +157,52 @@ def test_a_deck_opens_with_a_title_slide_and_notes():
     assert deck.slides[2].notes_slide.notes_text_frame.text == "Pause here."
 
 
+def test_every_slide_is_laid_out_in_the_middle_of_the_slide():
+    """Each box has a real size, stays on the slide, is centred, and nothing overlaps.
+
+    A placeholder given only some of its coordinates loses the rest to zero,
+    which once stacked every box at the top-left corner of the slide.
+    """
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    deck_spec = {
+        **SLIDES,
+        "slides": [
+            *SLIDES["slides"],
+            {"title": "Section Two", "bullets": []},
+            {"title": "Dense", "bullets": ["A long point that wraps across the slide. " * 7] * 8},
+        ],
+    }
+    data, _ = _render("pptx", deck_spec)
+    deck = Presentation(io.BytesIO(data))
+    width, height = deck.slide_width, deck.slide_height
+    assert (width, height) == (Inches(13.333), Inches(7.5))
+    tolerance = Inches(0.05)
+
+    for number, slide in enumerate(deck.slides, start=1):
+        boxes = []
+        for shape in slide.shapes:
+            assert shape.width > 0 and shape.height > 0, f"slide {number}: {shape.name} has no size"
+            assert shape.left >= 0 and shape.top >= 0, f"slide {number}: {shape.name} is off the slide"
+            assert shape.left + shape.width <= width, f"slide {number}: {shape.name} runs off the right"
+            assert shape.top + shape.height <= height, f"slide {number}: {shape.name} runs off the bottom"
+            centre = shape.left + shape.width / 2
+            assert abs(centre - width / 2) <= tolerance, f"slide {number}: {shape.name} is off-centre"
+            boxes.append((shape.top, shape.top + shape.height))
+        # Stacked top to bottom, never on top of one another.
+        boxes.sort()
+        for (_, upper_bottom), (lower_top, _) in zip(boxes, boxes[1:]):
+            assert upper_bottom <= lower_top, f"slide {number}: boxes overlap"
+
+    # A section divider's title sits in the middle of the slide, not at the top.
+    divider = deck.slides[3].shapes.title
+    assert abs(divider.top + divider.height / 2 - height / 2) <= Inches(0.1)
+    # A short list is a narrow block, not a full-width one hugging the left.
+    short_body = deck.slides[1].placeholders[1]
+    assert short_body.width < Inches(10)
+
+
 # ── Guardrails ────────────────────────────────────────────────────────────
 
 
