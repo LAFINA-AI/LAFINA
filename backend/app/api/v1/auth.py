@@ -1,7 +1,7 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel, EmailStr
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select, update
 
@@ -12,8 +12,10 @@ from backend.app.models.session import AuthSession
 from backend.app.models.recovery import RecoveryCode
 from backend.app.security.auth import (
     hash_password, verify_password, create_access_token, generate_refresh_token,
-    hash_token, get_current_user_and_session, normalize_email, validate_password_strength
+    hash_token, get_current_user_and_session, normalize_email, validate_password_strength,
+    dummy_password_hash,
 )
+from backend.app.security import login_throttle
 
 from backend.app.services.capabilities import (
     BusinessSessionData,
@@ -115,14 +117,44 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     )
 
 @router.post("/login", response_model=AuthTokenResponse)
-async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     validate_password_strength(req.password)
     normalized_email = normalize_email(str(req.email))
+
+    # Refused before the password is looked at, so a guesser learns nothing
+    # more once the limit is reached, and the answer is the same whether or
+    # not the email has an account.
+    throttle_key = login_throttle.email_key(normalized_email)
+    retry_after = await login_throttle.seconds_until_allowed(
+        db, throttle_key, datetime.now(timezone.utc)
+    )
+    if retry_after is not None:
+        minutes = max(1, -(-retry_after // 60))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "Too many sign-in attempts for this email. "
+                f"Try again in {minutes} minute{'s' if minutes != 1 else ''}."
+            ),
+            headers={"Retry-After": str(retry_after)},
+        )
+
     stmt = select(Account).where(func.lower(Account.email) == normalized_email)
     res = await db.execute(stmt)
     account = res.scalar_one_or_none()
 
-    if not account or not verify_password(req.password, account.password_hash):
+    # An unknown email is checked against a stand-in hash, so it takes as long
+    # to refuse as a wrong password and the timing does not reveal it.
+    password_ok = verify_password(
+        req.password, account.password_hash if account else dummy_password_hash()
+    )
+    if not account or not password_ok:
+        await login_throttle.record_failure(
+            db,
+            throttle_key,
+            owner_id=account.id if account else None,
+            ip_address=request.client.host if request.client else None,
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
 
     if not account.is_active:

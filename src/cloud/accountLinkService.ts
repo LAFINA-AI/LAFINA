@@ -19,6 +19,7 @@ export type AccountFlowStatus =
   | 'registration_failed'
   | 'profile_failed'
   | 'auth_required'
+  | 'rate_limited'
   | 'student_pro_required';
 
 export interface AccountFlowResult {
@@ -27,6 +28,8 @@ export interface AccountFlowResult {
   localUserId?: string;
   role?: string;
   cloudStatus?: AccountFlowStatus;
+  /** True when the local account was just recreated from the cloud one. */
+  restoredFromCloud?: boolean;
 }
 
 interface RegistrationInput {
@@ -62,6 +65,9 @@ const mapCloudFailure = (
         message:
           'This email already has a FastAPI account, but the app password does not match it. Automatic cloud linking was skipped.',
       };
+    case 'rate_limited':
+      // The server's own wording says how long to wait.
+      return { status: 'rate_limited', message: fallbackMessage };
     default:
       return { status: 'registration_failed', message: fallbackMessage };
   }
@@ -283,6 +289,111 @@ const runDeferredCloudLink = async (
 
 const deferredLinkAttempts = new Map<string, Promise<AccountFlowResult>>();
 
+// ── Signing in with an account this phone does not have ─────────────────
+/**
+ * Wrong password and unknown email get the same answer, so the sign-in form
+ * cannot be used to find out who has an account, here or on the server.
+ */
+const INCORRECT_CREDENTIALS = 'Incorrect email or password.';
+
+/** Offline, the phone can only check accounts it already has; this says so without saying which. */
+const INCORRECT_CREDENTIALS_OFFLINE =
+  'Incorrect email or password. If this account was created on another device, connect to the internet and sign in again to set it up on this phone.';
+
+const RESTORE_UNREACHABLE =
+  "LAFINA couldn't reach the server to check this sign-in. Try again in a moment.";
+
+const restoreAttempts = new Map<string, Promise<AccountFlowResult>>();
+
+const runCloudRestore = async (email: string, password: string): Promise<AccountFlowResult> => {
+  // Offline, nothing is created: an account only comes to this phone once
+  // the server has confirmed the password for it.
+  if (!(await cloudClient.isOnline())) {
+    return { status: 'incorrect_local_password', message: INCORRECT_CREDENTIALS_OFFLINE };
+  }
+
+  // Sign in only, never register: on the sign-in screen a mistyped email must
+  // fail, not quietly create a new cloud account.
+  const cloudAuth = await authenticateExistingCloudAccount(email, password);
+  if (isFlowResult(cloudAuth)) {
+    if (cloudAuth.status === 'incorrect_cloud_password') {
+      return { status: 'incorrect_local_password', message: INCORRECT_CREDENTIALS };
+    }
+    if (cloudAuth.status === 'offline' || cloudAuth.status === 'server_unavailable') {
+      return { status: cloudAuth.status, message: RESTORE_UNREACHABLE };
+    }
+    return cloudAuth;
+  }
+
+  // Nothing is written until the server has vouched for exactly this address.
+  if (normalizeEmail(cloudAuth.email) !== email || !cloudAuth.user_id) {
+    return {
+      status: 'profile_failed',
+      message: 'The server signed in a different account, so nothing was set up on this phone.',
+    };
+  }
+
+  let localUserId: string;
+  try {
+    localUserId = await userStore.createFromCloud({
+      email,
+      password,
+      cloudAccountId: cloudAuth.user_id,
+      role: cloudAuth.role,
+    });
+  } catch (error: unknown) {
+    return {
+      status: 'registration_failed',
+      message: `Your account signed in, but it couldn't be set up on this phone: ${
+        error instanceof Error ? error.message : 'unknown error'
+      }`,
+    };
+  }
+
+  userStore.setCurrentUser(localUserId);
+  cloudClient.resetSessionCache();
+  await persistDeferredCloudCredential(localUserId, password);
+
+  const linkResult = await attachAuthenticatedCloudSession(localUserId, cloudAuth);
+  if (linkResult.status !== 'success') {
+    // The server accepted the password for this email, so the account is
+    // this person's and stays usable offline; the link retries on its own.
+    return {
+      ...linkResult,
+      status: 'local_only',
+      cloudStatus: linkResult.status,
+      localUserId,
+      role: cloudAuth.role,
+      restoredFromCloud: true,
+      message: `Your account is set up on this phone. ${linkResult.message} It will finish connecting automatically.`,
+    };
+  }
+  return {
+    ...linkResult,
+    restoredFromCloud: true,
+    message: 'Welcome back. Your account was restored from the cloud.',
+  };
+};
+
+/**
+ * Creates the local copy of an account that exists in FastAPI. Tapping Sign
+ * In twice joins the attempt already running instead of racing it.
+ */
+const restoreAccountFromCloud = async (
+  email: string,
+  password: string,
+): Promise<AccountFlowResult> => {
+  const running = restoreAttempts.get(email);
+  if (running) return await running;
+  const attempt = runCloudRestore(email, password);
+  restoreAttempts.set(email, attempt);
+  try {
+    return await attempt;
+  } finally {
+    if (restoreAttempts.get(email) === attempt) restoreAttempts.delete(email);
+  }
+};
+
 const completeDeferredCloudLink = async (
   localUserId: string
 ): Promise<AccountFlowResult> => {
@@ -430,16 +541,17 @@ export const accountLinkService = {
     const normalizedEmail = normalizeEmail(email);
     const localUser = userStore.getUserByEmail(normalizedEmail);
     if (!localUser) {
-      return {
-        status: 'incorrect_local_password',
-        message: 'No local account exists for this email.',
-      };
+      // No record on this phone is not the same as no account: it may have
+      // been made on the desktop app or another phone. FastAPI decides.
+      return await restoreAccountFromCloud(normalizedEmail, password);
     }
     const authenticatedLocalUser = await userStore.login(normalizedEmail, password);
     if (!authenticatedLocalUser) {
       return {
         status: 'incorrect_local_password',
-        message: 'The local password is incorrect.',
+        message: (await cloudClient.isOnline())
+          ? INCORRECT_CREDENTIALS
+          : INCORRECT_CREDENTIALS_OFFLINE,
       };
     }
 

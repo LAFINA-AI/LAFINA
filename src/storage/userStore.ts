@@ -176,6 +176,58 @@ export const userStore = {
   },
 
   /**
+   * Creates the local copy of an account that already exists in FastAPI, after
+   * FastAPI has accepted `password` for exactly this email.
+   *
+   * Nothing is queued for sync: the server already has the real profile, and
+   * the first sync brings it down. A profile queued from here would overwrite
+   * it with the placeholder name. Onboarding is skipped for the same reason:
+   * the account was set up on the device that created it.
+   *
+   * Refuses rather than reuses a local account that appeared for the same
+   * email or cloud account in the meantime, since that account's own password
+   * was never checked.
+   */
+  createFromCloud: async (input: {
+    email: string;
+    password: string;
+    cloudAccountId: string;
+    role: string;
+  }): Promise<string> => {
+    const normalizedEmail = normalizeEmail(input.email);
+    if (!normalizedEmail) throw new Error('A cloud account needs an email address.');
+    if (!input.cloudAccountId) throw new Error('A cloud account needs its id.');
+    // Hashing is slow, so it happens before the transaction rather than inside it.
+    const hash = await hashPassword(input.password);
+    const now = new Date().toISOString();
+    // A readable stand-in until the first sync brings the real name down.
+    const placeholderName = normalizedEmail.split('@')[0] || 'LAFINA user';
+    const id = generateId('user');
+
+    db.transactionSync((tx) => {
+      const rows = tx.executeSync('SELECT id, email, cloud_account_id FROM users').rows ?? [];
+      const clash = rows.find(
+        (row: StoredUserRow) =>
+          normalizeEmail(typeof row.email === 'string' ? row.email : '') === normalizedEmail ||
+          row.cloud_account_id === input.cloudAccountId
+      );
+      if (clash) {
+        throw new Error('This account is already on this phone.');
+      }
+      tx.executeSync(
+        `INSERT INTO users (
+           id, username, email, password_hash, role, is_new_user, time_format_24h,
+           week_starts_monday, dark_mode, cloud_account_id, cloud_linked, cloud_linked_at,
+           created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, ?, 1, ?, ?, ?)`,
+        [id, placeholderName, normalizedEmail, hash, input.role || 'student',
+          input.cloudAccountId, now, now, now],
+      );
+    });
+    return id;
+  },
+
+  /**
    * Logs in a user by verifying email and password.
    */
   login: async (email: string, password: string): Promise<User | null> => {

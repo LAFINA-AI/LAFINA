@@ -26,7 +26,19 @@ let inMemoryUserId: string | null = null;
 export const CLOUD_API_BASE_URL = 'https://lafina.onrender.com';
 export const LOCAL_API_BASE_URL = 'http://127.0.0.1:8000';
 
-const defaultApiBaseUrls: readonly string[] = [CLOUD_API_BASE_URL, LOCAL_API_BASE_URL];
+/**
+ * Where requests go, in order. The local server is a development convenience
+ * (a backend on the PC, reached through `adb reverse`) and is never tried by a
+ * release build: on a phone 127.0.0.1 is the phone itself, reached over plain
+ * HTTP, so any app on it could listen there, read a password sent while
+ * Render was down, and answer as if it were LAFINA.
+ */
+export const apiBaseUrlsFor = (isDevelopment: boolean): readonly string[] =>
+  isDevelopment ? [CLOUD_API_BASE_URL, LOCAL_API_BASE_URL] : [CLOUD_API_BASE_URL];
+
+const defaultApiBaseUrls: readonly string[] = apiBaseUrlsFor(
+  typeof __DEV__ !== 'undefined' && __DEV__
+);
 let apiBaseUrls: readonly string[] = defaultApiBaseUrls;
 const androidConnectivityModule = NativeModules.AndroidConnectivityModule as
   | { isOnline: () => Promise<boolean> }

@@ -493,6 +493,16 @@ function AppContent({
     const user = userStore.getUserById(uid);
     setIsOnboarding(user ? user.isNewUser : false);
     applyCapabilityState(uid, true);
+    // Joins the sign-in screen's sync pass and reloads the screens once it has
+    // brought the account's data down; an account just restored from the
+    // cloud would otherwise look empty until the next background pass.
+    syncWorker.performSync().then(() => {
+      if (syncWorker.takeRemoteChangeCount() > 0) {
+        setRefreshTrigger((previous) => previous + 1);
+        setSyncRevision((previous) => previous + 1);
+        applyCapabilityState(uid);
+      }
+    }).catch(() => undefined);
   };
 
   const handleRegisterSuccess = (uid: string) => {
