@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   SafeAreaView,
   StatusBar,
@@ -12,6 +12,7 @@ import {
   Alert,
   PermissionsAndroid,
   AppState,
+  BackHandler,
   TouchableOpacity,
   Linking,
 } from 'react-native';
@@ -24,9 +25,24 @@ import {
   userStore,
   businessStore,
   syncOutboxStore,
+  formatDuration,
 } from './src/storage';
-import { CustomTabBar, TabType, ShellMode } from './src/ui/components/CustomTabBar';
+import {
+  CustomTabBar,
+  TabType,
+  ShellMode,
+  ToolTab,
+  isToolTab,
+} from './src/ui/components/CustomTabBar';
+import {
+  RadialMenu,
+  RADIAL_MIC_KEY,
+  buildRadialItems,
+  useRadialMenu,
+} from './src/ui/components/radial';
 import { VoiceModal } from './src/ui/components/VoiceModal';
+import { PomodoroProvider, useOptionalPomodoro } from './src/ui/contexts/PomodoroContext';
+import { hasProEntitlement } from './src/cloud';
 import { ThemeProvider, useTheme } from './src/ui/contexts/ThemeContext';
 import { SPLASH_DELAY_MS } from './src/constants';
 import {
@@ -64,10 +80,31 @@ import {
   GmailInboxScreen,
 } from './src/ui/screens';
 import { CompanyChatScreen } from './src/ui/screens/business/CompanyChatScreen';
+import { PomodoroScreen } from './src/ui/screens/pomodoro';
 
 // Assets
 const lafinaDefaultLogo = require('./src/assets/lafina_default_logo.png');
 const spashIcon = require('./src/assets/spash_icon.png');
+
+/** Tools each shell can open from the Mic's radial menu. */
+const TOOLS_BY_SHELL: Record<ShellMode, ToolTab[]> = {
+  student: ['pomodoro', 'flashcards', 'studynotes', 'meetings'],
+  manager: ['pomodoro'],
+  employee: ['pomodoro'],
+};
+
+const homeTabFor = (mode: ShellMode): TabType =>
+  mode === 'manager' ? 'overview' : mode === 'employee' ? 'today' : 'calendar';
+
+/** The tab bar, with a running Pomodoro's time on the Mic. */
+const TimerAwareTabBar: React.FC<React.ComponentProps<typeof CustomTabBar>> = (props) => {
+  const pomodoro = useOptionalPomodoro();
+  const badge =
+    pomodoro && pomodoro.runtime.isRunning && props.activeTab !== 'pomodoro'
+      ? formatDuration(pomodoro.remainingMs)
+      : null;
+  return <CustomTabBar {...props} micBadge={badge} />;
+};
 
 function AppContent({
   userId,
@@ -97,6 +134,10 @@ function AppContent({
   const [invitations, setInvitations] = useState<BusinessInvitationData[]>([]);
   const [isLeaseActive, setIsLeaseActive] = useState(true);
   const [chatViewMode, setChatViewMode] = useState<'company' | 'assistant'>('company');
+  /** Bumped when a sync pass brought in changes made on another device. */
+  const [syncRevision, setSyncRevision] = useState(0);
+  /** The tab a radial-menu tool was opened from, for Back. */
+  const returnTabRef = useRef<TabType | null>(null);
   const splashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { colors } = useTheme();
@@ -127,9 +168,10 @@ function AppContent({
       }
     } else {
       setActiveTab((prevTab) => {
-        const validStudentTabs: TabType[] = ['chat', 'calendar', 'notes', 'profile'];
-        const validManagerTabs: TabType[] = ['overview', 'work', 'chat', 'inbox', 'profile'];
-        const validEmployeeTabs: TabType[] = ['today', 'work', 'chat', 'inbox', 'profile'];
+        // Tools opened from the radial menu stay valid across refreshes.
+        const validStudentTabs: TabType[] = ['chat', 'calendar', 'notes', 'profile', ...TOOLS_BY_SHELL.student];
+        const validManagerTabs: TabType[] = ['overview', 'work', 'chat', 'inbox', 'profile', ...TOOLS_BY_SHELL.manager];
+        const validEmployeeTabs: TabType[] = ['today', 'work', 'chat', 'inbox', 'profile', ...TOOLS_BY_SHELL.employee];
 
         const isValid =
           targetMode === 'manager'
@@ -279,7 +321,9 @@ function AppContent({
           applyCapabilityState(currentUser.id, true);
           syncWorker.performSync().then(() => {
             setRefreshTrigger((previous) => previous + 1);
-            syncWorker.takeRemoteChangeCount();
+            if (syncWorker.takeRemoteChangeCount() > 0) {
+              setSyncRevision((previous) => previous + 1);
+            }
           }).catch(() => undefined);
         }
 
@@ -315,7 +359,10 @@ function AppContent({
         await syncWorker.performSync();
         return syncWorker.takeRemoteChangeCount() > 0;
       },
-      onRemoteChanges: () => setRefreshTrigger((previous) => previous + 1),
+      onRemoteChanges: () => {
+        setRefreshTrigger((previous) => previous + 1);
+        setSyncRevision((previous) => previous + 1);
+      },
     });
     if (AppState.currentState === 'active') scheduler.start();
 
@@ -327,7 +374,9 @@ function AppContent({
       scheduler.start();
       syncWorker.performSync().then(() => {
         setRefreshTrigger((previous) => previous + 1);
-        syncWorker.takeRemoteChangeCount();
+        if (syncWorker.takeRemoteChangeCount() > 0) {
+          setSyncRevision((previous) => previous + 1);
+        }
       }).catch(() => undefined);
     });
     const unsubscribeOutbox = syncOutboxStore.onEnqueue((localUserId) => {
@@ -354,6 +403,59 @@ function AppContent({
       triggerRefresh();
     }
   };
+
+  // ── Mic radial menu and the tools it opens ──────────────────────────────
+  const hasPro = userId ? hasProEntitlement(userId) : false;
+  const radialItems = useMemo(
+    () => buildRadialItems(shellMode, hasPro),
+    [shellMode, hasPro]
+  );
+
+  const openTool = useCallback((tool: ToolTab) => {
+    setActiveTab((previous) => {
+      if (!isToolTab(previous)) returnTabRef.current = previous;
+      return tool;
+    });
+  }, []);
+
+  const leaveTool = useCallback(() => {
+    setActiveTab(returnTabRef.current ?? homeTabFor(shellMode));
+  }, [shellMode]);
+
+  const handleRadialSelect = useCallback(
+    (key: string) => {
+      if (key === RADIAL_MIC_KEY) {
+        setVoiceVisible(true);
+        return;
+      }
+      if (isToolTab(key as TabType)) openTool(key as ToolTab);
+    },
+    [openTool]
+  );
+
+  const radial = useRadialMenu(radialItems, handleRadialSelect);
+  const closeRadial = radial.close;
+
+  // The keyboard hides the tab bar, and the menu with it.
+  useEffect(() => {
+    if (isKeyboardVisible) closeRadial();
+  }, [isKeyboardVisible, closeRadial]);
+
+  // Hardware Back closes the menu, then leaves a tool for the tab it came from.
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (radial.open) {
+        closeRadial();
+        return true;
+      }
+      if (isToolTab(activeTab)) {
+        leaveTool();
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [radial.open, closeRadial, activeTab, leaveTool]);
 
   const handleGetStarted = (uid: string) => {
     setUserId(uid);
@@ -556,6 +658,8 @@ function AppContent({
         );
       case 'inbox':
         return <GmailInboxScreen userId={userId} />;
+      case 'pomodoro':
+        return <PomodoroScreen onBack={leaveTool} />;
       default:
         return <View style={[styles.errorScreen, themed.errorScreen]}><Text style={themed.errorText}>Page Not Found</Text></View>;
     }
@@ -619,21 +723,35 @@ function AppContent({
 
   return (
     <SafeAreaProvider>
+      {/* Above the screens, so the timer keeps running on every tab. */}
+      <PomodoroProvider userId={userId} syncRevision={syncRevision}>
       <SafeAreaView style={[styles.safeContainer, themed.safeContainer]}>
         <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
-        
+
         {/* Render Active Page Content */}
         <View style={styles.content}>{renderScreen()}</View>
 
-        {/* Floating Custom Bottom Tab Bar */}
+        {/* Floating Custom Bottom Tab Bar; hold the Mic for the radial menu */}
         {!isKeyboardVisible && (
-          <CustomTabBar
+          <TimerAwareTabBar
             activeTab={activeTab}
             onTabPress={setActiveTab}
             onMicPress={() => setVoiceVisible(true)}
             mode={shellMode}
+            onMicLongPress={radial.openMenu}
+            onMicDrag={radial.drag}
+            onMicRelease={radial.release}
           />
         )}
+
+        <RadialMenu
+          visible={radial.open}
+          items={radialItems}
+          layout={radial.layout}
+          highlightedIndex={radial.highlighted}
+          onSelect={radial.select}
+          onDismiss={radial.close}
+        />
 
         {/* Voice Assistant Modal */}
         <VoiceModal visible={voiceVisible} userId={userId} onClose={handleVoiceClose} />
@@ -667,6 +785,7 @@ function AppContent({
           onCancelInvitation={handleCancelInvitation}
         />
       </SafeAreaView>
+      </PomodoroProvider>
     </SafeAreaProvider>
   );
 }

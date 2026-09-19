@@ -50,3 +50,9 @@ export { refreshPendingReminderLeadTimes } from './reminderPreferenceSync';
 export type { ReminderPreferenceRefreshResult } from './reminderPreferenceSync';
 export { defaultCallSpeechProvider } from './speechProvider';
 export type { CallSpeechProvider, CallSpeechResult } from './speechProvider';
+export {
+  cancelTimerAlarm,
+  scheduleTimerAlarm,
+  startTimerRing,
+  stopTimerRing,
+} from './timerAlarm';

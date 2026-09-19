@@ -51,6 +51,11 @@
         </intent-filter>
       </receiver>
 
+      <receiver
+        android:name=".LafinaTimerAlarmReceiver"
+        android:enabled="true"
+        android:exported="false" />
+
       <service
         android:name=".LafinaReminderService"
         android:enabled="true"

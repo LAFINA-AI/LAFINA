@@ -7,3 +7,5 @@ export {
   toAnkiTsv,
 } from './ankiExport';
 export type { Flashcard } from './ankiExport';
+export { computeRadialLayout, hitTestRadial } from './radialMenu';
+export type { RadialHitOptions, RadialItemPosition, RadialLayout } from './radialMenu';
