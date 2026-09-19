@@ -11,6 +11,7 @@ import {
 import { Colors, Fonts, Layout, Shadows } from '../../theme';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Note } from '../../../storage/notesStore';
+import { noteBodyToMarkdown } from '../../../utils';
 import { GripVertical, Pin } from 'lucide-react-native';
 
 const lafinaDefaultLogo = require('../../../assets/lafina_default_logo.png');
@@ -238,7 +239,7 @@ export const NoteCard = React.memo<NoteCardProps>(({
               {item.isPinned && <Pin size={12} color={colors.red} style={{ transform: [{ rotate: '45deg' }] }} />}
             </View>
             <Text style={[styles.noteCardBody, themed.noteCardBody]} numberOfLines={item.imageUri ? 2 : 4}>
-              {renderMarkdown(item.body)}
+              {renderMarkdown(noteBodyToMarkdown(item.body))}
             </Text>
             <View style={styles.cardFooter}>
               <Text style={[styles.cardDate, themed.cardDate]}>
@@ -269,7 +270,7 @@ export const NoteCard = React.memo<NoteCardProps>(({
                   {item.isPinned && <Pin size={12} color={colors.red} style={{ transform: [{ rotate: '45deg' }] }} />}
                 </View>
                 <Text style={[styles.noteCardBody, themed.noteCardBody]} numberOfLines={2}>
-                  {renderMarkdown(item.body)}
+                  {renderMarkdown(noteBodyToMarkdown(item.body))}
                 </Text>
                 <View style={styles.cardFooter}>
                   <Text style={[styles.cardDate, themed.cardDate]}>

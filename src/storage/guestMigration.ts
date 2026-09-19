@@ -2,6 +2,12 @@ import { db, DatabaseTransaction } from './database';
 import { GUEST_USER_ID } from '../constants';
 import { syncOutboxStore } from './syncOutboxStore';
 import { buildProfileSyncPayload } from './profileSyncPayload';
+import {
+  pomodoroSessionPayload,
+  pomodoroSettingsFromRow,
+  pomodoroSettingsPayload,
+} from './pomodoroStore';
+import { POMODORO_SETTINGS_ENTITY_ID } from './syncTypes';
 
 export interface GuestDataSummary {
   taskCount: number;
@@ -61,6 +67,16 @@ export const guestMigration = {
       tx.executeSync(`UPDATE chat_sessions SET user_id = ? WHERE user_id = ?`, [cloudUserId, GUEST_USER_ID]);
       tx.executeSync(`UPDATE user_behavior_logs SET user_id = ? WHERE user_id = ?`, [cloudUserId, GUEST_USER_ID]);
       tx.executeSync(`UPDATE ml_feature_snapshots SET user_id = ? WHERE user_id = ?`, [cloudUserId, GUEST_USER_ID]);
+
+      // 2b. Study tools. The Pomodoro log moves with the guest; one-row-per-user
+      // tables keep the account's own row when it already has one here.
+      if (cloudUserId !== GUEST_USER_ID) {
+        tx.executeSync(`UPDATE pomodoro_sessions SET user_id = ? WHERE user_id = ?`, [cloudUserId, GUEST_USER_ID]);
+        ['pomodoro_settings', 'pomodoro_state'].forEach((table) => {
+          tx.executeSync(`UPDATE OR IGNORE ${table} SET user_id = ? WHERE user_id = ?`, [cloudUserId, GUEST_USER_ID]);
+          tx.executeSync(`DELETE FROM ${table} WHERE user_id = ?`, [GUEST_USER_ID]);
+        });
+      }
 
       // 3. Remove old guest record if different
       if (cloudUserId !== GUEST_USER_ID) {
@@ -159,6 +175,27 @@ export const guestMigration = {
         name: row.name,
         color: row.color,
       }, 'account', cloudUserId, tx));
+
+      // Study tools: the Pomodoro log and settings. Decks, study notes and
+      // meetings need Student Pro, which a guest never has.
+      const pomodoroSessions = tx.executeSync(
+        'SELECT * FROM pomodoro_sessions WHERE user_id = ? AND deleted_at IS NULL',
+        [cloudUserId],
+      );
+      pomodoroSessions.rows?.forEach((row) => syncOutboxStore.enqueueMutation(
+        cloudUserId, 'pomodoro_session', String(row.id), 'create', pomodoroSessionPayload(row),
+        'account', cloudUserId, tx,
+      ));
+      const pomodoroSettings = tx.executeSync(
+        'SELECT * FROM pomodoro_settings WHERE user_id = ?',
+        [cloudUserId],
+      ).rows?.[0];
+      if (pomodoroSettings) {
+        syncOutboxStore.enqueueMutation(
+          cloudUserId, 'pomodoro_settings', POMODORO_SETTINGS_ENTITY_ID, 'update',
+          pomodoroSettingsPayload(pomodoroSettingsFromRow(pomodoroSettings)), 'account', cloudUserId, tx,
+        );
+      }
 
       syncOutboxStore.enqueueMutation(
         cloudUserId,

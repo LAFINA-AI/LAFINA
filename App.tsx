@@ -18,7 +18,13 @@ import {
 import type { AlertButton } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Colors, Fonts } from './src/ui/theme';
-import { initDatabase, remindersStore, userStore, businessStore } from './src/storage';
+import {
+  initDatabase,
+  remindersStore,
+  userStore,
+  businessStore,
+  syncOutboxStore,
+} from './src/storage';
 import { CustomTabBar, TabType, ShellMode } from './src/ui/components/CustomTabBar';
 import { VoiceModal } from './src/ui/components/VoiceModal';
 import { ThemeProvider, useTheme } from './src/ui/contexts/ThemeContext';
@@ -32,6 +38,7 @@ import {
 } from './src/scheduler';
 import type { NativeCallAction, NativeCallTrigger } from './src/scheduler';
 import { syncWorker } from './src/sync/syncWorker';
+import { createSyncScheduler } from './src/sync/syncScheduler';
 import { businessService } from './src/cloud/businessService';
 import type {
   BusinessMemberData,
@@ -84,8 +91,8 @@ function AppContent({
   const [calendarViewMode, setCalendarViewMode] = useState<ViewMode>('week');
   const [teamModalVisible, setTeamModalVisible] = useState(false);
   const [businessName, setBusinessName] = useState('My Business');
-  const [activeSeats, setActiveSeats] = useState(1);
-  const [seatLimit, setSeatLimit] = useState(5);
+  const [activeSeats] = useState(1);
+  const [seatLimit] = useState(5);
   const [members, setMembers] = useState<BusinessMemberData[]>([]);
   const [invitations, setInvitations] = useState<BusinessInvitationData[]>([]);
   const [isLeaseActive, setIsLeaseActive] = useState(true);
@@ -272,6 +279,7 @@ function AppContent({
           applyCapabilityState(currentUser.id, true);
           syncWorker.performSync().then(() => {
             setRefreshTrigger((previous) => previous + 1);
+            syncWorker.takeRemoteChangeCount();
           }).catch(() => undefined);
         }
 
@@ -295,18 +303,41 @@ function AppContent({
     };
   }, [setUserId]);
 
+  // Sync on returning to the app, a few seconds after a local change is
+  // queued, and every couple of minutes while in front — which also catches a
+  // network that has come back. The background passes reload screens only
+  // when something arrived from another device, so an edit in progress is
+  // left alone.
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState !== 'active' || !userId) {
+    if (!userId) return undefined;
+    const scheduler = createSyncScheduler({
+      runPass: async () => {
+        await syncWorker.performSync();
+        return syncWorker.takeRemoteChangeCount() > 0;
+      },
+      onRemoteChanges: () => setRefreshTrigger((previous) => previous + 1),
+    });
+    if (AppState.currentState === 'active') scheduler.start();
+
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') {
+        scheduler.stop();
         return;
       }
+      scheduler.start();
       syncWorker.performSync().then(() => {
         setRefreshTrigger((previous) => previous + 1);
+        syncWorker.takeRemoteChangeCount();
       }).catch(() => undefined);
+    });
+    const unsubscribeOutbox = syncOutboxStore.onEnqueue((localUserId) => {
+      if (localUserId === userId) scheduler.schedule();
     });
 
     return () => {
-      subscription.remove();
+      appStateSubscription.remove();
+      unsubscribeOutbox();
+      scheduler.dispose();
     };
   }, [userId]);
 

@@ -98,3 +98,49 @@ export {
   DEMO_CREDENTIALS,
 } from './demoSeed';
 
+
+// Study tools (schema 16), shared with LAFINA desktop.
+export { pomodoroStore } from './pomodoroStore';
+export type { PomodoroSessionRow } from './pomodoroStore';
+export {
+  applySettingsToRuntime,
+  clampSettings,
+  completePhase,
+  DEFAULT_POMODORO_SETTINGS,
+  DIAL_SWEEP_MINUTES,
+  formatDuration,
+  idleRuntime,
+  minutesToAngle,
+  pointToMinutes,
+  nextPhaseAfter,
+  pauseRuntime,
+  phaseDurationMs,
+  PHASE_LABELS,
+  remainingMs,
+  resetCycle,
+  resetRuntime,
+  restoreRuntime,
+  startRuntime,
+  switchPhase,
+  AWAY_THRESHOLD_MS,
+  MAX_INTERVAL,
+  MAX_MINUTES,
+  MAX_RING_SECONDS,
+  MIN_INTERVAL,
+  MIN_MINUTES,
+  MIN_RING_SECONDS,
+} from './pomodoroEngine';
+export type {
+  PhaseCompletion,
+  PomodoroPhase,
+  PomodoroRuntime,
+  PomodoroSettings,
+  RestoredRuntime,
+} from './pomodoroEngine';
+export { flashcardStore, MAX_STORED_DECKS } from './flashcardStore';
+export { studyNoteStore, MAX_STORED_SUMMARIES } from './studyNoteStore';
+export { recordedMeetingStore } from './recordedMeetingStore';
+export type { RecordedMeeting, MeetingPatch } from './recordedMeetingStore';
+export type { StudySummaryRecord, SaveSummaryInput } from './studyNoteStore';
+export type { FlashcardDeck, SaveDeckInput } from './flashcardStore';
+export { localSettingsStore } from './localSettingsStore';

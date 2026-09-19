@@ -1,4 +1,4 @@
-import { businessChatService, businessChatWsManager } from '../../src/cloud/businessChatService';
+import { businessChatService } from '../../src/cloud/businessChatService';
 import { cloudClient } from '../../src/cloud/cloudClient';
 import { businessChatStore } from '../../src/storage/businessChatStore';
 

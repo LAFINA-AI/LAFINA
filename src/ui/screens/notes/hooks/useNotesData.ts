@@ -3,7 +3,7 @@ import { Alert, Animated, LayoutAnimation, UIManager } from 'react-native';
 import type { Note } from '../../../../storage';
 import { notesStore, tasksStore } from '../../../../storage';
 import { FilterType } from '../types';
-import { generateId } from '../../../../utils';
+import { generateId, isHtmlBody, noteBodyToMarkdown } from '../../../../utils';
 import { registerCustomCategoryColor } from '../../../theme/categoryColors';
 
 // Enable LayoutAnimation on Android
@@ -225,15 +225,17 @@ export const useNotesData = (options: UseNotesDataOptions) => {
 
   const openEditNote = useCallback((note: Note) => {
     if (isDragging) return;
+    // A note last saved on desktop is HTML; edit it in the mobile dialect.
+    const body = noteBodyToMarkdown(note.body);
     setEditingNote(note);
     setNoteTitle(note.title);
-    setNoteBody(note.body);
+    setNoteBody(body);
     setNoteCategory(note.category);
     setNoteTags(note.tags);
     setIsPinned(note.isPinned);
     setIsVoice(note.isVoiceTranscribed);
     setImageUri(note.imageUri || null);
-    setSelection({ start: note.body.length, end: note.body.length });
+    setSelection({ start: body.length, end: body.length });
     setEditorVisible(true);
   }, [isDragging]);
 
@@ -272,10 +274,14 @@ export const useNotesData = (options: UseNotesDataOptions) => {
     const titleStr = noteTitle.trim() || 'Untitled Note';
 
     if (editingNote) {
+      // Unchanged text keeps the desktop's HTML, and with it the formatting
+      // this editor can't show (colours, highlights, images).
+      const bodyUnchanged =
+        isHtmlBody(editingNote.body) && noteBody === noteBodyToMarkdown(editingNote.body);
       notesStore.update({
         id: editingNote.id,
         title: titleStr,
-        body: noteBody,
+        body: bodyUnchanged ? editingNote.body : noteBody,
         category: noteCategory,
         isPinned: isPinned,
         tags: noteTags,
@@ -315,7 +321,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
   const getFilteredNotes = useCallback(() => {
     return notes.filter((n) => {
       const matchesSearch = n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        n.body.toLowerCase().includes(searchQuery.toLowerCase());
+        noteBodyToMarkdown(n.body).toLowerCase().includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
       if (selectedFilter === 'All') return true;
       if (selectedFilter === 'Pinned') return n.isPinned;

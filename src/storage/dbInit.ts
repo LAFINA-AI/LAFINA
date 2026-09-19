@@ -8,6 +8,13 @@ import type {
 } from './syncTypes';
 import { generateId } from '../utils';
 
+/**
+ * SQLite `user_version` this build migrates to.
+ * 16: study tools (Pomodoro, flashcards, study notes, meetings) and
+ * entity-type negotiation for sync.
+ */
+const SCHEMA_VERSION = 16;
+
 type LegacySyncRow = Record<string, unknown>;
 
 const asString = (value: unknown, fallback: string = ''): string =>
@@ -444,6 +451,7 @@ export const initDatabase = async (): Promise<void> => {
           session_id TEXT NOT NULL,
           sender TEXT NOT NULL,
           content TEXT NOT NULL,
+          attachment_json TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           FOREIGN KEY (session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
@@ -534,6 +542,8 @@ export const initDatabase = async (): Promise<void> => {
           last_synced_at TEXT,
           status TEXT NOT NULL DEFAULT 'Local only',
           error_message TEXT,
+          server_entity_types TEXT,
+          snapshot_entity_types TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           PRIMARY KEY (user_id, scope_type, scope_id)
@@ -767,13 +777,151 @@ export const initDatabase = async (): Promise<void> => {
         ON sync_conflicts (user_id, scope_type, scope_id, resolved_at, updated_at)
       `);
 
+      // Study tools (schema 16), shared with LAFINA desktop: Pomodoro, flashcard
+      // decks, study notes and recorded meetings. Everything but the live timer
+      // and the device-local settings syncs.
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS pomodoro_settings (
+          user_id TEXT PRIMARY KEY,
+          focus_minutes INTEGER NOT NULL,
+          short_break_minutes INTEGER NOT NULL,
+          long_break_minutes INTEGER NOT NULL,
+          long_break_interval INTEGER NOT NULL,
+          auto_start_breaks INTEGER NOT NULL DEFAULT 1,
+          auto_start_focus INTEGER NOT NULL DEFAULT 0,
+          sound_enabled INTEGER NOT NULL DEFAULT 1,
+          volume REAL NOT NULL DEFAULT 0.7,
+          ring_seconds INTEGER NOT NULL DEFAULT 10,
+          notifications_enabled INTEGER NOT NULL DEFAULT 1,
+          ring_sound_uri TEXT,
+          ring_sound_name TEXT,
+          updated_at TEXT NOT NULL
+        )
+      `);
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS pomodoro_state (
+          user_id TEXT PRIMARY KEY,
+          phase TEXT NOT NULL,
+          is_running INTEGER NOT NULL DEFAULT 0,
+          ends_at INTEGER,
+          remaining_ms INTEGER NOT NULL,
+          total_ms INTEGER NOT NULL,
+          cycle_position INTEGER NOT NULL DEFAULT 0,
+          completed_focus INTEGER NOT NULL DEFAULT 0,
+          task TEXT,
+          updated_at TEXT NOT NULL
+        )
+      `);
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS pomodoro_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          phase TEXT NOT NULL,
+          task TEXT,
+          duration_ms INTEGER NOT NULL,
+          started_at TEXT,
+          finished_at TEXT NOT NULL,
+          day_key TEXT NOT NULL,
+          updated_at TEXT,
+          deleted_at TEXT
+        )
+      `);
+      tx.executeSync(`
+        CREATE INDEX IF NOT EXISTS idx_pomodoro_sessions_day
+        ON pomodoro_sessions (user_id, day_key, phase)
+      `);
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS flashcard_decks (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          source_name TEXT,
+          card_count INTEGER NOT NULL DEFAULT 0,
+          cards_json TEXT NOT NULL,
+          page_count INTEGER NOT NULL DEFAULT 0,
+          ocr_page_count INTEGER NOT NULL DEFAULT 0,
+          warnings_json TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT,
+          deleted_at TEXT
+        )
+      `);
+      tx.executeSync(`
+        CREATE INDEX IF NOT EXISTS idx_flashcard_decks_user
+        ON flashcard_decks (user_id, created_at)
+      `);
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS study_summaries (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          source_name TEXT,
+          source_kind TEXT,
+          overview TEXT,
+          sections_json TEXT NOT NULL,
+          key_terms_json TEXT NOT NULL,
+          markdown TEXT NOT NULL,
+          page_count INTEGER NOT NULL DEFAULT 0,
+          warnings_json TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT,
+          deleted_at TEXT
+        )
+      `);
+      tx.executeSync(`
+        CREATE INDEX IF NOT EXISTS idx_study_summaries_user
+        ON study_summaries (user_id, created_at)
+      `);
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS recorded_meetings (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          status TEXT NOT NULL,
+          error_code TEXT,
+          error_detail TEXT,
+          started_at TEXT NOT NULL,
+          duration_seconds REAL NOT NULL DEFAULT 0,
+          audio_bytes INTEGER NOT NULL DEFAULT 0,
+          microphone_label TEXT,
+          whisper_model TEXT,
+          transcription_device TEXT,
+          language TEXT,
+          transcript_json TEXT,
+          notes_json TEXT,
+          notes_edited INTEGER NOT NULL DEFAULT 0,
+          section_cache_json TEXT,
+          recovered INTEGER NOT NULL DEFAULT 0,
+          source TEXT NOT NULL DEFAULT 'recording',
+          source_file_name TEXT,
+          has_audio INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          deleted_at TEXT
+        )
+      `);
+      tx.executeSync(`
+        CREATE INDEX IF NOT EXISTS idx_recorded_meetings_user
+        ON recorded_meetings (user_id, started_at)
+      `);
+      // Per-device preferences that never sync, such as the handbook toggle.
+      tx.executeSync(`
+        CREATE TABLE IF NOT EXISTS local_settings (
+          user_id TEXT NOT NULL,
+          key TEXT NOT NULL,
+          value TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, key)
+        )
+      `);
+
       // The compatibility engine is schema-less and cannot execute SQLite DDL
       // migrations safely. Fresh CREATE statements above are sufficient for it.
       if (!db.isFallback()) {
         // Versioned schema migrations
         const versionResult = tx.executeSync('PRAGMA user_version');
         const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;
-        const TARGET_VERSION = 15;
+        const TARGET_VERSION = SCHEMA_VERSION;
 
         if (currentVersion < TARGET_VERSION) {
         if (currentVersion < 1) {
@@ -1289,11 +1437,19 @@ export const initDatabase = async (): Promise<void> => {
           `);
         }
 
+        if (currentVersion < 16) {
+          // The study-tool tables are created above; existing tables gain the
+          // entity types negotiated with the server and chat attachments.
+          try { tx.executeSync('ALTER TABLE sync_state ADD COLUMN server_entity_types TEXT'); } catch {}
+          try { tx.executeSync('ALTER TABLE sync_state ADD COLUMN snapshot_entity_types TEXT'); } catch {}
+          try { tx.executeSync('ALTER TABLE messages ADD COLUMN attachment_json TEXT'); } catch {}
+        }
+
           tx.executeSync(`PRAGMA user_version = ${TARGET_VERSION}`);
         }
       }
     });
-    console.log('Database schema initialized successfully (version 15).');
+    console.log(`Database schema initialized successfully (version ${SCHEMA_VERSION}).`);
     await seedLocalDemoAccounts();
   } catch (error) {
     console.error('Failed to initialize database schema:', error);

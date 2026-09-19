@@ -4,7 +4,6 @@ import { GmailInboxScreen } from '../../src/ui/screens/business/GmailInboxScreen
 import { gmailService } from '../../src/cloud/gmailService';
 import { gmailStore } from '../../src/storage/gmailStore';
 import { initDatabase, seedLocalDemoAccounts, DEMO_IDS } from '../../src/storage';
-import { useTheme } from '../../src/ui/contexts/ThemeContext';
 import { Linking } from 'react-native';
 
 jest.mock('../../src/ui/contexts/ThemeContext', () => ({

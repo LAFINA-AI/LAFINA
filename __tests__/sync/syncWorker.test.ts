@@ -17,6 +17,10 @@ import {
   SyncBatchResponsePayload,
   syncWorker,
 } from '../../src/sync/syncWorker';
+import {
+  CLIENT_SYNC_ENTITY_TYPES,
+  LEGACY_SYNC_ENTITY_TYPES,
+} from '../../src/sync/syncEntityTypes';
 
 interface SyncBatchRequestBody {
   mutations: Array<{
@@ -90,6 +94,10 @@ const createActiveUser = (id: string): void => {
   );
   userStore.setCurrentUser(id);
   userStore.saveSessionTokens(id, 'access-token', 'encrypted-refresh-token');
+  // These scripts play a server from before entity-type negotiation, to an
+  // install that has already taken its snapshot of the legacy types. A fresh
+  // install would open with a snapshot (see studyToolSync.test.ts).
+  syncStateStore.saveSnapshotEntityTypes(id, LEGACY_SYNC_ENTITY_TYPES);
 };
 
 const readRequestBody = (callIndex: number): SyncBatchRequestBody => {
@@ -148,6 +156,7 @@ describe('syncWorker account-scoped synchronization', () => {
   it('does not touch cloud sync infrastructure when the JS fallback is active', async () => {
     const localUserId = 'fallback-local-user';
     createActiveUser(localUserId);
+    const syncStateBefore = db.executeSync('SELECT * FROM sync_state').rows;
     jest.spyOn(db, 'isFallback').mockReturnValue(true);
     const requestSpy = jest.spyOn(cloudClient, 'request');
 
@@ -155,9 +164,7 @@ describe('syncWorker account-scoped synchronization', () => {
 
     expect(requestSpy).not.toHaveBeenCalled();
     expect(cloudClient.isOnline).not.toHaveBeenCalled();
-    expect(
-      db.executeSync('SELECT COUNT(*) AS count FROM sync_state').rows[0]?.count
-    ).toBe(0);
+    expect(db.executeSync('SELECT * FROM sync_state').rows).toEqual(syncStateBefore);
   });
 
   it('completes deferred FastAPI linking before syncing after reconnect', async () => {
@@ -707,17 +714,23 @@ describe('syncWorker account-scoped synchronization', () => {
     expect(readRequestBody(1)).toEqual({
       cursor: 0,
       mutations: [],
+      entityTypes: CLIENT_SYNC_ENTITY_TYPES,
       snapshot: {},
     });
     expect(readRequestBody(2)).toEqual({
       cursor: 0,
       mutations: [],
+      entityTypes: CLIENT_SYNC_ENTITY_TYPES,
       snapshot: {
         boundaryCursor: 10,
         after: { entityType: 'task', entityId: 'snapshot-task' },
       },
     });
-    expect(readRequestBody(3)).toEqual({ cursor: 10, mutations: [] });
+    expect(readRequestBody(3)).toEqual({
+      cursor: 10,
+      mutations: [],
+      entityTypes: CLIENT_SYNC_ENTITY_TYPES,
+    });
     expect(
       db.executeSync(
         'SELECT deleted_at FROM tasks WHERE id = ?',

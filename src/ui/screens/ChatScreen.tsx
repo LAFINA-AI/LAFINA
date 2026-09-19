@@ -12,7 +12,7 @@ import {
 import { Trash2, Plus } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { Fonts, Colors } from '../theme';
-import { chatStore, userStore, businessStore } from '../../storage';
+import { chatStore } from '../../storage';
 import { LAFINA_LOGO_CHAT_HEADER_XML } from '../../assets/lafina_logo_chat_header_xml';
 import type { ChatMessage } from '../../storage';
 import {
@@ -32,6 +32,7 @@ import { ChatInput } from '../components/chat/ChatInput';
 import { onlineChatSkill } from '../../skills/onlineChatSkill';
 import { accountLinkService } from '../../cloud/accountLinkService';
 import { cloudClient } from '../../cloud/cloudClient';
+import { hasProEntitlement } from '../../cloud';
 
 interface ChatScreenProps {
   userId: string;
@@ -58,16 +59,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     let isMounted = true;
     const checkDefaultOnline = async () => {
       try {
-        const localUser = userStore.getUserById(userId);
-        const cachedBiz = businessStore.getCachedCapabilities(userId);
-        const isProOrBusiness =
-          localUser?.role === 'student_pro' ||
-          localUser?.role === 'admin' ||
-          localUser?.role === 'business' ||
-          cachedBiz?.effectivePlan === 'business' ||
-          cachedBiz?.effectivePlan === 'student_pro' ||
-          cachedBiz?.subscriptionPlan === 'business' ||
-          cachedBiz?.subscriptionPlan === 'student_pro';
+        const isProOrBusiness = hasProEntitlement(userId);
 
         const isOnline = await cloudClient.isOnline();
         const token = cloudClient.getAccessToken();
@@ -172,16 +164,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
     let aiReply = '';
-    const localUser = userStore.getUserById(userId);
-    const cachedBiz = businessStore.getCachedCapabilities(userId);
-    const isProOrBusiness =
-      localUser?.role === 'student_pro' ||
-      localUser?.role === 'admin' ||
-      localUser?.role === 'business' ||
-      cachedBiz?.effectivePlan === 'business' ||
-      cachedBiz?.effectivePlan === 'student_pro' ||
-      cachedBiz?.subscriptionPlan === 'business' ||
-      cachedBiz?.subscriptionPlan === 'student_pro';
+    const isProOrBusiness = hasProEntitlement(userId);
 
     const isDeviceOnline = await cloudClient.isOnline();
     const hasToken = !!cloudClient.getAccessToken();

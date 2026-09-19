@@ -14,6 +14,7 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { Shadows } from '../../../theme';
 import { getCategoryColor } from '../../../theme/categoryColors';
 import type { Note } from '../../../../storage';
+import { noteBodyToMarkdown } from '../../../../utils';
 
 const lafinaDefaultLogo = require('../../../../assets/lafina_default_logo.png');
 const lafinaLogoGradient = require('../../../../assets/lafina_logo_gradient_bg.png');
@@ -129,7 +130,7 @@ export const NoteCardBase: React.FC<NoteCardBaseProps> = ({
               {item.isPinned && <Pin size={12} color={colors.red} style={{ transform: [{ rotate: '45deg' }] }} />}
             </View>
             <Text style={[styles.noteCardBody, { color: colors.textSecondary }]} numberOfLines={item.imageUri ? 2 : 4}>
-              {renderMarkdown(item.body, colors)}
+              {renderMarkdown(noteBodyToMarkdown(item.body), colors)}
             </Text>
             <View style={styles.cardFooter}>
               <Text style={[styles.cardDate, { color: colors.textMuted }]}>
@@ -153,7 +154,7 @@ export const NoteCardBase: React.FC<NoteCardBaseProps> = ({
                   {item.isPinned && <Pin size={12} color={colors.red} style={{ transform: [{ rotate: '45deg' }] }} />}
                 </View>
                 <Text style={[styles.noteCardBody, { color: colors.textSecondary }]} numberOfLines={2}>
-                  {renderMarkdown(item.body, colors)}
+                  {renderMarkdown(noteBodyToMarkdown(item.body), colors)}
                 </Text>
                 <View style={styles.cardFooter}>
                   <Text style={[styles.cardDate, { color: colors.textMuted }]}>

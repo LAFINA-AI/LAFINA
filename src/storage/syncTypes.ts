@@ -10,9 +10,17 @@ export type SyncEntityType =
   | 'reminder'
   | 'note'
   | 'custom_category'
+  | 'pomodoro_settings'
+  | 'pomodoro_session'
+  | 'flashcard_deck'
+  | 'study_summary'
+  | 'recorded_meeting'
   | 'business_task'
   | 'business_task_assignment'
   | 'business_work_block';
+
+/** Entity id of the per-account Pomodoro settings row, a sync singleton. */
+export const POMODORO_SETTINGS_ENTITY_ID = 'pomodoro_settings';
 
 /** Mutation verbs accepted by the cloud sync API. */
 export type SyncOperation = 'create' | 'update' | 'delete';

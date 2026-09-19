@@ -6,13 +6,23 @@ import { remindersStore } from '../storage/remindersStore';
 import { syncConflictStore } from '../storage/syncConflictStore';
 import { syncMetadataStore } from '../storage/syncMetadataStore';
 import { OutboxItem, syncOutboxStore } from '../storage/syncOutboxStore';
+import { syncStateStore } from '../storage/syncStateStore';
 import type {
   SyncEntityType,
   SyncOperation,
   SyncPayload,
 } from '../storage/syncTypes';
 import { userStore } from '../storage/userStore';
+import {
+  AUTHORITATIVE_SYNC_ENTITY_TYPES,
+  CLIENT_SYNC_ENTITY_TYPES,
+  effectiveSyncEntityTypes,
+  LAST_WRITE_WINS_ENTITY_TYPES,
+  sameEntityTypeSet,
+  SINGLETON_SYNC_ENTITY_TYPES,
+} from './syncEntityTypes';
 import { syncState } from './syncState';
+import { applyStudyToolChange, STUDY_TOOL_TABLES } from './studyToolSync';
 
 export type { SyncEntityType } from '../storage/syncTypes';
 
@@ -71,6 +81,8 @@ export interface SyncBatchResponsePayload {
   resetRequired: boolean;
   serverTime: string;
   snapshot?: SnapshotPage | null;
+  /** Every type the server stores; absent from servers that predate negotiation. */
+  supportedEntityTypes?: string[];
 }
 
 interface OutboundMutation {
@@ -90,18 +102,37 @@ interface ApplyPageResult {
 const ACCOUNT_SCOPE = 'account';
 const OUTBOX_BATCH_SIZE = 100;
 const MAX_SYNC_REQUESTS = 100;
-const AUTHORITATIVE_PERSONAL_ENTITY_TYPES: SyncEntityType[] = [
-  'task',
-  'event',
-  'time_block',
-  'reminder',
-  'note',
-  'custom_category',
-];
+/**
+ * Serialized mutations per request. The server refuses bodies over 1 MiB, so
+ * batches stop well short of it; the rest go in the next request.
+ */
+const MAX_BATCH_BYTES = 768 * 1024;
 const OUTBOX_PRESERVE_STATUSES = ['pending', 'in_progress', 'failed'];
 
-let isSyncRunning = false;
+/** UTF-8 size of a string, without depending on TextEncoder being present. */
+const utf8Length = (value: string): number => {
+  let bytes = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (code >= 0xd800 && code <= 0xdbff) {
+      bytes += 4;
+      index += 1;
+    } else bytes += 3;
+  }
+  return bytes;
+};
+
+/** The pass currently running, which later callers join rather than skip. */
+let inFlightSync: Promise<void> | null = null;
 let retryAttempt = 0;
+/**
+ * Changes made on another device (or the server) applied since the count was
+ * last taken. Echoes of this device's own accepted mutations don't count, so a
+ * pass triggered by a local edit doesn't make every screen reload.
+ */
+let remoteChangesApplied = 0;
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Sync failed';
@@ -575,7 +606,7 @@ const getPersonalEntityTable = (entityType: SyncEntityType): string | null => {
       return 'business_work_blocks';
     case 'profile':
     default:
-      return null;
+      return STUDY_TOOL_TABLES[entityType] ?? null;
   }
 };
 
@@ -584,9 +615,9 @@ const applyDelete = (
   localUserId: string,
   change: SyncChange
 ): void => {
-  if (change.entityType === 'profile') {
+  if (SINGLETON_SYNC_ENTITY_TYPES.includes(change.entityType)) {
     throw new Error(
-      'Cloud profile deletion cannot be applied to an offline local account.'
+      `Cloud ${change.entityType} deletion cannot be applied to an offline local account.`
     );
   }
 
@@ -637,9 +668,11 @@ const applyChange = (
       applyCustomCategory(tx, localUserId, change);
       break;
     default:
-      throw new Error(
-        `Unsupported sync entity type: ${String(change.entityType)}`
-      );
+      if (!applyStudyToolChange(tx, localUserId, change)) {
+        throw new Error(
+          `Unsupported sync entity type: ${String(change.entityType)}`
+        );
+      }
   }
   return false;
 };
@@ -655,8 +688,9 @@ const formatMutation = (
   localUserId: string,
   item: OutboxItem
 ): OutboundMutation => {
-  const resolvedBaseVersion =
-    item.operation === 'create'
+  const resolvedBaseVersion = LAST_WRITE_WINS_ENTITY_TYPES.includes(item.entityType)
+    ? null
+    : item.operation === 'create'
       ? 0
       : item.baseVersion ??
         syncMetadataStore.getVersion(
@@ -769,11 +803,20 @@ const sameStringSet = (left: string[], right: string[]): boolean => {
   return leftSet.size === right.length && right.every((item) => leftSet.has(item));
 };
 
+/**
+ * Validates one snapshot page. `effectiveTypes` are the types this client and
+ * the answering server share: the snapshot must be authoritative for exactly
+ * those, and may carry nothing else.
+ */
 const validateSnapshotResponse = (
   response: SyncBatchResponsePayload,
   requestCursor: number,
-  request: SnapshotRequestPayload
+  request: SnapshotRequestPayload,
+  effectiveTypes: readonly SyncEntityType[]
 ): SnapshotPage => {
+  const authoritativeTypes = AUTHORITATIVE_SYNC_ENTITY_TYPES.filter((entityType) =>
+    effectiveTypes.includes(entityType)
+  );
   const snapshot = response.snapshot;
   if (!snapshot) {
     throw new Error('Server omitted the requested current-state snapshot page.');
@@ -814,12 +857,7 @@ const validateSnapshotResponse = (
   ) {
     throw new Error('Server repeated the same snapshot continuation position.');
   }
-  if (
-    !sameStringSet(
-      snapshot.authoritativeEntityTypes,
-      AUTHORITATIVE_PERSONAL_ENTITY_TYPES
-    )
-  ) {
+  if (!sameStringSet(snapshot.authoritativeEntityTypes, authoritativeTypes)) {
     throw new Error('Server snapshot did not cover every personal entity type.');
   }
   if (
@@ -845,10 +883,7 @@ const validateSnapshotResponse = (
     if (change.operation !== 'update' && change.operation !== 'delete') {
       throw new Error('Server returned a non-current-state snapshot operation.');
     }
-    if (
-      change.entityType !== 'profile' &&
-      !AUTHORITATIVE_PERSONAL_ENTITY_TYPES.includes(change.entityType)
-    ) {
+    if (!effectiveTypes.includes(change.entityType)) {
       throw new Error(`Unsupported snapshot entity type: ${String(change.entityType)}`);
     }
   }
@@ -859,10 +894,11 @@ const pruneServerMissingEntities = (
   tx: DatabaseTransaction,
   localUserId: string,
   items: SyncChange[],
-  serverTime: string
+  serverTime: string,
+  authoritativeTypes: readonly SyncEntityType[]
 ): boolean => {
   const snapshotIds = new Map<SyncEntityType, Set<string>>();
-  for (const entityType of AUTHORITATIVE_PERSONAL_ENTITY_TYPES) {
+  for (const entityType of authoritativeTypes) {
     snapshotIds.set(entityType, new Set());
   }
   for (const item of items) {
@@ -870,7 +906,7 @@ const pruneServerMissingEntities = (
   }
 
   let reminderTextUpdated = false;
-  for (const entityType of AUTHORITATIVE_PERSONAL_ENTITY_TYPES) {
+  for (const entityType of authoritativeTypes) {
     const table = getPersonalEntityTable(entityType);
     if (!table) continue;
     const syncedRows = tx.executeSync(
@@ -900,8 +936,9 @@ const pruneServerMissingEntities = (
          WHERE id = ? AND user_id = ?`,
         [serverTime, serverTime, entityId, localUserId]
       );
-      if (entityType === 'reminder' && (result.rowsAffected ?? 0) > 0) {
-        reminderTextUpdated = true;
+      if ((result.rowsAffected ?? 0) > 0) {
+        remoteChangesApplied += 1;
+        if (entityType === 'reminder') reminderTextUpdated = true;
       }
       tx.executeSync(
         `DELETE FROM sync_metadata
@@ -918,7 +955,8 @@ const applyAuthoritativeSnapshot = (
   localUserId: string,
   items: SyncChange[],
   boundaryCursor: number,
-  serverTime: string
+  serverTime: string,
+  effectiveTypes: readonly SyncEntityType[]
 ): ApplyPageResult => {
   let reminderTextUpdated = false;
   db.transactionSync((tx: DatabaseTransaction) => {
@@ -934,9 +972,21 @@ const applyAuthoritativeSnapshot = (
         tx,
         localUserId,
         items,
-        serverTime
+        serverTime,
+        AUTHORITATIVE_SYNC_ENTITY_TYPES.filter((entityType) =>
+          effectiveTypes.includes(entityType)
+        )
       );
       for (const change of items) {
+        const knownVersion = syncMetadataStore.getVersion(
+          localUserId,
+          change.entityType,
+          change.entityId,
+          ACCOUNT_SCOPE,
+          localUserId,
+          tx
+        );
+        if (knownVersion !== change.version) remoteChangesApplied += 1;
         reminderTextUpdated =
           applyChange(tx, localUserId, change) || reminderTextUpdated;
         syncMetadataStore.upsert(
@@ -961,6 +1011,15 @@ const applyAuthoritativeSnapshot = (
         null,
         tx
       );
+      // Rows of these types now match the server, so a later pass needs a new
+      // snapshot only if the shared set changes.
+      syncStateStore.saveSnapshotEntityTypes(
+        localUserId,
+        effectiveTypes,
+        ACCOUNT_SCOPE,
+        localUserId,
+        tx
+      );
     } finally {
       syncOutboxStore.setSuppression(
         localUserId,
@@ -982,6 +1041,11 @@ const applyPage = (
   finalError: string | null
 ): ApplyPageResult => {
   let reminderTextUpdated = false;
+  const ownEchoes = new Set(
+    response.accepted.map(
+      (result) => `${result.entityType}:${result.entityId}:${result.serverVersion}`
+    )
+  );
 
   db.transactionSync((tx: DatabaseTransaction) => {
     syncOutboxStore.setSuppression(
@@ -993,6 +1057,9 @@ const applyPage = (
     );
     try {
       for (const change of response.changes) {
+        if (!ownEchoes.has(`${change.entityType}:${change.entityId}:${change.version}`)) {
+          remoteChangesApplied += 1;
+        }
         reminderTextUpdated =
           applyChange(tx, localUserId, change) || reminderTextUpdated;
         syncMetadataStore.upsert(
@@ -1090,24 +1157,81 @@ interface PreparedOutboxBatch {
   ids: string[];
 }
 
-const prepareOutboxBatch = (localUserId: string): PreparedOutboxBatch => {
+/**
+ * Parks a mutation too large for any request as a conflict, so it stops
+ * blocking the queue and the account shows it needs attention.
+ */
+const failOversizedMutations = (
+  localUserId: string,
+  oversized: OutboundMutation[]
+): void => {
+  if (oversized.length === 0) return;
+  db.transactionSync((tx) => {
+    for (const mutation of oversized) {
+      syncConflictStore.record(
+        localUserId,
+        {
+          mutationId: mutation.mutationId,
+          entityType: mutation.entityType,
+          entityId: mutation.entityId,
+          operation: mutation.operation,
+          reason: 'payload_too_large',
+          localPayload: {},
+          baseVersion: mutation.baseVersion ?? null,
+          serverVersion: null,
+          serverPayload: null,
+        },
+        ACCOUNT_SCOPE,
+        localUserId,
+        tx
+      );
+    }
+    syncOutboxStore.markMutationsFailed(
+      localUserId,
+      oversized.map((mutation) => mutation.mutationId),
+      ACCOUNT_SCOPE,
+      localUserId,
+      tx
+    );
+  });
+};
+
+/**
+ * Claims the next batch: one mutation per entity, only of types the server
+ * accepts (`effectiveTypes`), and no more than fits in one request body.
+ */
+const prepareOutboxBatch = (
+  localUserId: string,
+  effectiveTypes: readonly SyncEntityType[]
+): PreparedOutboxBatch => {
   for (let claimAttempt = 0; claimAttempt < 2; claimAttempt += 1) {
     const pending = syncOutboxStore.getPendingMutations(
       localUserId,
       OUTBOX_BATCH_SIZE,
       ACCOUNT_SCOPE,
-      localUserId
+      localUserId,
+      undefined,
+      effectiveTypes
     );
     const seenEntities = new Set<string>();
-    const selected = pending.filter((item) => {
+    const mutations: OutboundMutation[] = [];
+    const oversized: OutboundMutation[] = [];
+    let batchBytes = 0;
+    for (const item of pending) {
       const key = `${item.entityType}:${item.entityId}`;
-      if (seenEntities.has(key)) return false;
+      if (seenEntities.has(key)) continue;
       seenEntities.add(key);
-      return true;
-    });
-    const mutations = selected.map((item) =>
-      formatMutation(localUserId, item)
-    );
+      const mutation = formatMutation(localUserId, item);
+      const size = utf8Length(JSON.stringify(mutation));
+      if (size > MAX_BATCH_BYTES) {
+        oversized.push(mutation);
+        continue;
+      }
+      if (batchBytes + size > MAX_BATCH_BYTES) break;
+      batchBytes += size;
+      mutations.push(mutation);
+    }
+    failOversizedMutations(localUserId, oversized);
     const ids = mutations.map((mutation) => mutation.mutationId);
     const claimed = syncOutboxStore.markMutationsInProgress(
       localUserId,
@@ -1135,12 +1259,37 @@ export const syncWorker = {
   getRetryAttempt: (): number => retryAttempt,
 
   /**
+   * Returns how many changes from elsewhere were applied since the last call,
+   * and resets the count. Callers refresh screens only when it is non-zero.
+   */
+  takeRemoteChangeCount: (): number => {
+    const count = remoteChangesApplied;
+    remoteChangesApplied = 0;
+    return count;
+  },
+
+  /**
    * Executes a bidirectional account-scoped synchronization pass.
    * Local scheduling remains available when the network or cloud service fails.
    */
-  performSync: async (): Promise<void> => {
-    if (isSyncRunning) return;
-    isSyncRunning = true;
+  /**
+   * Runs one push-then-pull pass, or joins the one already running.
+   *
+   * Returning straight away when a pass is in flight — as this used to — let a
+   * caller that refreshes the screen when the promise settles do so before the
+   * data it was waiting for had arrived. Right after an account is restored
+   * from the cloud, that meant opening onto an empty calendar.
+   */
+  performSync: (): Promise<void> => {
+    if (inFlightSync) return inFlightSync;
+    inFlightSync = syncWorker.runSyncPass().finally(() => {
+      inFlightSync = null;
+    });
+    return inFlightSync;
+  },
+
+  /** One pass of the sync protocol. Call `performSync`, which serialises passes. */
+  runSyncPass: async (): Promise<void> => {
 
     let localUserId: string | null = null;
     let inFlightMutationIds: string[] = [];
@@ -1192,13 +1341,24 @@ export const syncWorker = {
         ACCOUNT_SCOPE,
         localUserId
       );
-      let preparedBatch = prepareOutboxBatch(localUserId);
+      const negotiated = syncStateStore.loadEntityTypes(localUserId);
+      let knownServerTypes = negotiated.serverEntityTypes;
+      let effectiveTypes = effectiveSyncEntityTypes(knownServerTypes);
+      // When the types this client and the server share have changed since the
+      // last snapshot — either side was upgraded — changes to a newly shared
+      // type may already be behind the cursor. Start from a fresh snapshot.
+      const snapshotFirst =
+        negotiated.snapshotEntityTypes === null ||
+        !sameEntityTypeSet(negotiated.snapshotEntityTypes, effectiveTypes);
+      let preparedBatch: PreparedOutboxBatch = snapshotFirst
+        ? { mutations: [], ids: [] }
+        : prepareOutboxBatch(localUserId, effectiveTypes);
       let outboundMutations = preparedBatch.mutations;
       inFlightMutationIds = preparedBatch.ids;
       inFlightMutations = preparedBatch.mutations;
-      let requestCursor = persistedState.cursor;
+      let requestCursor = snapshotFirst ? 0 : persistedState.cursor;
       let resetHandled = false;
-      let snapshotRequest: SnapshotRequestPayload | null = null;
+      let snapshotRequest: SnapshotRequestPayload | null = snapshotFirst ? {} : null;
       let snapshotItems: SyncChange[] = [];
       const snapshotItemKeys = new Set<string>();
       let rejectedCount = 0;
@@ -1217,6 +1377,7 @@ export const syncWorker = {
             body: JSON.stringify({
               mutations: outboundMutations,
               cursor: requestCursor,
+              entityTypes: CLIENT_SYNC_ENTITY_TYPES,
               ...(snapshotRequest === null
                 ? {}
                 : { snapshot: snapshotRequest }),
@@ -1271,11 +1432,25 @@ export const syncWorker = {
         validateMutationResults(response, inFlightMutations);
         assertActiveLocalUser(localUserId);
 
+        // What this server shares with the client decides what is pushed next
+        // and what a snapshot must cover. A change is remembered for the next
+        // pass, which then starts from a snapshot.
+        effectiveTypes = effectiveSyncEntityTypes(response.supportedEntityTypes);
+        if (
+          response.supportedEntityTypes &&
+          (knownServerTypes === null ||
+            !sameEntityTypeSet(knownServerTypes, response.supportedEntityTypes))
+        ) {
+          knownServerTypes = [...response.supportedEntityTypes];
+          syncStateStore.saveServerEntityTypes(localUserId, knownServerTypes);
+        }
+
         if (snapshotRequest !== null) {
           const snapshot = validateSnapshotResponse(
             response,
             requestCursor,
-            snapshotRequest
+            snapshotRequest,
+            effectiveTypes
           );
           for (const item of snapshot.items) {
             const key = `${item.entityType}:${item.entityId}`;
@@ -1301,7 +1476,8 @@ export const syncWorker = {
             localUserId,
             snapshotItems,
             snapshot.boundaryCursor,
-            response.serverTime
+            response.serverTime,
+            effectiveTypes
           );
           reminderTextUpdated =
             reminderTextUpdated || snapshotResult.reminderTextUpdated;
@@ -1363,7 +1539,7 @@ export const syncWorker = {
           continue;
         }
 
-        preparedBatch = prepareOutboxBatch(localUserId);
+        preparedBatch = prepareOutboxBatch(localUserId, effectiveTypes);
         outboundMutations = preparedBatch.mutations;
         inFlightMutationIds = preparedBatch.ids;
         inFlightMutations = preparedBatch.mutations;
@@ -1422,8 +1598,6 @@ export const syncWorker = {
           localUserId ? null : getErrorMessage(error)
         );
       }
-    } finally {
-      isSyncRunning = false;
     }
   },
 };

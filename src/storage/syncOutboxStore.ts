@@ -32,6 +32,21 @@ interface PendingMutationRow {
 
 const executorFor = (executor?: DatabaseTransaction): DatabaseTransaction => executor ?? db;
 
+/** Called after a mutation is queued, so the app can schedule a sync pass. */
+export type OutboxEnqueueListener = (localUserId: string) => void;
+
+const enqueueListeners = new Set<OutboxEnqueueListener>();
+
+const notifyEnqueued = (localUserId: string): void => {
+  enqueueListeners.forEach((listener) => {
+    try {
+      listener(localUserId);
+    } catch (error) {
+      console.error('Outbox listener failed:', error);
+    }
+  });
+};
+
 const parsePayload = (payloadJson: unknown): SyncPayload => {
   if (typeof payloadJson !== 'string') {
     return {};
@@ -110,6 +125,7 @@ export const syncOutboxStore = {
           scopeId,
         ],
       );
+      notifyEnqueued(localUserId);
       return;
     }
 
@@ -145,6 +161,18 @@ export const syncOutboxStore = {
         now,
       ],
     );
+    notifyEnqueued(localUserId);
+  },
+
+  /**
+   * Registers a listener for newly queued mutations and returns an unsubscribe
+   * callback. Writes made while applying a pull are suppressed and never notify.
+   */
+  onEnqueue: (listener: OutboxEnqueueListener): (() => void) => {
+    enqueueListeners.add(listener);
+    return () => {
+      enqueueListeners.delete(listener);
+    };
   },
 
   /** Marks selected pending mutations in progress and records the network attempt. */
@@ -204,20 +232,29 @@ export const syncOutboxStore = {
     );
   },
 
-  /** Fetches pending mutations for exactly one local user and synchronization scope. */
+  /**
+   * Fetches pending mutations for exactly one local user and synchronization scope.
+   * `entityTypes`, when given, restricts the result to those types, so mutations
+   * the server cannot accept yet wait without holding up the rest.
+   */
   getPendingMutations: (
     localUserId: string,
     limit: number = 100,
     scopeType: SyncScopeType = 'account',
     scopeId: string = localUserId,
     executor?: DatabaseTransaction,
+    entityTypes?: readonly SyncEntityType[],
   ): OutboxItem[] => {
     if (db.isFallback()) return [];
+    if (entityTypes && entityTypes.length === 0) return [];
+    const typeFilter = entityTypes
+      ? ` AND entity_type IN (${entityTypes.map(() => '?').join(',')})`
+      : '';
     const result = executorFor(executor).executeSync(
       `SELECT * FROM sync_outbox
-       WHERE user_id = ? AND scope_type = ? AND scope_id = ? AND status = 'pending'
+       WHERE user_id = ? AND scope_type = ? AND scope_id = ? AND status = 'pending'${typeFilter}
        ORDER BY created_at ASC, rowid ASC LIMIT ?`,
-      [localUserId, scopeType, scopeId, limit],
+      [localUserId, scopeType, scopeId, ...(entityTypes ?? []), limit],
     );
 
     return (result.rows ?? []).map((row) => ({

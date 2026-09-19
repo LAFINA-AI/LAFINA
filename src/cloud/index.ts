@@ -18,3 +18,9 @@ export type {
   GmailThreadDetailData,
   GmailConnectionStatus,
 } from './gmailService';
+export {
+  hasProEntitlement,
+  isGuestAccount,
+  isStudentProAccount,
+  isStudentProRole,
+} from './entitlements';
