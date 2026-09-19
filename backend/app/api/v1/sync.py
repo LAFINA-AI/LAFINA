@@ -22,7 +22,9 @@ from backend.app.models.change_feed import ChangeFeed
 from backend.app.models.sync_head import SyncHead
 from backend.app.models.synchronized_content import (
     ProfileSync, TasksSync, EventsSync, TimeBlocksSync,
-    RemindersSync, NotesSync, CustomCategoriesSync
+    RemindersSync, NotesSync, CustomCategoriesSync,
+    PomodoroSettingsSync, PomodoroSessionsSync, FlashcardDecksSync,
+    StudySummariesSync, RecordedMeetingsSync,
 )
 from backend.app.security.auth import get_current_user_and_session
 
@@ -130,8 +132,157 @@ class ProfilePayload(BaseModel):
     week_starts_monday: bool = False
     dark_mode: bool = False
 
-EntityType = Literal["profile", "task", "event", "time_block", "reminder", "note", "custom_category"]
+# Study tools. Caps keep a single mutation far below the 1 MiB request limit
+# while leaving room above what the generators produce and editors allow.
+ShortText = Annotated[str, Field(max_length=1000)]
+ListItemText = Annotated[str, Field(max_length=5000)]
+
+
+class PomodoroSettingsPayload(BaseModel):
+    """Timer settings shared across devices; the ring sound stays per device."""
+    model_config = ConfigDict(extra="forbid")
+    focus_minutes: int = Field(25, ge=1, le=180)
+    short_break_minutes: int = Field(5, ge=1, le=180)
+    long_break_minutes: int = Field(15, ge=1, le=180)
+    long_break_interval: int = Field(4, ge=1, le=12)
+    auto_start_breaks: bool = True
+    auto_start_focus: bool = False
+    sound_enabled: bool = True
+    volume: float = Field(0.7, ge=0, le=1)
+    ring_seconds: int = Field(10, ge=2, le=60)
+    notifications_enabled: bool = True
+
+
+class PomodoroSessionPayload(BaseModel):
+    """One finished focus or break phase."""
+    model_config = ConfigDict(extra="forbid")
+    phase: Literal["focus", "shortBreak", "longBreak"]
+    task: str = Field("", max_length=120)
+    duration_ms: int = Field(..., ge=0, le=10_800_000)
+    started_at: str | None = Field(None, max_length=64)
+    finished_at: str = Field(..., max_length=64)
+
+
+class FlashcardPayloadCard(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(..., max_length=500)
+    answer: str = Field(..., max_length=2000)
+
+
+class FlashcardDeckPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(..., max_length=160)
+    source_name: str | None = Field(None, max_length=255)
+    cards: list[FlashcardPayloadCard] = Field(default_factory=list, max_length=200)
+    page_count: int = Field(0, ge=0)
+    ocr_page_count: int = Field(0, ge=0)
+    warnings: list[ShortText] = Field(default_factory=list, max_length=50)
+    created_at: str = Field(..., max_length=64)
+
+
+class StudyNoteSectionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    heading: str = Field(..., max_length=300)
+    points: list[Annotated[str, Field(max_length=2000)]] = Field(default_factory=list, max_length=50)
+
+
+class StudyNoteTermPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    term: str = Field(..., max_length=200)
+    meaning: str = Field(..., max_length=2000)
+
+
+class StudySummaryPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(..., max_length=160)
+    source_name: str | None = Field(None, max_length=255)
+    source_kind: Literal["pdf", "docx", "pptx", ""] = ""
+    overview: str = Field("", max_length=10_000)
+    sections: list[StudyNoteSectionPayload] = Field(default_factory=list, max_length=60)
+    key_terms: list[StudyNoteTermPayload] = Field(default_factory=list, max_length=100)
+    markdown: str = Field("", max_length=200_000)
+    page_count: int = Field(0, ge=0)
+    warnings: list[ShortText] = Field(default_factory=list, max_length=50)
+    created_at: str = Field(..., max_length=64)
+
+
+class MeetingTranscriptSegmentPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    start_ms: int = Field(..., ge=0)
+    end_ms: int = Field(..., ge=0)
+    text: str = Field(..., max_length=10_000)
+
+
+class MeetingKeyTopicPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    topic: ListItemText
+    discussion: ListItemText
+
+
+class MeetingActionItemPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    task: ListItemText
+    assignee: str = Field("", max_length=500)
+    deadline: str = Field("", max_length=500)
+    status: Literal["pending", "done"] = "pending"
+
+
+class MeetingNotesPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field("", max_length=200)
+    summary: str = Field("", max_length=20_000)
+    key_topics: list[MeetingKeyTopicPayload] = Field(default_factory=list, max_length=200)
+    decisions: list[ListItemText] = Field(default_factory=list, max_length=200)
+    action_items: list[MeetingActionItemPayload] = Field(default_factory=list, max_length=200)
+    important_dates: list[ListItemText] = Field(default_factory=list, max_length=200)
+    issues: list[ListItemText] = Field(default_factory=list, max_length=200)
+    unresolved_questions: list[ListItemText] = Field(default_factory=list, max_length=200)
+    key_points: list[ListItemText] = Field(default_factory=list, max_length=200)
+
+
+MAX_TRANSCRIPT_TEXT_CHARS = 600_000
+
+
+class RecordedMeetingPayload(BaseModel):
+    """A finished meeting's text. Audio never leaves the recording device."""
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(..., max_length=200)
+    started_at: str = Field(..., max_length=64)
+    duration_seconds: float = Field(0, ge=0)
+    source: Literal["recording", "upload"] = "recording"
+    language: str | None = Field(None, max_length=16)
+    status: Literal["transcription_complete", "completed"]
+    transcript: list[MeetingTranscriptSegmentPayload] | None = Field(None, max_length=20_000)
+    notes: MeetingNotesPayload | None = None
+    notes_edited: bool = False
+
+    @field_validator("transcript")
+    @classmethod
+    def cap_transcript_text(
+        cls, value: list[MeetingTranscriptSegmentPayload] | None
+    ) -> list[MeetingTranscriptSegmentPayload] | None:
+        """Bound the whole transcript, not just each segment."""
+        if value is not None and sum(len(s.text) for s in value) > MAX_TRANSCRIPT_TEXT_CHARS:
+            raise ValueError("transcript exceeds the synchronized text limit")
+        return value
+
+
+EntityType = Literal[
+    "profile", "task", "event", "time_block", "reminder", "note", "custom_category",
+    "pomodoro_settings", "pomodoro_session", "flashcard_deck", "study_summary",
+    "recorded_meeting",
+]
 OperationType = Literal["create", "update", "delete"]
+
+# Types every client understood before entity-type negotiation existed. A
+# request that doesn't declare `entityTypes` only ever sees these, because
+# those clients reject unknown types and require the snapshot's authoritative
+# list to match theirs exactly.
+LEGACY_ENTITY_TYPES: tuple[EntityType, ...] = (
+    "profile", "task", "event", "time_block", "reminder", "note", "custom_category",
+)
+# Per-account singletons: updated in place, never deleted.
+SINGLETON_ENTITY_TYPES: frozenset[str] = frozenset({"profile", "pomodoro_settings"})
 
 class SyncMutation(BaseModel):
     mutationId: str = Field(..., max_length=128)
@@ -180,6 +331,12 @@ class SyncBatchRequest(BaseModel):
     mutations: list[SyncMutation] = Field(default_factory=list, max_length=100)
     cursor: int = Field(default=0, ge=0)
     snapshot: SnapshotRequest | None = None
+    # Entity types the client can apply. Absent means a pre-negotiation client
+    # (LEGACY_ENTITY_TYPES). Unknown names are ignored rather than rejected so
+    # a newer client can talk to this server.
+    entityTypes: list[Annotated[str, Field(max_length=64)]] | None = Field(
+        default=None, max_length=64
+    )
 
 class MutationResult(BaseModel):
     mutationId: str
@@ -229,6 +386,9 @@ class SyncBatchResponse(BaseModel):
     resetRequired: bool
     serverTime: str
     snapshot: SnapshotPage | None = None
+    # Every entity type this server stores, so a client can hold back
+    # mutations of types an older server would reject.
+    supportedEntityTypes: list[EntityType] = Field(default_factory=list)
 
 MODEL_MAP = {
     "profile": ProfileSync,
@@ -237,7 +397,12 @@ MODEL_MAP = {
     "time_block": TimeBlocksSync,
     "reminder": RemindersSync,
     "note": NotesSync,
-    "custom_category": CustomCategoriesSync
+    "custom_category": CustomCategoriesSync,
+    "pomodoro_settings": PomodoroSettingsSync,
+    "pomodoro_session": PomodoroSessionsSync,
+    "flashcard_deck": FlashcardDecksSync,
+    "study_summary": StudySummariesSync,
+    "recorded_meeting": RecordedMeetingsSync,
 }
 
 PAYLOAD_VALIDATOR_MAP = {
@@ -247,7 +412,12 @@ PAYLOAD_VALIDATOR_MAP = {
     "time_block": TimeBlockPayload,
     "reminder": ReminderPayload,
     "note": NotePayload,
-    "custom_category": CustomCategoryPayload
+    "custom_category": CustomCategoryPayload,
+    "pomodoro_settings": PomodoroSettingsPayload,
+    "pomodoro_session": PomodoroSessionPayload,
+    "flashcard_deck": FlashcardDeckPayload,
+    "study_summary": StudySummaryPayload,
+    "recorded_meeting": RecordedMeetingPayload,
 }
 
 FORBIDDEN_KEYS = {"owner_id", "role", "password_hash", "entitlements", "ai_limit", "server_timestamp"}
@@ -260,6 +430,11 @@ SNAPSHOT_MODEL_ORDER = (
     ("reminder", RemindersSync),
     ("note", NotesSync),
     ("custom_category", CustomCategoriesSync),
+    ("pomodoro_settings", PomodoroSettingsSync),
+    ("pomodoro_session", PomodoroSessionsSync),
+    ("flashcard_deck", FlashcardDecksSync),
+    ("study_summary", StudySummariesSync),
+    ("recorded_meeting", RecordedMeetingsSync),
 )
 SNAPSHOT_AUTHORITATIVE_ENTITY_TYPES: list[EntityType] = [
     "task",
@@ -268,7 +443,26 @@ SNAPSHOT_AUTHORITATIVE_ENTITY_TYPES: list[EntityType] = [
     "reminder",
     "note",
     "custom_category",
+    "pomodoro_session",
+    "flashcard_deck",
+    "study_summary",
+    "recorded_meeting",
 ]
+SUPPORTED_ENTITY_TYPES: list[EntityType] = [
+    entity_type for entity_type, _ in SNAPSHOT_MODEL_ORDER
+]
+
+
+def _resolve_declared_entity_types(requested: list[str] | None) -> frozenset[str]:
+    """Return the entity types this request may receive.
+
+    Older clients throw on an unknown type and roll the whole page back, so
+    they must never be sent one. Unknown names from newer clients are dropped.
+    """
+    if requested is None:
+        return frozenset(LEGACY_ENTITY_TYPES)
+    known = set(SUPPORTED_ENTITY_TYPES)
+    return frozenset(name for name in requested if name in known)
 
 
 def _utc_iso(value: datetime) -> str:
@@ -402,8 +596,14 @@ async def _build_snapshot_page(
     db: AsyncSession,
     owner_id: uuid.UUID,
     request: SnapshotRequest,
+    declared_types: frozenset[str],
 ) -> SnapshotPage:
-    """Build one stable, keyset-paginated current-state snapshot page."""
+    """Build one stable, keyset-paginated current-state snapshot page.
+
+    Only the request's declared entity types are included, and only those are
+    reported as authoritative. Ranks keep their global order so a continuation
+    position stays valid.
+    """
     current_boundary = await _current_snapshot_boundary(db, owner_id)
     boundary = (
         current_boundary
@@ -431,7 +631,7 @@ async def _build_snapshot_page(
     collected: list[tuple[EntityType, object]] = []
     fetch_limit = SNAPSHOT_PAGE_SIZE + 1
     for rank, (entity_type, model_cls) in enumerate(SNAPSHOT_MODEL_ORDER):
-        if rank < after_rank:
+        if rank < after_rank or entity_type not in declared_types:
             continue
 
         conditions = [
@@ -477,7 +677,11 @@ async def _build_snapshot_page(
         nextAfter=next_after,
         hasMore=has_more,
         complete=not has_more,
-        authoritativeEntityTypes=SNAPSHOT_AUTHORITATIVE_ENTITY_TYPES,
+        authoritativeEntityTypes=[
+            entity_type
+            for entity_type in SNAPSHOT_AUTHORITATIVE_ENTITY_TYPES
+            if entity_type in declared_types
+        ],
         prunePolicy=SnapshotPrunePolicy(
             preserveOutboxStatuses=["pending", "in_progress", "failed"],
             requireExistingSyncMetadata=True,
@@ -581,6 +785,7 @@ async def sync_batch(
     owner_id = account.id
     now = datetime.now(timezone.utc)
     now_str = now.isoformat()
+    declared_types = _resolve_declared_entity_types(req.entityTypes)
 
     if len(req.mutations) > 100:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Batch exceeds maximum of 100 mutations.")
@@ -606,13 +811,13 @@ async def sync_batch(
                 rejected_results.append(duplicate_result)
             continue
 
-        if mut.entityType == "profile" and mut.operation == "delete":
+        if mut.entityType in SINGLETON_ENTITY_TYPES and mut.operation == "delete":
             profile_delete_result = MutationResult(
                 mutationId=mut.mutationId,
                 entityType=mut.entityType,
                 entityId=mut.entityId,
                 status="rejected",
-                reason="profile_delete_not_allowed",
+                reason=f"{mut.entityType}_delete_not_allowed",
             )
             await _record_terminal_result(
                 db,
@@ -759,6 +964,7 @@ async def sync_batch(
             db,
             owner_id,
             req.snapshot,
+            declared_types,
         )
         return SyncBatchResponse(
             accepted=accepted_results,
@@ -769,6 +975,7 @@ async def sync_batch(
             resetRequired=False,
             serverTime=now_str,
             snapshot=snapshot_page,
+            supportedEntityTypes=SUPPORTED_ENTITY_TYPES,
         )
 
     reset_required = await _cursor_requires_snapshot(
@@ -785,11 +992,17 @@ async def sync_batch(
             hasMore=False,
             resetRequired=True,
             serverTime=now_str,
+            supportedEntityTypes=SUPPORTED_ENTITY_TYPES,
         )
 
+    # Filter in SQL and keep `nextCursor` at the last change actually sent:
+    # clients reject a cursor that moves past rows they never received. A
+    # cursor left behind trailing undeclared rows is harmless — the next
+    # declared change carries it past them.
     changes_stmt = select(ChangeFeed).where(
         ChangeFeed.owner_id == owner_id,
-        ChangeFeed.change_id > req.cursor
+        ChangeFeed.change_id > req.cursor,
+        ChangeFeed.entity_type.in_(sorted(declared_types)),
     ).order_by(ChangeFeed.change_id.asc()).limit(501)
 
     changes_res = await db.execute(changes_stmt)
@@ -820,5 +1033,6 @@ async def sync_batch(
         nextCursor=next_cursor,
         hasMore=has_more,
         resetRequired=False,
-        serverTime=now_str
+        serverTime=now_str,
+        supportedEntityTypes=SUPPORTED_ENTITY_TYPES,
     )

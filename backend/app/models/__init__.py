@@ -3,7 +3,9 @@ from backend.app.models.session import AuthSession
 from backend.app.models.recovery import RecoveryCode
 from backend.app.models.synchronized_content import (
     ProfileSync, TasksSync, EventsSync, TimeBlocksSync,
-    RemindersSync, NotesSync, CustomCategoriesSync
+    RemindersSync, NotesSync, CustomCategoriesSync,
+    PomodoroSettingsSync, PomodoroSessionsSync, FlashcardDecksSync,
+    StudySummariesSync, RecordedMeetingsSync,
 )
 from backend.app.models.mutations import IdempotentMutation
 from backend.app.models.change_feed import ChangeFeed
@@ -60,6 +62,11 @@ __all__ = [
     "RemindersSync",
     "NotesSync",
     "CustomCategoriesSync",
+    "PomodoroSettingsSync",
+    "PomodoroSessionsSync",
+    "FlashcardDecksSync",
+    "StudySummariesSync",
+    "RecordedMeetingsSync",
     "IdempotentMutation",
     "ChangeFeed",
     "SyncHead",
