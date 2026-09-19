@@ -9,7 +9,12 @@
  */
 
 import { cloudClient, CloudResult } from '../cloud/cloudClient';
-import { bytesToBase64, MAX_PDF_BYTES, describeFlashcardFailure } from './flashcardSkill';
+import {
+  describeFlashcardFailure,
+  describeUpload,
+  MAX_PDF_BYTES,
+  type UploadDocument,
+} from './flashcardSkill';
 
 export const MAX_DOCUMENT_BYTES = MAX_PDF_BYTES;
 
@@ -68,22 +73,20 @@ export const describeStudyNotesFailure = describeFlashcardFailure;
 
 export const studyNotesSkill = {
   /** Uploads one document and returns its summary. */
-  summarizeDocument: async (input: {
-    filename: string;
-    bytes: Uint8Array;
-  }): Promise<CloudResult<StudyNotesResponse>> => {
-    const { filename, bytes } = input;
+  summarizeDocument: async (input: UploadDocument): Promise<CloudResult<StudyNotesResponse>> => {
+    const { filename } = input;
+    const upload = describeUpload(input);
 
-    if (!bytes || bytes.length === 0) {
+    if (upload.size === 0) {
       return { status: 'validation_error', error: 'That file is empty.' };
     }
-    if (!isSupportedDocument(filename, bytes)) {
+    if (!isSupportedDocument(filename, upload.head)) {
       return {
         status: 'validation_error',
         error: 'Study notes are made from PDF, Word (.docx) or PowerPoint (.pptx) files.',
       };
     }
-    if (bytes.length > MAX_DOCUMENT_BYTES) {
+    if (upload.size > MAX_DOCUMENT_BYTES) {
       const limit = Math.round(MAX_DOCUMENT_BYTES / (1024 * 1024));
       return {
         status: 'validation_error',
@@ -97,7 +100,7 @@ export const studyNotesSkill = {
         method: 'POST',
         body: JSON.stringify({
           filename: filename.slice(0, 255),
-          contentBase64: bytesToBase64(bytes),
+          contentBase64: upload.toBase64(),
         }),
       },
       true,

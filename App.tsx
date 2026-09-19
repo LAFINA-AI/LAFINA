@@ -81,6 +81,9 @@ import {
 } from './src/ui/screens';
 import { CompanyChatScreen } from './src/ui/screens/business/CompanyChatScreen';
 import { PomodoroScreen } from './src/ui/screens/pomodoro';
+import { FlashcardsScreen } from './src/ui/screens/flashcards';
+import { StudyNotesScreen } from './src/ui/screens/studynotes';
+import type { ToolBackHandler } from './src/ui/components/tools';
 
 // Assets
 const lafinaDefaultLogo = require('./src/assets/lafina_default_logo.png');
@@ -138,6 +141,11 @@ function AppContent({
   const [syncRevision, setSyncRevision] = useState(0);
   /** The tab a radial-menu tool was opened from, for Back. */
   const returnTabRef = useRef<TabType | null>(null);
+  /** The open tool's own Back step, such as leaving a deck for the deck list. */
+  const toolBackRef = useRef<ToolBackHandler | null>(null);
+  const registerToolBack = useCallback((handler: ToolBackHandler | null) => {
+    toolBackRef.current = handler;
+  }, []);
   const splashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { colors } = useTheme();
@@ -441,7 +449,8 @@ function AppContent({
     if (isKeyboardVisible) closeRadial();
   }, [isKeyboardVisible, closeRadial]);
 
-  // Hardware Back closes the menu, then leaves a tool for the tab it came from.
+  // Hardware Back closes the menu, then lets the tool step back (a deck to the
+  // deck list), then leaves the tool for the tab it came from.
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (radial.open) {
@@ -449,6 +458,7 @@ function AppContent({
         return true;
       }
       if (isToolTab(activeTab)) {
+        if (toolBackRef.current?.()) return true;
         leaveTool();
         return true;
       }
@@ -660,6 +670,26 @@ function AppContent({
         return <GmailInboxScreen userId={userId} />;
       case 'pomodoro':
         return <PomodoroScreen onBack={leaveTool} />;
+      case 'flashcards':
+        return (
+          <FlashcardsScreen
+            userId={userId}
+            refreshTrigger={refreshTrigger}
+            onRefresh={triggerRefresh}
+            onBack={leaveTool}
+            registerBack={registerToolBack}
+          />
+        );
+      case 'studynotes':
+        return (
+          <StudyNotesScreen
+            userId={userId}
+            refreshTrigger={refreshTrigger}
+            onRefresh={triggerRefresh}
+            onBack={leaveTool}
+            registerBack={registerToolBack}
+          />
+        );
       default:
         return <View style={[styles.errorScreen, themed.errorScreen]}><Text style={themed.errorText}>Page Not Found</Text></View>;
     }

@@ -1,4 +1,4 @@
-import { Mic, Timer } from 'lucide-react-native';
+import { BookOpen, Layers, Mic, Timer } from 'lucide-react-native';
 import type { ShellMode } from '../CustomTabBar';
 import type { RadialMenuItem } from './useRadialMenu';
 
@@ -11,9 +11,14 @@ export const RADIAL_MIC_KEY = 'mic';
  * Items that need Student Pro are shown locked rather than hidden, and their
  * screens explain the plan.
  */
-export const buildRadialItems = (mode: ShellMode, _hasPro: boolean): RadialMenuItem[] => {
+export const buildRadialItems = (mode: ShellMode, hasPro: boolean): RadialMenuItem[] => {
   const pomodoro: RadialMenuItem = { key: 'pomodoro', label: 'Pomodoro', icon: Timer };
   const mic: RadialMenuItem = { key: RADIAL_MIC_KEY, label: 'Mic', icon: Mic };
   if (mode !== 'student') return [pomodoro, mic];
-  return [pomodoro, mic];
+  return [
+    pomodoro,
+    { key: 'flashcards', label: 'Flashcards', icon: Layers, locked: !hasPro },
+    mic,
+    { key: 'studynotes', label: 'Study Notes', icon: BookOpen, locked: !hasPro },
+  ];
 };

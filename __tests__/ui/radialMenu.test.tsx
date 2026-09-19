@@ -143,6 +143,13 @@ describe('Mic button and radial menu', () => {
   });
 
   describe('radial items', () => {
+    it('gives students the study tools, locked without Student Pro', () => {
+      const free = buildRadialItems('student', false);
+      expect(free.map((item) => item.key)).toEqual(['pomodoro', 'flashcards', 'mic', 'studynotes']);
+      expect(free.filter((item) => item.locked).map((item) => item.key)).toEqual(['flashcards', 'studynotes']);
+      expect(buildRadialItems('student', true).some((item) => item.locked)).toBe(false);
+    });
+
     it('gives business shells the Pomodoro and the Mic', () => {
       expect(buildRadialItems('manager', true).map((item) => item.key)).toEqual(['pomodoro', 'mic']);
       expect(buildRadialItems('employee', false).map((item) => item.key)).toEqual(['pomodoro', 'mic']);

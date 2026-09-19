@@ -55,11 +55,50 @@ export const looksLikePdf = (bytes: Uint8Array): boolean =>
   bytes[3] === 0x46 &&
   bytes[4] === 0x2d;
 
-export interface FlashcardRequestInput {
-  filename: string;
-  bytes: Uint8Array;
-  maxCards?: number;
-}
+/**
+ * A document to upload: raw bytes (desktop reads files that way), or base64
+ * already (React Native's file APIs return it, and a 15 MB file should not be
+ * decoded only to be encoded again).
+ */
+export type UploadDocument =
+  | { filename: string; bytes: Uint8Array; base64?: undefined }
+  | { filename: string; base64: string; bytes?: undefined };
+
+/** Size of the data a base64 string encodes. */
+export const base64ByteLength = (base64: string): number => {
+  const clean = base64.replace(/\s/g, '');
+  const padding = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((clean.length * 3) / 4) - padding);
+};
+
+/**
+ * The first `count` bytes a base64 string encodes, for signature checks.
+ * Malformed base64 yields no bytes, so it fails the signature check.
+ */
+export const base64Prefix = (base64: string, count: number): Uint8Array => {
+  const chars = Math.ceil(count / 3) * 4;
+  try {
+    const binary = atob(base64.replace(/\s/g, '').slice(0, chars));
+    return Uint8Array.from(binary, (character) => character.charCodeAt(0)).subarray(0, count);
+  } catch {
+    return new Uint8Array(0);
+  }
+};
+
+/** The signature bytes, size and wire encoding of an upload, however it arrived. */
+export const describeUpload = (
+  document: UploadDocument,
+): { head: Uint8Array; size: number; toBase64: () => string } => {
+  if (document.bytes) {
+    const bytes = document.bytes;
+    return { head: bytes.subarray(0, 16), size: bytes.length, toBase64: () => bytesToBase64(bytes) };
+  }
+  const base64 = document.base64 ?? '';
+  const size = base64ByteLength(base64);
+  return { head: size > 0 ? base64Prefix(base64, 16) : new Uint8Array(0), size, toBase64: () => base64 };
+};
+
+export type FlashcardRequestInput = UploadDocument & { maxCards?: number };
 
 /**
  * Turns a cloud failure into a sentence worth showing.
@@ -97,15 +136,16 @@ export const flashcardSkill = {
   generateFromPdf: async (
     input: FlashcardRequestInput,
   ): Promise<CloudResult<FlashcardDeckResponse>> => {
-    const { filename, bytes } = input;
+    const { filename } = input;
+    const upload = describeUpload(input);
 
-    if (!bytes || bytes.length === 0) {
+    if (upload.size === 0) {
       return { status: 'validation_error', error: 'That file is empty.' };
     }
-    if (!looksLikePdf(bytes)) {
+    if (!looksLikePdf(upload.head)) {
       return { status: 'validation_error', error: 'That file is not a PDF.' };
     }
-    if (bytes.length > MAX_PDF_BYTES) {
+    if (upload.size > MAX_PDF_BYTES) {
       const limit = Math.round(MAX_PDF_BYTES / (1024 * 1024));
       return {
         status: 'validation_error',
@@ -124,7 +164,7 @@ export const flashcardSkill = {
         method: 'POST',
         body: JSON.stringify({
           filename: filename.slice(0, 255),
-          contentBase64: bytesToBase64(bytes),
+          contentBase64: upload.toBase64(),
           maxCards,
         }),
       },
