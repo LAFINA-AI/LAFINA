@@ -19,7 +19,7 @@ export type { Note } from './notesStore';
 export { timeBlocksStore } from './timeBlocksStore';
 export type { TimeBlock } from './timeBlocksStore';
 export { chatStore } from './chatStore';
-export type { ChatMessage, ChatSession } from './chatStore';
+export type { ChatAttachment, ChatMessage, ChatSession } from './chatStore';
 export { behaviorStore } from './behaviorStore';
 export type { BehaviorLog, FeatureSnapshot } from './behaviorStore';
 export { completeUserOnboarding } from './onboardingStore';

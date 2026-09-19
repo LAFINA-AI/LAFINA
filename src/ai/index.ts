@@ -13,6 +13,7 @@ export {
 export { meetingRecorder } from './native/meetingRecorder';
 export { transcribeMeetingChunks } from './meeting/meetingTranscriber';
 export { extractActionCandidates } from './meeting/actionCandidateExtractor';
+export { detectDocumentRequest } from './documentIntent';
 
 export type {
   CreatedScheduleItemType,
