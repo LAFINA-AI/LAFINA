@@ -104,6 +104,10 @@ export const MeetingRecordModal: React.FC<MeetingRecordModalProps> = ({
 
   const handleStart = async () => {
     try {
+      if (!(await meetingRecorder.requestPermission())) {
+        Alert.alert('Microphone needed', 'Allow microphone access to record the meeting.');
+        return;
+      }
       const meetingId = currentMeetingIdRef.current;
       await meetingRecorder.start(meetingId, title.trim() || 'Meeting');
       setMeetingState('recording');

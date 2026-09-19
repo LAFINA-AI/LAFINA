@@ -12,7 +12,6 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
-import android.os.Environment
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.StatFs
@@ -23,6 +22,7 @@ import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -50,7 +50,41 @@ class LafinaMeetingService : Service() {
     const val SAMPLES_PER_CHUNK = SAMPLE_RATE * CHUNK_DURATION_SEC
     const val BYTES_PER_SAMPLE = 2
     const val BYTES_PER_CHUNK = SAMPLES_PER_CHUNK * BYTES_PER_SAMPLE
+    const val WAV_HEADER_BYTES = 44
     const val MIN_STORAGE_BYTES = 50L * 1024L * 1024L // 50 MB
+
+    private const val RECOVERY_FILE = "meeting_recovery.json"
+
+    /**
+     * Open from the moment a recording is requested until its last chunk is on
+     * disk. A stop waits on it, so the chunk list it reads is the final one.
+     */
+    @Volatile private var sessionEnd: CountDownLatch? = null
+
+    /** Called before the start intent is sent, so a stop racing the start still waits for it. */
+    fun beginSession() {
+      sessionEnd = CountDownLatch(1)
+    }
+
+    fun isSessionActive(): Boolean = (sessionEnd?.count ?: 0L) > 0L
+
+    /** True once the session has written its final state, or if none was running. */
+    fun awaitSessionEnd(timeoutMs: Long): Boolean =
+      sessionEnd?.await(timeoutMs, TimeUnit.MILLISECONDS) ?: true
+
+    private fun endSession() {
+      sessionEnd?.countDown()
+    }
+
+    /**
+     * Where a meeting's audio lives. Files, not cache: the audio is kept for
+     * transcribing again until the user deletes it, and Android clears caches
+     * on its own when storage runs low.
+     */
+    fun meetingDir(context: Context, meetingId: String): File =
+      File(context.filesDir, "meetings/$meetingId")
+
+    fun recoveryFile(context: Context): File = File(context.filesDir, RECOVERY_FILE)
   }
 
   private var wakeLock: PowerManager.WakeLock? = null
@@ -62,6 +96,11 @@ class LafinaMeetingService : Service() {
   private var meetingId: String = ""
   private var meetingTitle: String = "Meeting"
   private val chunkFiles = mutableListOf<String>()
+
+  // Resolved once per session: the recording thread may still be writing
+  // after the service itself has been destroyed.
+  private var sessionDir: File? = null
+  private var stateFile: File? = null
 
   private val recordingExecutor = Executors.newSingleThreadExecutor()
   private var tickerExecutor: ScheduledExecutorService? = null
@@ -93,54 +132,63 @@ class LafinaMeetingService : Service() {
         stopSelf()
       }
       else -> {
+        // A sticky restart after the process died: the recording is gone,
+        // and the recovery file left behind lets the app pick it up.
         stopSelf()
       }
     }
-    return START_STICKY
+    return START_NOT_STICKY
   }
 
   private fun startMeetingSession() {
     if (isRecording.get()) return
 
-    // 1. Check storage before starting
+    // A service started in the foreground has to say so promptly, even when
+    // it is about to give up.
+    val notification = createNotification("Recording • 00:00")
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+      } else {
+        startForeground(NOTIFICATION_ID, notification)
+      }
+    } catch (e: Exception) {
+      // Android 14 refuses a microphone service without the permission.
+      Log.e(TAG, "Could not start the meeting recording in the foreground: ${e.message}", e)
+      endSession()
+      stopSelf()
+      return
+    }
+
     if (getAvailableStorageBytes() < MIN_STORAGE_BYTES) {
       Log.e(TAG, "Insufficient disk space for meeting recording.")
+      endSession()
       stopSelf()
       return
     }
 
     acquireWakeLock()
-    val notification = createNotification("Recording • 00:00")
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      startForeground(
-        NOTIFICATION_ID,
-        notification,
-        ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-      )
-    } else {
-      startForeground(NOTIFICATION_ID, notification)
-    }
-
     isRecording.set(true)
     isPaused.set(false)
     totalElapsedSeconds.set(0)
-    chunkFiles.clear()
+    synchronized(chunkFiles) { chunkFiles.clear() }
+    sessionDir = meetingDir(this, meetingId).apply { mkdirs() }
+    stateFile = recoveryFile(this)
+    saveRecoveryState()
 
-    // Start ticker for notification elapsed time
+    // Ticker for the notification's elapsed time
     tickerExecutor = Executors.newSingleThreadScheduledExecutor().apply {
       scheduleAtFixedRate({
         if (isRecording.get() && !isPaused.get()) {
           val elapsed = totalElapsedSeconds.incrementAndGet()
           updateNotification("Recording • ${formatElapsed(elapsed)}")
 
-          // Verify disk space during recording
           if (getAvailableStorageBytes() < MIN_STORAGE_BYTES) {
             Log.w(TAG, "Low disk storage detected during recording. Stopping.")
             stopMeetingSession()
             stopSelf()
           }
 
-          // Save recovery state every 10 seconds
           if (elapsed % 10 == 0L) {
             saveRecoveryState()
           }
@@ -148,7 +196,6 @@ class LafinaMeetingService : Service() {
       }, 1, 1, TimeUnit.SECONDS)
     }
 
-    // Start audio record thread
     recordingExecutor.execute {
       recordAudioChunks()
     }
@@ -163,6 +210,7 @@ class LafinaMeetingService : Service() {
       ),
       SAMPLE_RATE * 2
     )
+    val meetingDir = sessionDir ?: meetingDir(this, meetingId).apply { mkdirs() }
 
     try {
       audioRecord = AudioRecord(
@@ -175,73 +223,104 @@ class LafinaMeetingService : Service() {
 
       if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
         Log.e(TAG, "Failed to initialize AudioRecord for meeting.")
-        isRecording.set(false)
-        stopSelf()
         return
       }
 
-      audioRecord?.startRecording()
-
-      val meetingDir = File(cacheDir, "meetings/$meetingId").apply { mkdirs() }
-      var chunkIndex = 0
+      var chunkIndex = nextChunkIndex(meetingDir)
       val readBuffer = ShortArray(1024)
+      var capturing = false
 
       while (isRecording.get()) {
         if (isPaused.get()) {
+          // Stop capturing while paused, so nothing said during the pause
+          // is waiting in the buffer when recording resumes.
+          if (capturing) {
+            audioRecord?.stop()
+            capturing = false
+          }
           Thread.sleep(100)
           continue
         }
-
-        val chunkFile = File(meetingDir, "chunk_${chunkIndex}.wav")
-        val pcmOut = FileOutputStream(File(meetingDir, "chunk_${chunkIndex}.pcm"))
-        var bytesWritten = 0
-
-        while (isRecording.get() && !isPaused.get() && bytesWritten < BYTES_PER_CHUNK) {
-          val read = audioRecord?.read(readBuffer, 0, readBuffer.size) ?: -1
-          if (read > 0) {
-            val byteBuffer = ByteBuffer.allocate(read * 2).order(ByteOrder.LITTLE_ENDIAN)
-            for (i in 0 until read) {
-              byteBuffer.putShort(readBuffer[i])
-            }
-            pcmOut.write(byteBuffer.array())
-            bytesWritten += read * 2
-          }
+        if (!capturing) {
+          audioRecord?.startRecording()
+          capturing = true
         }
-        pcmOut.close()
 
         val pcmFile = File(meetingDir, "chunk_${chunkIndex}.pcm")
-        if (pcmFile.exists() && pcmFile.length() > 0) {
+        var bytesWritten = 0
+        FileOutputStream(pcmFile).use { pcmOut ->
+          while (isRecording.get() && !isPaused.get() && bytesWritten < BYTES_PER_CHUNK) {
+            val read = audioRecord?.read(readBuffer, 0, readBuffer.size) ?: -1
+            if (read > 0) {
+              val byteBuffer = ByteBuffer.allocate(read * 2).order(ByteOrder.LITTLE_ENDIAN)
+              for (i in 0 until read) {
+                byteBuffer.putShort(readBuffer[i])
+              }
+              pcmOut.write(byteBuffer.array())
+              bytesWritten += read * 2
+            } else if (read < 0) {
+              throw IllegalStateException("AudioRecord.read failed: $read")
+            }
+          }
+        }
+
+        if (pcmFile.length() > 0) {
+          val chunkFile = File(meetingDir, "chunk_${chunkIndex}.wav")
           convertPcmToWav(pcmFile, chunkFile, SAMPLE_RATE, 1, 16)
-          pcmFile.delete()
           synchronized(chunkFiles) {
             chunkFiles.add(chunkFile.absolutePath)
           }
           saveRecoveryState()
           chunkIndex++
         }
+        pcmFile.delete()
       }
     } catch (e: Exception) {
       Log.e(TAG, "Audio recording loop error: ${e.message}", e)
     } finally {
       try {
         audioRecord?.stop()
+      } catch (_: Exception) {}
+      try {
         audioRecord?.release()
       } catch (_: Exception) {}
       audioRecord = null
+
+      // Whether the user stopped or the microphone failed, the recording is
+      // over: record the final chunk list, then let a waiting stop read it.
+      val stoppedByUser = !isRecording.getAndSet(false)
+      saveRecoveryState(completed = true)
+      endSession()
+      if (!stoppedByUser) {
+        stopMeetingSession()
+        stopSelf()
+      }
     }
   }
 
+  /** Chunks continue after any already on disk, so nothing is overwritten. */
+  private fun nextChunkIndex(dir: File): Int {
+    val existing = dir.listFiles()
+      ?.mapNotNull { Regex("""chunk_(\d+)\.wav""").matchEntire(it.name)?.groupValues?.get(1)?.toIntOrNull() }
+      ?: emptyList()
+    return (existing.maxOrNull() ?: -1) + 1
+  }
+
+  /**
+   * Asks the recording thread to finish. It writes the last partial chunk
+   * and the final state itself; see [awaitSessionEnd].
+   */
   private fun stopMeetingSession() {
     isRecording.set(false)
+    isPaused.set(false)
     tickerExecutor?.shutdownNow()
     tickerExecutor = null
-    saveRecoveryState(completed = true)
     releaseWakeLock()
   }
 
   private fun saveRecoveryState(completed: Boolean = false) {
+    val file = stateFile ?: return
     try {
-      val stateFile = File(cacheDir, "meeting_recovery.json")
       val json = JSONObject().apply {
         put("meetingId", meetingId)
         put("title", meetingTitle)
@@ -253,14 +332,19 @@ class LafinaMeetingService : Service() {
         }
         put("chunkFiles", arr)
       }
-      stateFile.writeText(json.toString())
+      val temp = File(file.parentFile, "${file.name}.tmp")
+      temp.writeText(json.toString())
+      if (!temp.renameTo(file)) {
+        file.writeText(json.toString())
+        temp.delete()
+      }
     } catch (e: Exception) {
       Log.w(TAG, "Failed to write meeting recovery state: ${e.message}")
     }
   }
 
   private fun getAvailableStorageBytes(): Long {
-    val stat = StatFs(cacheDir.absolutePath)
+    val stat = StatFs(filesDir.absolutePath)
     return stat.availableBlocksLong * stat.blockSizeLong
   }
 
@@ -303,6 +387,7 @@ class LafinaMeetingService : Service() {
   }
 
   private fun updateNotification(statusText: String) {
+    if (!isRecording.get()) return
     val manager = getSystemService(NotificationManager::class.java)
     manager?.notify(NOTIFICATION_ID, createNotification(statusText))
   }
@@ -355,7 +440,8 @@ class LafinaMeetingService : Service() {
       "lafina:meeting-recording"
     ).apply {
       setReferenceCounted(false)
-      acquire(65 * 60 * 1000L) // 65 minutes max
+      // Past the app's 3-hour limit on a recording, so it never expires mid-meeting.
+      acquire(185 * 60 * 1000L)
     }
   }
 
@@ -366,6 +452,8 @@ class LafinaMeetingService : Service() {
 
   override fun onDestroy() {
     stopMeetingSession()
+    // Lets the recording thread finish writing its last chunk.
+    recordingExecutor.shutdown()
     super.onDestroy()
   }
 }

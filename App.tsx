@@ -42,6 +42,7 @@ import {
 } from './src/ui/components/radial';
 import { VoiceModal } from './src/ui/components/VoiceModal';
 import { PomodoroProvider, useOptionalPomodoro } from './src/ui/contexts/PomodoroContext';
+import { MeetingsProvider, useMeetingRecorderIndicator } from './src/ui/contexts/MeetingsContext';
 import { hasProEntitlement } from './src/cloud';
 import { ThemeProvider, useTheme } from './src/ui/contexts/ThemeContext';
 import { SPLASH_DELAY_MS } from './src/constants';
@@ -83,6 +84,7 @@ import { CompanyChatScreen } from './src/ui/screens/business/CompanyChatScreen';
 import { PomodoroScreen } from './src/ui/screens/pomodoro';
 import { FlashcardsScreen } from './src/ui/screens/flashcards';
 import { StudyNotesScreen } from './src/ui/screens/studynotes';
+import { MeetingsScreen } from './src/ui/screens/meetings';
 import type { ToolBackHandler } from './src/ui/components/tools';
 
 // Assets
@@ -99,13 +101,19 @@ const TOOLS_BY_SHELL: Record<ShellMode, ToolTab[]> = {
 const homeTabFor = (mode: ShellMode): TabType =>
   mode === 'manager' ? 'overview' : mode === 'employee' ? 'today' : 'calendar';
 
-/** The tab bar, with a running Pomodoro's time on the Mic. */
+/**
+ * The tab bar, with a meeting being recorded, or else a running Pomodoro's
+ * time, on the Mic. A recording comes first: the microphone is in use.
+ */
 const TimerAwareTabBar: React.FC<React.ComponentProps<typeof CustomTabBar>> = (props) => {
   const pomodoro = useOptionalPomodoro();
+  const recording = useMeetingRecorderIndicator();
   const badge =
-    pomodoro && pomodoro.runtime.isRunning && props.activeTab !== 'pomodoro'
-      ? formatDuration(pomodoro.remainingMs)
-      : null;
+    recording && props.activeTab !== 'meetings'
+      ? `REC ${formatDuration(recording.elapsedMs)}`
+      : pomodoro && pomodoro.runtime.isRunning && props.activeTab !== 'pomodoro'
+        ? formatDuration(pomodoro.remainingMs)
+        : null;
   return <CustomTabBar {...props} micBadge={badge} />;
 };
 
@@ -690,6 +698,8 @@ function AppContent({
             registerBack={registerToolBack}
           />
         );
+      case 'meetings':
+        return <MeetingsScreen onBack={leaveTool} registerBack={registerToolBack} onNotesSaved={triggerRefresh} />;
       default:
         return <View style={[styles.errorScreen, themed.errorScreen]}><Text style={themed.errorText}>Page Not Found</Text></View>;
     }
@@ -755,6 +765,7 @@ function AppContent({
     <SafeAreaProvider>
       {/* Above the screens, so the timer keeps running on every tab. */}
       <PomodoroProvider userId={userId} syncRevision={syncRevision}>
+      <MeetingsProvider userId={userId} syncRevision={syncRevision}>
       <SafeAreaView style={[styles.safeContainer, themed.safeContainer]}>
         <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
 
@@ -815,6 +826,7 @@ function AppContent({
           onCancelInvitation={handleCancelInvitation}
         />
       </SafeAreaView>
+      </MeetingsProvider>
       </PomodoroProvider>
     </SafeAreaProvider>
   );

@@ -145,8 +145,12 @@ describe('Mic button and radial menu', () => {
   describe('radial items', () => {
     it('gives students the study tools, locked without Student Pro', () => {
       const free = buildRadialItems('student', false);
-      expect(free.map((item) => item.key)).toEqual(['pomodoro', 'flashcards', 'mic', 'studynotes']);
-      expect(free.filter((item) => item.locked).map((item) => item.key)).toEqual(['flashcards', 'studynotes']);
+      expect(free.map((item) => item.key)).toEqual(['pomodoro', 'flashcards', 'mic', 'studynotes', 'meetings']);
+      expect(free.filter((item) => item.locked).map((item) => item.key)).toEqual([
+        'flashcards',
+        'studynotes',
+        'meetings',
+      ]);
       expect(buildRadialItems('student', true).some((item) => item.locked)).toBe(false);
     });
 

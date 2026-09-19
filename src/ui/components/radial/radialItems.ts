@@ -1,4 +1,4 @@
-import { BookOpen, Layers, Mic, Timer } from 'lucide-react-native';
+import { BookOpen, Layers, Mic, Timer, Users } from 'lucide-react-native';
 import type { ShellMode } from '../CustomTabBar';
 import type { RadialMenuItem } from './useRadialMenu';
 
@@ -20,5 +20,6 @@ export const buildRadialItems = (mode: ShellMode, hasPro: boolean): RadialMenuIt
     { key: 'flashcards', label: 'Flashcards', icon: Layers, locked: !hasPro },
     mic,
     { key: 'studynotes', label: 'Study Notes', icon: BookOpen, locked: !hasPro },
+    { key: 'meetings', label: 'Meetings', icon: Users, locked: !hasPro },
   ];
 };
