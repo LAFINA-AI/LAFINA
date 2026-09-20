@@ -50,6 +50,10 @@ export interface ThemeColors {
 
   // Overdue / warning banner backgrounds
   bannerBg: string;
+
+  // Highlighted words inside a note, matching the desktop editor's marker pen
+  noteHighlightBg: string;
+  noteHighlightText: string;
 }
 
 const lightColors: ThemeColors = {
@@ -78,6 +82,8 @@ const lightColors: ThemeColors = {
   iconMuted: '#AAA',
   eventIconBg: '#F0F0FF',
   bannerBg: '#FCE4D6',
+  noteHighlightBg: '#FFF3A3',
+  noteHighlightText: Colors.textDark,
 };
 
 const darkColors: ThemeColors = {
@@ -106,6 +112,8 @@ const darkColors: ThemeColors = {
   iconMuted: '#666',
   eventIconBg: '#1E1E3F',
   bannerBg: '#2C1B18',
+  noteHighlightBg: '#6B5D1F',
+  noteHighlightText: Colors.textLight,
 };
 
 interface ThemeContextType {

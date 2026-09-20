@@ -10,6 +10,8 @@
  * back to HTML when it reads it.
  */
 
+import { CHECKLIST_LINE, parseInline } from './noteMarkdown';
+
 interface HtmlElement {
   type: 'element';
   tag: string;
@@ -203,3 +205,101 @@ export const htmlToMarkdown = (html: string): string => {
 /** A note body in the mobile dialect, whichever app last saved it. */
 export const noteBodyToMarkdown = (body: string): string =>
   body && isHtmlBody(body) ? htmlToMarkdown(body) : body;
+
+/** Every `<li>` that carries a checked state, in document order. */
+const CHECKED_ITEM_TAG = /<li\b[^>]*\bdata-checked\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)[^>]*>/gi;
+const CHECKED_ATTRIBUTE = /(\bdata-checked\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
+
+export interface ChecklistStat {
+  total: number;
+  done: number;
+}
+
+/** Counts checklist progress, so a card can show "3/7". */
+export const checklistStats = (body: string): ChecklistStat => {
+  if (!body) return { total: 0, done: 0 };
+  if (isHtmlBody(body)) {
+    const items = body.match(CHECKED_ITEM_TAG) ?? [];
+    return {
+      total: items.length,
+      done: items.filter((tag) => /data-checked\s*=\s*["']?true/i.test(tag)).length,
+    };
+  }
+  const items = body
+    .split('\n')
+    .map((line) => CHECKLIST_LINE.exec(line))
+    .filter((match): match is RegExpExecArray => match !== null);
+  return {
+    total: items.length,
+    done: items.filter((match) => match[2].toLowerCase() === 'x').length,
+  };
+};
+
+/**
+ * Flips one checklist item and returns the updated body, so a to-do can be
+ * ticked from a card without opening the editor.
+ *
+ * `index` counts checklist items in reading order, the same way the desktop
+ * counts them. A desktop body is edited where it stands rather than converted
+ * to the mobile dialect first: everything mobile cannot draw — colours,
+ * underlines, inline images — has to survive someone ticking a box.
+ */
+export const toggleChecklistItem = (body: string, index: number): string => {
+  if (!body || index < 0) return body;
+
+  if (isHtmlBody(body)) {
+    let seen = -1;
+    let changed = false;
+    const updated = body.replace(CHECKED_ITEM_TAG, (tag) => {
+      seen += 1;
+      if (seen !== index || changed) return tag;
+      changed = true;
+      return tag.replace(CHECKED_ATTRIBUTE, (_attribute, prefix, quoted, single, bare) => {
+        const current = String(quoted ?? single ?? bare ?? 'false').toLowerCase();
+        return `${prefix}"${current === 'true' ? 'false' : 'true'}"`;
+      });
+    });
+    return changed ? updated : body;
+  }
+
+  let seen = -1;
+  let changed = false;
+  const lines = body.split('\n').map((line) => {
+    const match = CHECKLIST_LINE.exec(line);
+    if (!match) return line;
+    seen += 1;
+    if (seen !== index) return line;
+    changed = true;
+    // Rewrite only the box, so the indent, the marker and the text are kept
+    // exactly as they were: "  - [ ] Buy paper" differs by one character.
+    const boxAt = line.indexOf('[', match[1].length);
+    return `${line.slice(0, boxAt)}[${match[2].toLowerCase() === 'x' ? ' ' : 'x'}]${line.slice(
+      boxAt + 3
+    )}`;
+  });
+  return changed ? lines.join('\n') : body;
+};
+
+/** Every checklist line, plain, for the "Extract Tasks" action. */
+export const extractChecklistItems = (body: string): { text: string; done: boolean }[] =>
+  noteBodyToMarkdown(body)
+    .split('\n')
+    .map((line) => CHECKLIST_LINE.exec(line))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => ({
+      // Emphasis markers are not part of a task's name.
+      text: parseInline(match[3])
+        .map((span) => span.text)
+        .join('')
+        .trim(),
+      done: match[2].toLowerCase() === 'x',
+    }));
+
+/** True when a body holds no words and no image, so an empty save can be skipped. */
+export const isBodyEmpty = (body: string): boolean => {
+  if (!body.trim()) return true;
+  if (!isHtmlBody(body)) return false;
+  // Markup on its own is not content: an empty desktop document is a `<p>`.
+  if (/<img\b/i.test(body)) return false;
+  return htmlToMarkdown(body).trim().length === 0;
+};

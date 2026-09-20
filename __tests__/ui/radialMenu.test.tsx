@@ -32,6 +32,8 @@ jest.mock('../../src/ui/contexts/ThemeContext', () => ({
       iconMuted: '#AAAAAA',
       eventIconBg: '#F0F0FF',
       bannerBg: '#FFF0F0',
+      noteHighlightBg: '#FFF3A3',
+      noteHighlightText: '#1A1A1A',
     },
   }),
 }));
@@ -166,6 +168,15 @@ describe('Mic button and radial menu', () => {
       { key: 'locked', label: 'Locked tool', icon: () => null, locked: true },
     ];
 
+    // The fan opens on staggered springs; an unmounted tree stops them, so the
+    // timers cannot outlive the test and fire against a torn-down renderer.
+    const rendered: Tree[] = [];
+    afterEach(() => {
+      act(() => {
+        rendered.splice(0).forEach((tree) => tree.unmount());
+      });
+    });
+
     const renderMenu = (onSelect = jest.fn(), onDismiss = jest.fn()): Tree => {
       const Harness: React.FC = () => {
         const state = useRadialMenu(items, onSelect);
@@ -190,6 +201,7 @@ describe('Mic button and radial menu', () => {
           .find((node) => node.props.testID === 'radial-menu' && node.props.onLayout)
           .props.onLayout({ nativeEvent: { layout: { width: 400, height: 800 } } });
       });
+      rendered.push(tree!);
       return tree!;
     };
 

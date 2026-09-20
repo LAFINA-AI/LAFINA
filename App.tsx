@@ -4,9 +4,7 @@ import {
   StatusBar,
   StyleSheet,
   View,
-  Image,
   Text,
-  ActivityIndicator,
   Keyboard,
   DeviceEventEmitter,
   Alert,
@@ -18,7 +16,7 @@ import {
 } from 'react-native';
 import type { AlertButton } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Colors, Fonts } from './src/ui/theme';
+import { Fonts } from './src/ui/theme';
 import {
   initDatabase,
   remindersStore,
@@ -45,7 +43,6 @@ import { PomodoroProvider, useOptionalPomodoro } from './src/ui/contexts/Pomodor
 import { MeetingsProvider, useMeetingRecorderIndicator } from './src/ui/contexts/MeetingsContext';
 import { hasProEntitlement } from './src/cloud';
 import { ThemeProvider, useTheme } from './src/ui/contexts/ThemeContext';
-import { SPLASH_DELAY_MS } from './src/constants';
 import {
   consumePendingNativeCall,
   getReminderPermissionStatus,
@@ -68,6 +65,7 @@ import { ChatScreen } from './src/ui/screens/ChatScreen';
 import { CalendarScreen, ViewMode } from './src/ui/screens/calendar';
 import { NotesScreen } from './src/ui/screens/notes';
 import { ProfileScreen } from './src/ui/screens/ProfileScreen';
+import { SynthSplash } from './src/ui/splash';
 import { WelcomeScreen } from './src/ui/screens/WelcomeScreen';
 import { LoginScreen } from './src/ui/screens/LoginScreen';
 import { RegisterScreen } from './src/ui/screens/RegisterScreen';
@@ -88,8 +86,6 @@ import { MeetingsScreen } from './src/ui/screens/meetings';
 import type { ToolBackHandler } from './src/ui/components/tools';
 
 // Assets
-const lafinaDefaultLogo = require('./src/assets/lafina_default_logo.png');
-const spashIcon = require('./src/assets/spash_icon.png');
 
 /** Tools each shell can open from the Mic's radial menu. */
 const TOOLS_BY_SHELL: Record<ShellMode, ToolTab[]> = {
@@ -154,7 +150,8 @@ function AppContent({
   const registerToolBack = useCallback((handler: ToolBackHandler | null) => {
     toolBackRef.current = handler;
   }, []);
-  const splashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Startup has finished; the splash may play its exit and hand over. */
+  const [startupReady, setStartupReady] = useState(false);
 
   const { colors } = useTheme();
   const themed = useThemedStyles();
@@ -260,10 +257,6 @@ function AppContent({
       if (!payload) return;
       const reminder = remindersStore.getReminderById(payload.reminderId);
       if (!reminder || reminder.userId !== userId) return;
-      if (splashTimeoutRef.current) {
-        clearTimeout(splashTimeoutRef.current);
-        splashTimeoutRef.current = null;
-      }
       setIsLoading(false);
       setCallReminderId(reminder.id);
       setCallTask(payload.task || reminder.task);
@@ -343,24 +336,15 @@ function AppContent({
           }).catch(() => undefined);
         }
 
-        // Simulate a minor visual delay for the premium splash screen display
-        splashTimeoutRef.current = setTimeout(() => {
-          splashTimeoutRef.current = null;
-          setIsLoading(false);
-        }, SPLASH_DELAY_MS);
+        // The splash holds the floor from here: it finishes what it is saying
+        // and then hands over, rather than being cut off after a fixed wait.
+        setStartupReady(true);
       } catch (error) {
         console.error('Failed application startup setup:', error);
         setIsLoading(false);
       }
     };
     setupApp();
-
-    return () => {
-      if (splashTimeoutRef.current) {
-        clearTimeout(splashTimeoutRef.current);
-        splashTimeoutRef.current = null;
-      }
-    };
   }, [setUserId]);
 
   // Sync on returning to the app, a few seconds after a local change is
@@ -718,14 +702,10 @@ function AppContent({
   // Render Splash Loading Screen
   if (isLoading) {
     return (
-      <View style={[styles.splashContainer, themed.splashContainer]}>
+      <>
         <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
-        <Image source={spashIcon} style={styles.splashIconStyle} resizeMode="contain" />
-        <View style={styles.splashFooter}>
-          <Image source={lafinaDefaultLogo} style={styles.splashLogoStyle} resizeMode="contain" />
-          <ActivityIndicator size="small" color={Colors.yellow} style={styles.loader} />
-        </View>
-      </View>
+        <SynthSplash ready={startupReady} onFinished={() => setIsLoading(false)} />
+      </>
     );
   }
 
@@ -848,9 +828,6 @@ function useThemedStyles() {
     safeContainer: {
       backgroundColor: colors.background,
     },
-    splashContainer: {
-      backgroundColor: colors.background,
-    },
     errorScreen: {
       backgroundColor: colors.background,
     },
@@ -902,30 +879,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   
-  // Splash Screen Sizing & Styling
-  splashContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  splashIconStyle: {
-    width: 140,
-    height: 140,
-    marginBottom: 40,
-  },
-  splashFooter: {
-    position: 'absolute',
-    bottom: 60,
-    alignItems: 'center',
-  },
-  splashLogoStyle: {
-    width: 120,
-    height: 48,
-    marginBottom: 16,
-  },
-  loader: {
-    marginTop: 8,
-  },
 });
 
 export default App;

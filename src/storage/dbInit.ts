@@ -13,7 +13,7 @@ import { generateId } from '../utils';
  * 16: study tools (Pomodoro, flashcards, study notes, meetings) and
  * entity-type negotiation for sync.
  */
-const SCHEMA_VERSION = 16;
+const SCHEMA_VERSION = 17;
 
 type LegacySyncRow = Record<string, unknown>;
 
@@ -271,6 +271,7 @@ export const initDatabase = async (): Promise<void> => {
           cloud_account_id TEXT,
           cloud_linked INTEGER NOT NULL DEFAULT 0,
           cloud_linked_at TEXT,
+          avatar_uri TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
         )
@@ -1443,6 +1444,12 @@ export const initDatabase = async (): Promise<void> => {
           try { tx.executeSync('ALTER TABLE sync_state ADD COLUMN server_entity_types TEXT'); } catch {}
           try { tx.executeSync('ALTER TABLE sync_state ADD COLUMN snapshot_entity_types TEXT'); } catch {}
           try { tx.executeSync('ALTER TABLE messages ADD COLUMN attachment_json TEXT'); } catch {}
+        }
+
+        if (currentVersion < 17) {
+          // Profile photo: a path under the app's own storage, not the
+          // picker's temporary one, so it survives a restart.
+          try { tx.executeSync('ALTER TABLE users ADD COLUMN avatar_uri TEXT'); } catch {}
         }
 
           tx.executeSync(`PRAGMA user_version = ${TARGET_VERSION}`);

@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Vibration } from 'react-native';
+import { useWindowDimensions, Vibration } from 'react-native';
 import { computeRadialLayout, hitTestRadial } from '../../../utils';
 import type { RadialLayout } from '../../../utils';
 
@@ -12,8 +12,14 @@ export interface RadialMenuItem {
   locked?: boolean;
 }
 
-/** Distance from the Mic's centre to each item's centre. */
-export const RADIAL_RADIUS = 124;
+/**
+ * Smallest distance from the Mic's centre to each item's centre. The layout
+ * pushes past it when the menu holds enough items to need the room.
+ */
+export const RADIAL_RADIUS = 140;
+
+/** Room an item's bubble needs between its centre and the screen edge. */
+const ITEM_EDGE_MARGIN = 36;
 
 export interface RadialMenuState {
   open: boolean;
@@ -40,7 +46,14 @@ export const useRadialMenu = (
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState<number | null>(null);
   const highlightedRef = useRef<number | null>(null);
-  const layout = useMemo(() => computeRadialLayout(items.length, RADIAL_RADIUS), [items.length]);
+  const { width } = useWindowDimensions();
+  const layout = useMemo(
+    () =>
+      computeRadialLayout(items.length, RADIAL_RADIUS, {
+        maxHalfWidth: Math.max(0, width / 2 - ITEM_EDGE_MARGIN),
+      }),
+    [items.length, width]
+  );
 
   const highlight = useCallback((index: number | null) => {
     if (index === highlightedRef.current) return;

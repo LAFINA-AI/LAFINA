@@ -17,6 +17,8 @@ export interface User {
   cloudAccountId: string | null;
   isCloudLinked: boolean;
   cloudLinkedAt: string | null;
+  /** Profile photo, as a path in the app's own storage. Null means initials. */
+  avatarUri: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -39,6 +41,7 @@ const mapStoredUser = (row: StoredUserRow): User => ({
   isCloudLinked: row.cloud_linked === 1,
   cloudLinkedAt:
     typeof row.cloud_linked_at === 'string' ? row.cloud_linked_at : null,
+  avatarUri: typeof row.avatar_uri === 'string' && row.avatar_uri ? row.avatar_uri : null,
   createdAt: String(row.created_at),
   updatedAt: String(row.updated_at),
 });
@@ -115,6 +118,7 @@ export const userStore = {
       email: null,
       role: 'guest',
       isNewUser: true,
+      avatarUri: null,
       timeFormat24h: false,
       weekStartsMonday: false,
       darkModeEnabled: false,
@@ -539,6 +543,26 @@ export const userStore = {
   /**
    * Updates whether the week starts on Monday setting for a specific user.
    */
+  /**
+   * Points a user at their profile photo, or clears it with null.
+   *
+   * Deliberately not enqueued for sync: the value is a path on this device,
+   * which would mean nothing to the server or to another phone.
+   */
+  setAvatarUri: (userId: string, uri: string | null): void => {
+    const now = new Date().toISOString();
+    try {
+      db.executeSync(`UPDATE users SET avatar_uri = ?, updated_at = ? WHERE id = ?`, [
+        uri,
+        now,
+        userId,
+      ]);
+    } catch (error) {
+      console.error('Error saving profile photo:', error);
+      throw error;
+    }
+  },
+
   setWeekStartsMonday: (userId: string, enabled: boolean): void => {
     const now = new Date().toISOString();
     try {

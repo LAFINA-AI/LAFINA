@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import { Lock, X } from 'lucide-react-native';
@@ -11,9 +11,12 @@ import { MIC_CENTER_FROM_BOTTOM } from '../CustomTabBar';
 import type { RadialMenuItem } from './useRadialMenu';
 
 const BUBBLE_SIZE = 56;
-const ITEM_WIDTH = 96;
-/** Share of the opening animation between one item starting and the next. */
-const STAGGER = 0.08;
+/** Width of an item's column: the bubble, and the label chip beneath it. */
+const ITEM_WIDTH = 104;
+/** Gap kept between a label chip and the side of the screen. */
+const EDGE_PADDING = 8;
+/** Delay added per step away from the middle item, so the fan opens outwards. */
+const STAGGER_MS = 34;
 
 interface RadialMenuProps {
   visible: boolean;
@@ -24,12 +27,16 @@ interface RadialMenuProps {
   onDismiss: () => void;
 }
 
+const clamp = (value: number, min: number, max: number): number =>
+  max < min ? min : Math.min(Math.max(value, min), max);
+
 /**
  * The fan of shortcuts that opens from the Mic button.
  *
  * Drawn over the whole screen rather than inside the tab bar: Android only
  * delivers touches inside a view's bounds, and the items sit well above the
- * bar. Each item flies out from the Mic, and an ✕ takes the Mic's place.
+ * bar. Each item springs out from the Mic, middle one first, and a close
+ * button takes the Mic's place.
  */
 export const RadialMenu: React.FC<RadialMenuProps> = ({
   visible,
@@ -41,30 +48,88 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({
 }) => {
   const { colors } = useTheme();
   const themed = useThemedStyles(getThemedStyles);
-  const progress = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(visible);
   const [area, setArea] = useState<{ width: number; height: number } | null>(null);
 
+  /** Backdrop, and the close button that replaces the Mic. */
+  const chrome = useRef(new Animated.Value(0)).current;
+  /**
+   * One value per item, 0 closed to 1 open. Rebuilt when the menu's shape
+   * changes, which only happens between opens as the shell swaps modes.
+   */
+  const itemAnims = useMemo(
+    () => items.map(() => new Animated.Value(0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items.length]
+  );
+  /** Kept apart from the fly-out so a highlight can grow and shrink on its own. */
+  const highlights = useMemo(
+    () => items.map(() => new Animated.Value(0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items.length]
+  );
+
   useEffect(() => {
+    // Held so the next run — or an unmount — can stop it. Without that, the
+    // staggered springs keep firing on timers after the menu has gone.
+    let animation: Animated.CompositeAnimation;
     if (visible) {
       setMounted(true);
-      Animated.timing(progress, {
-        toValue: 1,
-        duration: 260,
-        easing: Easing.out(Easing.back(1.4)),
+      const middle = (itemAnims.length - 1) / 2;
+      animation = Animated.parallel([
+        Animated.timing(chrome, {
+          toValue: 1,
+          duration: 170,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        ...itemAnims.map((value, index) =>
+          Animated.sequence([
+            Animated.delay(Math.round(Math.abs(index - middle) * STAGGER_MS)),
+            Animated.spring(value, {
+              toValue: 1,
+              friction: 6.5,
+              tension: 78,
+              useNativeDriver: true,
+            }),
+          ])
+        ),
+      ]);
+      animation.start();
+    } else {
+      animation = Animated.parallel([
+        Animated.timing(chrome, {
+          toValue: 0,
+          duration: 130,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+        ...itemAnims.map((value) =>
+          Animated.timing(value, {
+            toValue: 0,
+            duration: 130,
+            easing: Easing.in(Easing.quad),
+            useNativeDriver: true,
+          })
+        ),
+      ]);
+      animation.start(({ finished }) => {
+        if (finished) setMounted(false);
+      });
+    }
+    return () => animation.stop();
+  }, [visible, chrome, itemAnims]);
+
+  useEffect(() => {
+    highlights.forEach((value, index) => {
+      Animated.spring(value, {
+        toValue: index === highlightedIndex ? 1 : 0,
+        friction: 7,
+        tension: 140,
         useNativeDriver: true,
       }).start();
-      return;
-    }
-    Animated.timing(progress, {
-      toValue: 0,
-      duration: 140,
-      easing: Easing.in(Easing.quad),
-      useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (finished) setMounted(false);
     });
-  }, [visible, progress]);
+  }, [highlightedIndex, highlights]);
 
   if (!mounted) return null;
 
@@ -77,15 +142,10 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({
 
   const anchorX = area ? area.width / 2 : 0;
   const anchorY = area ? area.height - MIC_CENTER_FROM_BOTTOM : 0;
-  const backdropOpacity = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
 
   return (
     <View style={StyleSheet.absoluteFill} onLayout={onLayout} testID="radial-menu">
-      <Animated.View style={[StyleSheet.absoluteFill, themed.backdrop, { opacity: backdropOpacity }]}>
+      <Animated.View style={[StyleSheet.absoluteFill, themed.backdrop, { opacity: chrome }]}>
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onDismiss}
@@ -97,9 +157,13 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({
       {area &&
         items.map((item, index) => {
           const position = layout.items[index];
-          if (!position) return null;
-          const start = Math.min(index * STAGGER, 0.4);
-          const range = [start, start + 0.6];
+          const progress = itemAnims[index];
+          if (!position || !progress) return null;
+          // The column is kept on screen, and the bubble nudged back by however
+          // far the column had to move, so the bubble still sits exactly where
+          // the geometry — and so a sliding finger — expects it.
+          const wantedLeft = anchorX + position.x - ITEM_WIDTH / 2;
+          const left = clamp(wantedLeft, EDGE_PADDING, area.width - ITEM_WIDTH - EDGE_PADDING);
           const highlighted = index === highlightedIndex;
           const Icon = item.icon;
           return (
@@ -108,29 +172,32 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({
               style={[
                 styles.item,
                 {
-                  left: anchorX + position.x - ITEM_WIDTH / 2,
+                  left,
                   top: anchorY + position.y - BUBBLE_SIZE / 2,
                   opacity: progress.interpolate({
-                    inputRange: range,
-                    outputRange: [0, 1],
+                    inputRange: [0, 0.4, 1],
+                    outputRange: [0, 1, 1],
                     extrapolate: 'clamp',
                   }),
                   transform: [
                     {
                       translateX: progress.interpolate({
-                        inputRange: range,
-                        outputRange: [-position.x, 0],
-                        extrapolateLeft: 'clamp',
+                        inputRange: [0, 1],
+                        outputRange: [wantedLeft - left - position.x, 0],
                       }),
                     },
                     {
                       translateY: progress.interpolate({
-                        inputRange: range,
+                        inputRange: [0, 1],
                         outputRange: [-position.y, 0],
-                        extrapolateLeft: 'clamp',
                       }),
                     },
-                    { scale: highlighted ? 1.14 : 1 },
+                    {
+                      scale: progress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.3, 1],
+                      }),
+                    },
                   ],
                 },
               ]}
@@ -143,12 +210,23 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({
                 accessibilityState={{ selected: highlighted }}
                 testID={`radial-item-${item.key}`}
               >
-                <View
+                <Animated.View
                   style={[
                     styles.bubble,
                     Shadows.card,
                     themed.bubble,
                     highlighted && themed.bubbleActive,
+                    {
+                      marginLeft: wantedLeft - left,
+                      transform: [
+                        {
+                          scale: highlights[index].interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [1, 1.16],
+                          }),
+                        },
+                      ],
+                    },
                   ]}
                 >
                   <Icon size={24} color={highlighted ? colors.white : colors.textPrimary} />
@@ -157,8 +235,10 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({
                       <Lock size={10} color={colors.white} />
                     </View>
                   ) : null}
-                </View>
-                <View style={[styles.labelChip, themed.labelChip, highlighted && themed.labelChipActive]}>
+                </Animated.View>
+                <View
+                  style={[styles.labelChip, themed.labelChip, highlighted && themed.labelChipActive]}
+                >
                   <Text
                     style={[styles.label, themed.label, highlighted && themed.labelActive]}
                     numberOfLines={1}
@@ -180,7 +260,16 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({
             {
               left: anchorX - Layout.micButtonSize / 2,
               top: anchorY - Layout.micButtonSize / 2,
-              opacity: backdropOpacity,
+              opacity: chrome,
+              transform: [
+                { scale: chrome.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
+                {
+                  rotate: chrome.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['-90deg', '0deg'],
+                  }),
+                },
+              ],
             },
           ]}
         >
@@ -217,6 +306,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   itemPress: {
+    width: ITEM_WIDTH,
     alignItems: 'center',
   },
   bubble: {
@@ -239,9 +329,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   labelChip: {
-    marginTop: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
     borderRadius: Layout.borderRadiusPill,
     maxWidth: ITEM_WIDTH,
   },

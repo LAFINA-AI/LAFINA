@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  Image,
 } from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { preferencesStore, tasksStore, notesStore, userStore } from '../../storage';
@@ -14,13 +15,15 @@ import type { User } from '../../storage';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import type { ThemeColors } from '../contexts/ThemeContext';
+import { APP_VERSION } from '../../appVersion';
 import { GUEST_USER_ID } from '../../constants';
 import { SvgXml } from 'react-native-svg';
 import { ARC_SCREEN_XML } from '../../assets/arc_screen_xml';
-import { Pencil } from 'lucide-react-native';
+import { Camera } from 'lucide-react-native';
 import { authService } from '../../cloud/authService';
 
 // Profile sub-components
+import { avatarSource, pickAvatarImage, removeAvatarImage } from '../components/profile/avatarFile';
 import { ProfileStats } from '../components/profile/ProfileStats';
 import { SettingItem } from '../components/profile/SettingItem';
 import { PrivacyModal } from '../components/profile/PrivacyModal';
@@ -88,6 +91,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const themed = useThemedStyles((c) => getProfileThemedStyles(c));
 
   const isGuest = userId === GUEST_USER_ID;
+  const photoSource = avatarSource(currentUser?.avatarUri ?? null);
 
   useEffect(() => {
     loadStats();
@@ -170,8 +174,49 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     setVoiceCommandsCount(voiceNotes + voiceTasks + 3);
   };
 
+  const choosePhoto = async () => {
+    const result = await pickAvatarImage();
+    if (result.status === 'cancelled') return;
+    if (result.status === 'failed') {
+      Alert.alert('Profile Photo', 'That image could not be used. Please try another one.');
+      return;
+    }
+    const previous = currentUser?.avatarUri ?? null;
+    userStore.setAvatarUri(userId, result.uri);
+    setCurrentUser(userStore.getUserById(userId));
+    // Only once the new photo is saved, so a failed write never leaves the
+    // profile pointing at a file that has already been deleted.
+    await removeAvatarImage(previous);
+    onRefresh();
+  };
+
+  const clearPhoto = async () => {
+    const previous = currentUser?.avatarUri ?? null;
+    userStore.setAvatarUri(userId, null);
+    setCurrentUser(userStore.getUserById(userId));
+    await removeAvatarImage(previous);
+    onRefresh();
+  };
+
   const handleEditProfile = () => {
-    Alert.alert('Edit Profile', 'Profile editor is not available in offline-first mode.');
+    const hasPhoto = Boolean(currentUser?.avatarUri);
+    Alert.alert(
+      'Profile Photo',
+      hasPhoto ? 'Change or remove your profile photo.' : 'Pick a photo from this device.',
+      [
+        { text: hasPhoto ? 'Choose New Photo' : 'Choose Photo', onPress: () => void choosePhoto() },
+        ...(hasPhoto
+          ? [
+              {
+                text: 'Remove Photo',
+                style: 'destructive' as const,
+                onPress: () => void clearPhoto(),
+              },
+            ]
+          : []),
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    );
   };
 
   const handleClearData = () => {
@@ -256,13 +301,28 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       {/* Avatar Section */}
       <View style={styles.avatarSection}>
         <View style={styles.avatarWrapper}>
-          <View style={[styles.avatarCircle, { backgroundColor: colors.blue }]}>
-            <Text style={[styles.avatarInitials, { color: colors.white }]}>
-              {getInitials(currentUser?.username)}
-            </Text>
-          </View>
-          <TouchableOpacity onPress={handleEditProfile} style={[styles.editBadge, Shadows.card]}>
-            <Pencil size={16} color={colors.textPrimary} />
+          <TouchableOpacity
+            onPress={handleEditProfile}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={photoSource ? 'Change profile photo' : 'Add a profile photo'}
+            style={[styles.avatarCircle, { backgroundColor: colors.blue }]}
+          >
+            {photoSource ? (
+              <Image source={photoSource} style={styles.avatarImage} resizeMode="cover" />
+            ) : (
+              <Text style={[styles.avatarInitials, { color: colors.white }]}>
+                {getInitials(currentUser?.username)}
+              </Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleEditProfile}
+            style={[styles.editBadge, Shadows.card]}
+            accessibilityRole="button"
+            accessibilityLabel={photoSource ? 'Change profile photo' : 'Add a profile photo'}
+          >
+            <Camera size={16} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
         <Text style={[styles.userName, themed.userName]}>
@@ -372,7 +432,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <SettingItem
               text="App Version"
               type="value"
-              valueText="1.0.0 (Beta-Offline)"
+              valueText={`${APP_VERSION} (Mobile)`}
             />
             <View style={[styles.settingDivider, themed.settingDivider]} />
             <SettingItem
@@ -459,7 +519,12 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     ...Shadows.card,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   avatarInitials: {
     fontSize: 40,
