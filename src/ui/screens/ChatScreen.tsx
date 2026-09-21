@@ -101,7 +101,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const flatListRef = useRef<FlatList>(null);
 
   const { colors } = useTheme();
-  const themed = useThemedStyles((c) => getChatThemedStyles(c));
+  const themed = useThemedStyles(getChatThemedStyles);
   const studentPro = isStudentProAccount(userId);
 
   // Another account's switch and picked format do not carry over.

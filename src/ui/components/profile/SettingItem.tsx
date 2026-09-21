@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, Text, Switch, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import { Fonts } from '../../theme';
+import { Fonts, useThemedStyles } from '../../theme';
 import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../contexts/ThemeContext';
 
 interface SettingItemProps {
   text: string;
@@ -23,7 +24,7 @@ export const SettingItem: React.FC<SettingItemProps> = ({
   isDestructive = false,
 }) => {
   const { colors } = useTheme();
-  const themed = useThemedStyles();
+  const themed = useThemedStyles(getThemedStyles);
 
   if (type === 'toggle') {
     return (
@@ -111,17 +112,14 @@ const styles = StyleSheet.create({
   },
 });
 
-function useThemedStyles() {
-  const { colors } = useTheme();
-  return {
-    settingText: {
-      color: colors.textPrimary,
-    },
-    settingValue: {
-      color: colors.textSecondary,
-    },
-    linkArrow: {
-      color: colors.textMuted,
-    },
-  };
-}
+const getThemedStyles = (colors: ThemeColors) => ({
+  settingText: {
+    color: colors.textPrimary,
+  },
+  settingValue: {
+    color: colors.textSecondary,
+  },
+  linkArrow: {
+    color: colors.textMuted,
+  },
+});

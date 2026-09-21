@@ -79,7 +79,7 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
   micBadge,
 }) => {
   const { colors } = useTheme();
-  const themed = useThemedStyles((c) => getTabThemedStyles(c));
+  const themed = useThemedStyles(getTabThemedStyles);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const tracking = useRef(false);
 
@@ -238,7 +238,6 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
               else if (event.nativeEvent.actionName === 'activate') onMicPress();
             }}
           >
-            <View style={styles.micHighlight} />
             <Mic size={28} color={colors.white} />
             {micBadge ? (
               <View style={[styles.micBadge, themed.micBadge]} pointerEvents="none">
@@ -335,14 +334,5 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: Fonts.heading,
     fontWeight: 'bold',
-  },
-  micHighlight: {
-    position: 'absolute',
-    top: 2,
-    left: 4,
-    right: 4,
-    height: '40%',
-    borderRadius: Layout.micButtonSize / 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
 });

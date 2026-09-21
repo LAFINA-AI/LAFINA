@@ -52,7 +52,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const { colors } = useTheme();
-  const themed = useThemedStyles((c) => getThemedStyles(c));
+  const themed = useThemedStyles(getThemedStyles);
 
   const completeRegistration = (userId: string, message?: string) => {
     if (message) {

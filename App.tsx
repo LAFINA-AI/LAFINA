@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import type { AlertButton } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Fonts } from './src/ui/theme';
+import { Fonts, useThemedStyles } from './src/ui/theme';
 import {
   initDatabase,
   remindersStore,
@@ -43,6 +43,7 @@ import { PomodoroProvider, useOptionalPomodoro } from './src/ui/contexts/Pomodor
 import { MeetingsProvider, useMeetingRecorderIndicator } from './src/ui/contexts/MeetingsContext';
 import { hasProEntitlement } from './src/cloud';
 import { ThemeProvider, useTheme } from './src/ui/contexts/ThemeContext';
+import type { ThemeColors } from './src/ui/contexts/ThemeContext';
 import {
   consumePendingNativeCall,
   getReminderPermissionStatus,
@@ -154,7 +155,7 @@ function AppContent({
   const [startupReady, setStartupReady] = useState(false);
 
   const { colors } = useTheme();
-  const themed = useThemedStyles();
+  const themed = useThemedStyles(getThemedStyles);
 
   const applyCapabilityState = (uid: string, forceResetTab = false) => {
     const cached = businessStore.getCachedCapabilities(uid);
@@ -822,26 +823,23 @@ function AppContent({
   );
 }
 
-function useThemedStyles() {
-  const { colors } = useTheme();
-  return {
-    safeContainer: {
-      backgroundColor: colors.background,
-    },
-    errorScreen: {
-      backgroundColor: colors.background,
-    },
-    errorText: {
-      color: colors.textPrimary,
-    },
-    text: {
-      color: colors.textPrimary,
-    },
-    mutedText: {
-      color: colors.textMuted,
-    },
-  };
-}
+const getThemedStyles = (colors: ThemeColors) => ({
+  safeContainer: {
+    backgroundColor: colors.background,
+  },
+  errorScreen: {
+    backgroundColor: colors.background,
+  },
+  errorText: {
+    color: colors.textPrimary,
+  },
+  text: {
+    color: colors.textPrimary,
+  },
+  mutedText: {
+    color: colors.textMuted,
+  },
+});
 
 function App() {
   const [userId, setUserId] = useState<string | null>(null);

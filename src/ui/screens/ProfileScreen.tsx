@@ -88,7 +88,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
 
   const { colors, isDarkMode, toggleTheme } = useTheme();
-  const themed = useThemedStyles((c) => getProfileThemedStyles(c));
+  const themed = useThemedStyles(getProfileThemedStyles);
 
   const isGuest = userId === GUEST_USER_ID;
   const photoSource = avatarSource(currentUser?.avatarUri ?? null);
@@ -306,7 +306,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             activeOpacity={0.85}
             accessibilityRole="button"
             accessibilityLabel={photoSource ? 'Change profile photo' : 'Add a profile photo'}
-            style={[styles.avatarCircle, { backgroundColor: colors.blue }]}
+            style={[styles.avatarCircle, themed.avatarCircle, { backgroundColor: colors.blue }]}
           >
             {photoSource ? (
               <Image source={photoSource} style={styles.avatarImage} resizeMode="cover" />
@@ -318,7 +318,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleEditProfile}
-            style={[styles.editBadge, Shadows.card]}
+            style={[styles.editBadge, themed.editBadge, Shadows.card]}
             accessibilityRole="button"
             accessibilityLabel={photoSource ? 'Change profile photo' : 'Add a profile photo'}
           >
@@ -486,6 +486,11 @@ const getProfileThemedStyles = (colors: ThemeColors) => ({
   settingText: { color: colors.textPrimary },
   settingValue: { color: colors.textSecondary },
   settingDivider: { backgroundColor: colors.divider },
+  // The ring reads as a cut-out in the header, and the badge as a small card
+  // sitting on it — both follow the surface, or the camera on the badge is
+  // drawn white on white in dark mode and disappears.
+  avatarCircle: { borderColor: colors.cardBg },
+  editBadge: { backgroundColor: colors.cardBg, borderColor: colors.border },
 });
 
 const styles = StyleSheet.create({
@@ -516,7 +521,6 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 60,
     borderWidth: 4,
-    borderColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -538,11 +542,9 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: '#F0F0F0',
   },
   mainContent: {
     paddingHorizontal: 16,

@@ -66,7 +66,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   const speechCaptureRef = useRef<OfflineSpeechCaptureHandle | null>(null);
 
   const { colors } = useTheme();
-  const themed = useThemedStyles((c, d) => getVoiceThemedStyles(c, d));
+  const themed = useThemedStyles(getVoiceThemedStyles);
 
   const ensureMicrophonePermission = useCallback(async (): Promise<boolean> => {
     try {

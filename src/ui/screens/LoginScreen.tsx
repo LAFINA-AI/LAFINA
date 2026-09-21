@@ -40,7 +40,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [rememberMe, setRememberMe] = useState(false);
 
   const { colors } = useTheme();
-  const themed = useThemedStyles((c) => getLoginThemedStyles(c));
+  const themed = useThemedStyles(getLoginThemedStyles);
 
   // Load saved credentials on mount [Fix #9]
   useEffect(() => {

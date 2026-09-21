@@ -1,8 +1,9 @@
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { FilePlus2, Lock, Send, X } from 'lucide-react-native';
-import { Colors, Fonts, Shadows } from '../../theme';
+import { Colors, Fonts, Shadows, useThemedStyles } from '../../theme';
 import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../contexts/ThemeContext';
 
 interface ChatInputProps {
   inputText: string;
@@ -31,7 +32,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   isSending = false,
 }) => {
   const { colors } = useTheme();
-  const themed = useThemedStyles();
+  const themed = useThemedStyles(getThemedStyles);
 
   return (
     <View style={[
@@ -162,27 +163,24 @@ const styles = StyleSheet.create({
   },
 });
 
-function useThemedStyles() {
-  const { colors } = useTheme();
-  return {
-    inputContainer: {
-      backgroundColor: colors.cardBg,
-      borderTopColor: colors.border,
-    },
-    input: {
-      borderColor: colors.border,
-      backgroundColor: colors.inputBg,
-      color: colors.textPrimary,
-    },
-    chip: {
-      borderColor: colors.red,
-      backgroundColor: colors.inputBg,
-    },
-    chipText: {
-      color: colors.textPrimary,
-    },
-    lockBadge: {
-      backgroundColor: colors.textMuted,
-    },
-  };
-}
+const getThemedStyles = (colors: ThemeColors) => ({
+  inputContainer: {
+    backgroundColor: colors.cardBg,
+    borderTopColor: colors.border,
+  },
+  input: {
+    borderColor: colors.border,
+    backgroundColor: colors.inputBg,
+    color: colors.textPrimary,
+  },
+  chip: {
+    borderColor: colors.red,
+    backgroundColor: colors.inputBg,
+  },
+  chipText: {
+    color: colors.textPrimary,
+  },
+  lockBadge: {
+    backgroundColor: colors.textMuted,
+  },
+});

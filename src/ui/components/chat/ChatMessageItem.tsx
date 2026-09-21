@@ -1,8 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { BookOpen, FileSpreadsheet, FileText, Presentation, Share2 } from 'lucide-react-native';
-import { Colors, Fonts, Shadows } from '../../theme';
+import { Colors, Fonts, Shadows, useThemedStyles } from '../../theme';
 import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../contexts/ThemeContext';
 import type { ChatAttachment, ChatMessage } from '../../../storage/chatStore';
 import { DOCUMENT_FORMATS, formatFileSize, isDocumentFormat } from '../../../skills/documentSkill';
 import type { DocumentFormat } from '../../../skills/documentSkill';
@@ -24,7 +25,7 @@ interface ChatMessageItemProps {
 export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ item, handbookNote, onOpenAttachment }) => {
   const isUser = item.sender === 'user';
   const { colors } = useTheme();
-  const themed = useThemedStyles();
+  const themed = useThemedStyles(getThemedStyles);
   const attachment = item.attachment;
   const format = attachment && isDocumentFormat(attachment.format) ? attachment.format : null;
   const AttachmentIcon = format ? FORMAT_ICONS[format] : FileText;
@@ -179,28 +180,25 @@ const styles = StyleSheet.create({
   },
 });
 
-function useThemedStyles() {
-  const { colors } = useTheme();
-  return {
-    assistantBubble: {
-      backgroundColor: colors.cardBg,
-      borderColor: colors.border,
-    },
-    assistantText: {
-      color: colors.textPrimary,
-    },
-    assistantTime: {
-      color: colors.textMuted,
-    },
-    fileCard: {
-      backgroundColor: colors.inputBg,
-      borderColor: colors.border,
-    },
-    handbookChip: {
-      borderColor: colors.blue,
-    },
-    handbookText: {
-      color: colors.blue,
-    },
-  };
-}
+const getThemedStyles = (colors: ThemeColors) => ({
+  assistantBubble: {
+    backgroundColor: colors.cardBg,
+    borderColor: colors.border,
+  },
+  assistantText: {
+    color: colors.textPrimary,
+  },
+  assistantTime: {
+    color: colors.textMuted,
+  },
+  fileCard: {
+    backgroundColor: colors.inputBg,
+    borderColor: colors.border,
+  },
+  handbookChip: {
+    borderColor: colors.blue,
+  },
+  handbookText: {
+    color: colors.blue,
+  },
+});

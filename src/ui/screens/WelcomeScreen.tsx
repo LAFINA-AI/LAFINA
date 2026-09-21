@@ -25,7 +25,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onNavigateToRegister,
 }) => {
   const { colors } = useTheme();
-  const themed = useThemedStyles((c) => getWelcomeThemedStyles(c));
+  const themed = useThemedStyles(getWelcomeThemedStyles);
 
   const handleGetStarted = () => {
     const guest = userStore.createGuestUser();
