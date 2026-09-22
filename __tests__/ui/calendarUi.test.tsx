@@ -106,7 +106,6 @@ const createCalendarData = (): ReturnType<typeof useCalendarData> => ({
   loadBlocks: jest.fn(),
   loadScheduleData: jest.fn(),
   getOverdueTasks: jest.fn(() => []),
-  getChronologicalFeed: jest.fn(() => []),
   batches: [],
   visibilityMap: {},
   username: 'Student',
@@ -210,6 +209,25 @@ describe('Calendar UI', () => {
       'Export calendar',
       'Manage calendars',
     ]));
+
+    ReactTestRenderer.act(() => renderer.unmount());
+  });
+
+  it('offers Month and Week only, now that the day timeline lives inside Week', () => {
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+
+    ReactTestRenderer.act(() => {
+      renderer = ReactTestRenderer.create(
+        <CalendarScreen userId="user-1" refreshTrigger={0} onRefresh={jest.fn()} />,
+      );
+    });
+
+    const viewButtons = renderer.root
+      .findAll(node => typeof node.props.accessibilityLabel === 'string' && / view$/.test(node.props.accessibilityLabel) && typeof node.props.onPress === 'function')
+      .map(node => node.props.accessibilityLabel as string);
+
+    expect([...new Set(viewButtons)]).toEqual(['Month view', 'Week view']);
+    expect(getRenderedText(renderer)).not.toContain('Day');
 
     ReactTestRenderer.act(() => renderer.unmount());
   });

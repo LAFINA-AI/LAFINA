@@ -30,6 +30,8 @@ export interface AccountFlowResult {
   cloudStatus?: AccountFlowStatus;
   /** True when the local account was just recreated from the cloud one. */
   restoredFromCloud?: boolean;
+  /** Why the server could not be reached or failed, when that is the outcome. */
+  detail?: string;
 }
 
 interface RegistrationInput {
@@ -50,9 +52,12 @@ const mapCloudFailure = (
       };
     case 'server_unavailable':
     case 'server_error':
+      // The cloud client says why (DNS not answering, no response, a server
+      // error with its detail); a fixed "could not be reached" hid that.
       return {
         status: 'server_unavailable',
-        message: 'FastAPI could not be reached. The cloud account was not linked.',
+        message: `${fallbackMessage} The cloud account was not linked.`,
+        detail: fallbackMessage,
       };
     case 'account_disabled':
       return {
@@ -303,6 +308,9 @@ const INCORRECT_CREDENTIALS_OFFLINE =
 const RESTORE_UNREACHABLE =
   "LAFINA couldn't reach the server to check this sign-in. Try again in a moment.";
 
+const restoreUnreachable = (detail?: string): string =>
+  detail ? `LAFINA couldn't reach the server to check this sign-in. ${detail}` : RESTORE_UNREACHABLE;
+
 const restoreAttempts = new Map<string, Promise<AccountFlowResult>>();
 
 const runCloudRestore = async (email: string, password: string): Promise<AccountFlowResult> => {
@@ -319,8 +327,11 @@ const runCloudRestore = async (email: string, password: string): Promise<Account
     if (cloudAuth.status === 'incorrect_cloud_password') {
       return { status: 'incorrect_local_password', message: INCORRECT_CREDENTIALS };
     }
-    if (cloudAuth.status === 'offline' || cloudAuth.status === 'server_unavailable') {
+    if (cloudAuth.status === 'offline') {
       return { status: cloudAuth.status, message: RESTORE_UNREACHABLE };
+    }
+    if (cloudAuth.status === 'server_unavailable') {
+      return { status: cloudAuth.status, message: restoreUnreachable(cloudAuth.detail), detail: cloudAuth.detail };
     }
     return cloudAuth;
   }

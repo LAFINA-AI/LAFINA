@@ -91,6 +91,13 @@ const createTheme = (isDarkMode: boolean) => ({
     bannerBg: '#FCE4D6',
     noteHighlightBg: '#FFF3A3',
     noteHighlightText: '#1A1A1A',
+    proGradientStart: '#FF4D00',
+    proGradientMid: '#C2006A',
+    proGradientEnd: '#6B00C9',
+    authGradientYellow: '#F8E81C',
+    authGradientCrimson: '#D8163F',
+    authGradientBlue: '#2A10F0',
+    authVeil: 'rgba(255, 255, 255, 0.12)',
   },
 });
 

@@ -54,6 +54,7 @@ import {
 import type { NativeCallAction, NativeCallTrigger } from './src/scheduler';
 import { syncWorker } from './src/sync/syncWorker';
 import { createSyncScheduler } from './src/sync/syncScheduler';
+import { appUpdater } from './src/updates';
 import { businessService } from './src/cloud/businessService';
 import type {
   BusinessMemberData,
@@ -71,6 +72,7 @@ import { WelcomeScreen } from './src/ui/screens/WelcomeScreen';
 import { LoginScreen } from './src/ui/screens/LoginScreen';
 import { RegisterScreen } from './src/ui/screens/RegisterScreen';
 import { OnboardingScreen } from './src/ui/screens/OnboardingScreen';
+import { AuthBackdrop } from './src/ui/components/auth/AuthBackdrop';
 import {
   IncomingCallScreen,
   ManagerOverviewScreen,
@@ -340,6 +342,10 @@ function AppContent({
         // The splash holds the floor from here: it finishes what it is saying
         // and then hands over, rather than being cut off after a fixed wait.
         setStartupReady(true);
+
+        // Startup made it this far, so a just-installed update is kept rather
+        // than undone on the next start. Then one quiet look for a newer one.
+        void appUpdater.markLaunchSuccessful().then(() => appUpdater.check({ quiet: true }));
       } catch (error) {
         console.error('Failed application startup setup:', error);
         setIsLoading(false);
@@ -710,34 +716,31 @@ function AppContent({
     );
   }
 
-  // Render Welcome / Auth Flow
+  // Render Welcome / Auth Flow, all on one backdrop so the gradient carries on between them
   if (!userId) {
-    switch (authScreen) {
-      case 'welcome':
-        return (
+    return (
+      <AuthBackdrop>
+        {authScreen === 'welcome' && (
           <WelcomeScreen
             onGetStarted={handleGetStarted}
             onNavigateToLogin={() => setAuthScreen('login')}
             onNavigateToRegister={() => setAuthScreen('register')}
           />
-        );
-      case 'login':
-        return (
+        )}
+        {authScreen === 'login' && (
           <LoginScreen
             onLoginSuccess={handleLoginSuccess}
             onNavigateToRegister={() => setAuthScreen('register')}
           />
-        );
-      case 'register':
-        return (
+        )}
+        {authScreen === 'register' && (
           <RegisterScreen
             onRegisterSuccess={handleRegisterSuccess}
             onNavigateToLogin={() => setAuthScreen('login')}
           />
-        );
-      default:
-        return null;
-    }
+        )}
+      </AuthBackdrop>
+    );
   }
 
   // Render Onboarding Flow

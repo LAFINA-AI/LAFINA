@@ -1,14 +1,20 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { View, Text, Switch, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Fonts, useThemedStyles } from '../../theme';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../contexts/ThemeContext';
 
+/** Where a toggle was touched (pageX, pageY), or null when it changed without a touch. */
+export interface ToggleOrigin {
+  x: number;
+  y: number;
+}
+
 interface SettingItemProps {
   text: string;
   type?: 'toggle' | 'link' | 'value' | 'clickable';
   value?: boolean;
-  onValueChange?: (val: boolean) => void;
+  onValueChange?: (val: boolean, origin: ToggleOrigin | null) => void;
   valueText?: string;
   onPress?: () => void;
   isDestructive?: boolean;
@@ -25,17 +31,29 @@ export const SettingItem: React.FC<SettingItemProps> = ({
 }) => {
   const { colors } = useTheme();
   const themed = useThemedStyles(getThemedStyles);
+  const touchRef = useRef<ToggleOrigin | null>(null);
 
   if (type === 'toggle') {
     return (
       <View style={styles.settingItem}>
         <Text style={[styles.settingText, themed.settingText]}>{text}</Text>
-        <Switch
-          value={value}
-          onValueChange={onValueChange}
-          trackColor={{ false: '#767577', true: colors.red }}
-          thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
-        />
+        {/* The touch point, for effects that start where the switch was pressed (the theme reveal). */}
+        <View
+          onTouchStart={(event) => {
+            touchRef.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
+          }}
+        >
+          <Switch
+            value={value}
+            onValueChange={(next) => {
+              const origin = touchRef.current;
+              touchRef.current = null;
+              onValueChange?.(next, origin);
+            }}
+            trackColor={{ false: '#767577', true: colors.red }}
+            thumbColor={Platform.OS === 'android' ? '#FFF' : undefined}
+          />
+        </View>
       </View>
     );
   }

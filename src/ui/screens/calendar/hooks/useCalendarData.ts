@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ViewMode, CalendarData, FeedItem } from '../types';
+import { ViewMode, CalendarData } from '../types';
 import type { TimeBlock, Task, Event } from '../../../../storage';
 import { timeBlocksStore, tasksStore, userStore } from '../../../../storage';
 
@@ -26,7 +26,6 @@ interface UseCalendarDataOptions {
 
 export const useCalendarData = (options: UseCalendarDataOptions): CalendarData & {
   getOverdueTasks: () => Task[];
-  getChronologicalFeed: () => FeedItem[];
 } => {
   const { userId, refreshTrigger, onRefresh, propViewMode, propOnViewModeChange } = options;
 
@@ -90,13 +89,7 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
   }, [userId]);
 
   const getViewRange = useCallback((): { start: Date; end: Date } => {
-    if (viewMode === 'day') {
-      const start = new Date(selectedDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(selectedDate);
-      end.setHours(23, 59, 59, 999);
-      return { start, end };
-    } else if (viewMode === 'week') {
+    if (viewMode === 'week') {
       const start = new Date(selectedDate);
       start.setDate(selectedDate.getDate() - 3);
       start.setHours(0, 0, 0, 0);
@@ -440,17 +433,6 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
     }
   }, [userId, confirmBatchRemoval]);
 
-  const navigateDay = useCallback((direction: 'prev' | 'next') => {
-    const newDate = new Date(selectedDate);
-    if (direction === 'prev') {
-      newDate.setDate(newDate.getDate() - 1);
-    } else {
-      newDate.setDate(newDate.getDate() + 1);
-    }
-    setSelectedDate(newDate);
-    setCurrentDate(newDate);
-  }, [selectedDate]);
-
   const navigateWeek = useCallback((direction: 'prev' | 'next') => {
     const newDate = new Date(selectedDate);
     if (direction === 'prev') {
@@ -473,16 +455,14 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
   }, [currentDate]);
 
   const handlePrevPress = useCallback(() => {
-    if (viewMode === 'day') navigateDay('prev');
-    else if (viewMode === 'week') navigateWeek('prev');
+    if (viewMode === 'week') navigateWeek('prev');
     else navigateMonth('prev');
-  }, [viewMode, navigateDay, navigateWeek, navigateMonth]);
+  }, [viewMode, navigateWeek, navigateMonth]);
 
   const handleNextPress = useCallback(() => {
-    if (viewMode === 'day') navigateDay('next');
-    else if (viewMode === 'week') navigateWeek('next');
+    if (viewMode === 'week') navigateWeek('next');
     else navigateMonth('next');
-  }, [viewMode, navigateDay, navigateWeek, navigateMonth]);
+  }, [viewMode, navigateWeek, navigateMonth]);
 
   const handleGoToToday = useCallback(() => {
     const today = new Date();
@@ -493,7 +473,8 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
   const handleDayTap = useCallback((dayNum: number) => {
     const targetDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), dayNum);
     setSelectedDate(targetDate);
-    setViewMode('day');
+    // The week view shows the tapped day's timeline under its strip.
+    setViewMode('week');
   }, [currentDate, setViewMode]);
 
   const formatLocalDate = (d: Date): string => {
@@ -508,33 +489,6 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
     const todayStr = formatLocalDate(new Date());
     return tasksData.filter((t) => t.dueDate && t.dueDate < todayStr && !t.isCompleted);
   }, [userId]);
-
-  const getChronologicalFeed = useCallback((): FeedItem[] => {
-    const feed: FeedItem[] = [];
-    const dateStr = formatLocalDate(selectedDate);
-    const dayBlocks = blocks.filter((b) => b.date === dateStr);
-
-    tasks.forEach((t) => {
-      feed.push({
-        type: 'task', id: t.id, title: t.title,
-        time: t.dueTime || 'All Day', item: t,
-      });
-    });
-    events.forEach((e) => {
-      feed.push({
-        type: 'event', id: e.id, title: e.title,
-        time: e.startTime, endTime: e.endTime, item: e,
-      });
-    });
-    dayBlocks.forEach((b) => {
-      feed.push({
-        type: 'block', id: b.id, title: b.title,
-        time: b.startTime, endTime: b.endTime, item: b,
-      });
-    });
-
-    return feed.sort((a, b) => a.time.localeCompare(b.time));
-  }, [selectedDate, blocks, tasks, events]);
 
   return {
     currentDate,
@@ -560,7 +514,6 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
     loadBlocks,
     loadScheduleData,
     getOverdueTasks,
-    getChronologicalFeed,
 
     // Visibility and Import/Export
     batches,

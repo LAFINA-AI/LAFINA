@@ -21,12 +21,15 @@ import { SvgXml } from 'react-native-svg';
 import { ARC_SCREEN_XML } from '../../assets/arc_screen_xml';
 import { Camera } from 'lucide-react-native';
 import { authService } from '../../cloud/authService';
+import { isStudentProAccount } from '../../cloud';
 
 // Profile sub-components
 import { avatarSource, pickAvatarImage, removeAvatarImage } from '../components/profile/avatarFile';
 import { ProfileStats } from '../components/profile/ProfileStats';
 import { SettingItem } from '../components/profile/SettingItem';
 import { PrivacyModal } from '../components/profile/PrivacyModal';
+import { StudentProTag } from '../components/profile/StudentProTag';
+import { AppUpdateItem } from '../components/profile/AppUpdateItem';
 import { PreferencesSettingsScreen } from './PreferencesSettingsScreen';
 
 function getInitials(username: string | null | undefined): string {
@@ -92,6 +95,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
   const isGuest = userId === GUEST_USER_ID;
   const photoSource = avatarSource(currentUser?.avatarUri ?? null);
+  // Read on every render with the user above: a sign-in that upgrades the
+  // plan reloads `currentUser`, and the tag follows without its own state.
+  const studentPro = currentUser ? isStudentProAccount(userId) : false;
 
   useEffect(() => {
     loadStats();
@@ -325,9 +331,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <Camera size={16} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.userName, themed.userName]}>
-          {currentUser?.username || 'Student'}
-        </Text>
+        <View style={styles.nameRow}>
+          <Text style={[styles.userName, themed.userName]} numberOfLines={1}>
+            {currentUser?.username || 'Student'}
+          </Text>
+          {studentPro && <StudentProTag />}
+        </View>
         <Text style={[styles.userEmail, themed.userEmail]}>
           {currentUser?.email || 'No email set'}
         </Text>
@@ -411,7 +420,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
               text="Dark Mode"
               type="toggle"
               value={isDarkMode}
-              onValueChange={toggleTheme}
+              onValueChange={(_enabled, origin) => toggleTheme(origin)}
             />
           </View>
 
@@ -434,6 +443,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
               type="value"
               valueText={`${APP_VERSION} (Mobile)`}
             />
+            <View style={[styles.settingDivider, themed.settingDivider]} />
+            <AppUpdateItem />
             <View style={[styles.settingDivider, themed.settingDivider]} />
             <SettingItem
               text="Privacy Policy"
@@ -550,7 +561,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    maxWidth: '100%',
+    paddingHorizontal: 24,
+  },
   userName: {
+    flexShrink: 1,
     fontSize: 18,
     fontFamily: Fonts.heading,
     fontWeight: 'bold',

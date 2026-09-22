@@ -38,6 +38,15 @@
         </intent-filter>
       </activity>
 
+      <!-- Restarts the app after an in-app update; see LafinaRestartActivity. -->
+      <activity
+        android:name=".LafinaRestartActivity"
+        android:process=":restart"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar"
+        android:excludeFromRecents="true"
+        android:noHistory="true"
+        android:exported="false" />
+
       <receiver
         android:name=".LafinaReminderReceiver"
         android:enabled="true"

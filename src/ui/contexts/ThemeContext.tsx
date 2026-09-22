@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useColorScheme } from 'react-native';
 import { userStore } from '../../storage';
 import { Colors } from '../theme/colors';
+import { captureForReveal, isThemeRevealAvailable, revealNewTheme } from '../theme/themeReveal';
+import type { ThemeRevealOrigin } from '../theme/themeReveal';
 
 export interface ThemeColors {
   // Core surfaces
@@ -54,6 +56,18 @@ export interface ThemeColors {
   // Highlighted words inside a note, matching the desktop editor's marker pen
   noteHighlightBg: string;
   noteHighlightText: string;
+
+  // The brand gradient behind the Student Pro tag, the same in both themes
+  proGradientStart: string;
+  proGradientMid: string;
+  proGradientEnd: string;
+
+  // The sign-in backdrop: the logo's own colours (yellow, crimson, blue), as on
+  // the desktop app, deepened for dark mode, and a veil that tames the extremes
+  authGradientYellow: string;
+  authGradientCrimson: string;
+  authGradientBlue: string;
+  authVeil: string;
 }
 
 const lightColors: ThemeColors = {
@@ -84,6 +98,13 @@ const lightColors: ThemeColors = {
   bannerBg: '#FCE4D6',
   noteHighlightBg: '#FFF3A3',
   noteHighlightText: Colors.textDark,
+  proGradientStart: Colors.gradientRed,
+  proGradientMid: Colors.gradientMagenta,
+  proGradientEnd: Colors.gradientPurple,
+  authGradientYellow: '#F8E81C',
+  authGradientCrimson: '#D8163F',
+  authGradientBlue: '#2A10F0',
+  authVeil: 'rgba(255, 255, 255, 0.12)',
 };
 
 const darkColors: ThemeColors = {
@@ -114,12 +135,21 @@ const darkColors: ThemeColors = {
   bannerBg: '#2C1B18',
   noteHighlightBg: '#6B5D1F',
   noteHighlightText: Colors.textLight,
+  proGradientStart: Colors.gradientRed,
+  proGradientMid: Colors.gradientMagenta,
+  proGradientEnd: Colors.gradientPurple,
+  // Plain yellow turns olive when darkened, so gold stands in for it.
+  authGradientYellow: '#E8A812',
+  authGradientCrimson: '#B80E36',
+  authGradientBlue: '#2410C8',
+  authVeil: 'rgba(10, 6, 28, 0.22)',
 };
 
 interface ThemeContextType {
   isDarkMode: boolean;
   colors: ThemeColors;
-  toggleTheme: () => void;
+  /** Switches light and dark, revealing the new theme in a circle from `origin` (a touch's pageX/pageY). */
+  toggleTheme: (origin?: ThemeRevealOrigin | null) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -150,15 +180,40 @@ export const ThemeProvider: React.FC<{ userId: string | null; children: React.Re
     [isDarkMode]
   );
 
-  const toggleTheme = useCallback(() => {
-    setIsDarkMode((prev) => {
-      const next = !prev;
-      if (userId) {
-        userStore.setDarkModeEnabled(userId, next);
-      }
-      return next;
+  /** Set while the old theme is being captured, and when the new one is waiting to be revealed. */
+  const capturingRef = useRef(false);
+  const revealPendingRef = useRef(false);
+
+  const toggleTheme = useCallback((origin?: ThemeRevealOrigin | null) => {
+    const flip = (): void =>
+      setIsDarkMode((prev) => {
+        const next = !prev;
+        if (userId) {
+          userStore.setDarkModeEnabled(userId, next);
+        }
+        return next;
+      });
+
+    if (!isThemeRevealAvailable()) {
+      flip();
+      return;
+    }
+    // A second toggle while the picture is being taken would change the theme under it twice.
+    if (capturingRef.current) return;
+    capturingRef.current = true;
+    void captureForReveal(origin).then((captured) => {
+      capturingRef.current = false;
+      revealPendingRef.current = captured;
+      flip();
     });
   }, [userId]);
+
+  // The new theme has committed; the native side waits two more frames before opening the circle.
+  useEffect(() => {
+    if (!revealPendingRef.current) return;
+    revealPendingRef.current = false;
+    revealNewTheme();
+  }, [isDarkMode]);
 
   const contextValue = useMemo(
     () => ({ isDarkMode, colors, toggleTheme }),

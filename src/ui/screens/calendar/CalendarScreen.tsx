@@ -14,7 +14,7 @@ import { getCategoryColor, registerCustomCategoryColor } from '../../theme/categ
 import { useCalendarData } from './hooks/useCalendarData';
 import { useTimeBlockModal } from './hooks/useTimeBlockModal';
 import { useScheduleItemModal } from './hooks/useScheduleItemModal';
-import { WeekView, MonthView, DayView, AddBlockModal, AddTaskEventModal } from './components';
+import { WeekView, MonthView, AddBlockModal, AddTaskEventModal } from './components';
 import { NoteEditor } from '../notes/components/NoteEditor';
 import { getHeaderTitle } from './utils/calendarHelpers';
 import { CalendarScreenProps, ViewMode } from './types';
@@ -151,7 +151,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Shared date header for month, week, and day views. */}
+      {/* Shared date header for the month and week views. */}
         <View style={styles.topHeaderRow}>
           <TouchableOpacity
             onPress={() => calendar.setShowDatePicker(true)}
@@ -223,7 +223,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       {/* View mode and clearly labeled local calendar actions. */}
       <View style={styles.subHeaderContainer}>
         <View style={[styles.toggleRow, { backgroundColor: colors.divider }]}>
-          {(['month', 'week', 'day'] as ViewMode[]).map((mode) => (
+          {(['month', 'week'] as ViewMode[]).map((mode) => (
             <TouchableOpacity
               key={mode}
               style={[
@@ -304,21 +304,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             onSwipeRight={calendar.handlePrevPress}
           />
         )}
-        {calendar.viewMode === 'day' && (
-          <DayView
-            targetDate={calendar.selectedDate}
-            blocks={calendar.blocks}
-            allTasks={calendar.allTasks}
-            allEvents={calendar.allEvents}
-            timeFormat24h={calendar.timeFormat24h}
-            onEditTask={(task) => scheduleModal.openEdit(task, 'task')}
-            onEditEvent={(event) => scheduleModal.openEdit(event, 'event')}
-            onEditBlock={(block) => blockModal.openEditBlock(block)}
-            onToggleTask={toggleTaskCompletion}
-            onAddBlock={blockModal.openNewBlock}
-            getCategoryColor={getCategoryColor}
-          />
-        )}
         {calendar.viewMode === 'week' && (
           <WeekView
             calendar={calendar}
@@ -330,6 +315,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             onEditEvent={(event) => scheduleModal.openEdit(event, 'event')}
             onEditBlock={(block) => blockModal.openEditBlock(block)}
             onToggleTask={toggleTaskCompletion}
+            onAddBlock={blockModal.openNewBlock}
+            getCategoryColor={getCategoryColor}
           />
         )}
       </View>

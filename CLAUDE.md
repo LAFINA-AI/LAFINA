@@ -32,11 +32,15 @@ src/skills/   (server AI calls: flashcards, study notes, meeting notes; no UI im
   └── src/cloud/    (skills call the LAFINA API through cloudClient)
 src/meetings/ (meeting pipeline: transcript cleanup, notes, error catalogue; no UI imports)
   └── src/skills/   (notes are written through meetingNotesSkill)
+src/updates/  (in-app updates: signed GitHub release check, download, restart; no UI imports)
 src/ui/       (React components, screens)
   └── src/storage/  (UI imports barrel from storage)
   └── src/utils/    (UI imports barrel from utils)
   └── src/ai/       (UI imports barrel from ai)
+  └── src/updates/  (UI imports barrel from updates)
 ```
+
+In-app updates replace the JS bundle only; see `docs/in-app-updates.md` for when a new APK is still required.
 
 ## Testing & Quality
 

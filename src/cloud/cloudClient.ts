@@ -40,9 +40,57 @@ const defaultApiBaseUrls: readonly string[] = apiBaseUrlsFor(
   typeof __DEV__ !== 'undefined' && __DEV__
 );
 let apiBaseUrls: readonly string[] = defaultApiBaseUrls;
-const androidConnectivityModule = NativeModules.AndroidConnectivityModule as
-  | { isOnline: () => Promise<boolean> }
-  | undefined;
+interface AndroidConnectivityModule {
+  isOnline: () => Promise<boolean>;
+  /** Absent in APKs built before the DNS check. */
+  canResolve?: (host: string) => Promise<boolean>;
+}
+
+const androidConnectivity = (): AndroidConnectivityModule | undefined =>
+  NativeModules.AndroidConnectivityModule as AndroidConnectivityModule | undefined;
+
+/** Longer than a working lookup takes; a DNS server that is not answering never gets there. */
+const DNS_CHECK_TIMEOUT_MS = 5_000;
+
+const hostOf = (baseUrl: string): string => baseUrl.replace(/^[a-z]+:\/\//i, '').replace(/[/:].*$/, '');
+
+/**
+ * Whether the device can look up `host`: true, false, or null when it cannot
+ * tell (no native check in this build). A lookup that has not answered within
+ * the timeout counts as failed — a DNS server that slow is not answering.
+ */
+const canResolveHost = async (host: string): Promise<boolean | null> => {
+  const connectivity = Platform.OS === 'android' ? androidConnectivity() : undefined;
+  if (!connectivity?.canResolve) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      connectivity.canResolve(host),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), DNS_CHECK_TIMEOUT_MS);
+      }),
+    ]);
+  } catch {
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
+/**
+ * Why a request got no answer at all, in words that point at the fix. React
+ * Native reports every such failure as "Network request failed", so the cause
+ * is checked separately: most often it is a network whose DNS has stopped
+ * answering while the connection itself is up.
+ */
+const describeConnectionFailure = async (baseUrl: string, error: unknown): Promise<string> => {
+  const host = hostOf(baseUrl);
+  if ((await canResolveHost(host)) === false) {
+    return `This device can't look up ${host}: the connection is up, but its DNS isn't answering. Check the Wi-Fi or mobile data (on an emulator, restart it).`;
+  }
+  const reason = error instanceof Error && error.message ? error.message : 'no response';
+  return `LAFINA's server at ${host} didn't answer (${reason}).`;
+};
 
 let isOnlineMockState: boolean | null = null;
 
@@ -154,9 +202,10 @@ export const cloudClient = {
     if (isOnlineMockState !== null) {
       return isOnlineMockState;
     }
-    if (Platform.OS === 'android' && androidConnectivityModule) {
+    const connectivity = Platform.OS === 'android' ? androidConnectivity() : undefined;
+    if (connectivity) {
       try {
-        return await androidConnectivityModule.isOnline();
+        return await connectivity.isOnline();
       } catch {
         return false;
       }
@@ -220,12 +269,9 @@ export const cloudClient = {
     }
 
     if (!response) {
-      return {
-        status: 'server_unavailable',
-        error: lastConnectionError instanceof Error
-          ? `FastAPI servers unavailable: ${lastConnectionError.message}`
-          : 'FastAPI cloud and local servers are unavailable.',
-      };
+      const reason = await describeConnectionFailure(apiBaseUrls[0], lastConnectionError);
+      console.warn(`[cloud] ${options.method || 'GET'} ${endpoint} got no response: ${reason}`);
+      return { status: 'server_unavailable', error: reason };
     }
 
     if (!response.ok) {
@@ -255,9 +301,14 @@ export const cloudClient = {
         return { status: 'rate_limited', error: detail, httpStatus: response.status };
       }
       if (response.status >= 500) {
+        // Say which call failed and what the server said, as the desktop app
+        // does: a generic line leaves a server-side fault undiagnosable.
+        console.error(`[cloud] ${options.method || 'GET'} ${endpoint} -> ${response.status}: ${detail}`);
         return {
           status: 'server_error',
-          error: 'FastAPI encountered a server error. Please try again.',
+          error: `LAFINA's server had a problem (${response.status} on ${endpoint}${
+            typeof errorData.detail === 'string' ? `: ${detail}` : ''
+          }). Please try again.`,
           httpStatus: response.status,
         };
       }
