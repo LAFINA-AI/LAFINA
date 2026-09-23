@@ -24,7 +24,7 @@ hour per IP address, which a whole campus network would share. Release notes
 are the one thing read from the API, and if that request fails the update is
 still offered, just without notes.
 
-### What still needs an APK
+### When a release changes native code
 
 A bundle only runs on the APK build it was made for, meaning the
 `versionCode` in `android/app/build.gradle`. A new APK is needed when a release changes:
@@ -33,9 +33,25 @@ A bundle only runs on the APK build it was made for, meaning the
 - a package with native code (anything under `node_modules` with an `android/` folder)
 - the React Native version
 
-For those, bump `versionCode`, build and attach the APK as well. Phones on
-the older build see **"<version> needs a new install"**, which opens the
-release page.
+For those, bump `versionCode` and publish with `npm run release:ota -- --apk`.
+The release then carries the new APK, listed in the signed manifest with its
+size and SHA-256, and phones on the older build update **from inside the app**,
+as the desktop app does with its installer:
+
+1. **Update to <version>** offers the new app package and its size.
+2. LAFINA downloads it and checks it against the signed size and SHA-256.
+3. **Install update** hands it to Android's installer, which asks the person to
+   confirm, installs it over the app (data is kept), and LAFINA opens again on
+   the new version.
+
+Android never lets an app replace itself silently. The first time, it also asks
+the person to allow LAFINA to install apps ("Install unknown apps" → "Allow
+from this source"); the app explains this and opens that setting. Android also
+refuses any APK not signed with the same key as the installed app.
+
+Phones on a build from before in-app APK installs (build 7 and earlier) can't
+do this yet: they still see **"<version> needs a new install"**, which opens the
+release page. After installing one APK from there, they update in-app.
 
 ## Safeguards
 
@@ -52,9 +68,11 @@ release page.
    never offered again.
 3. **New APK wins.** Installing any APK throws away downloaded bundles,
    because the APK brings its own.
+4. **Same signing key.** An APK update must be signed with the key of the app
+   already installed (`my-upload-key.keystore`), or Android refuses it.
 
-Restarting asks first, and refuses while a meeting is being recorded, because a
-restart would end the recording.
+Restarting and installing ask first, and refuse while a meeting is being
+recorded, because either would end the recording.
 
 ## One-time setup (done)
 
@@ -96,15 +114,28 @@ release notes appear in the update prompt.
 
 `npm version` moves `package.json`, which is the version the app shows and
 compares. Leave `versionCode`/`versionName` alone for a JavaScript-only
-update.
+update. `release:ota` checks the latest published release and refuses a
+raised `versionCode` without `--apk`, since phones on the old build would have
+nothing to install.
 
 ## Publishing a release that changes native code
 
 1. Bump `versionCode` (and `versionName`) in `android/app/build.gradle`, plus
-   `npm version minor`.
-2. `cd android && ./gradlew assembleRelease`
-3. `npm run release:ota` (it now signs for the new `versionCode`)
-4. `gh release create v1.1.0 release/*.zip release/lafina-update-android.json android/app/build/outputs/apk/release/app-release.apk --title "v1.1.0" --notes "…"`
+   `npm version minor`, then `git push --follow-tags`.
+2. Build, sign and collect everything, APK included (this builds the release APK, so it takes a while):
+
+   ```bash
+   npm run release:ota -- --apk
+   ```
+
+3. Publish the three files it prints, for example:
+
+   ```bash
+   gh release create v1.4.0 "release/lafina-android-bundle-1.4.0.zip" "release/lafina-android-1.4.0.apk" "release/lafina-update-android.json" --title "v1.4.0" --notes "…"
+   ```
+
+The APK is large (it carries the on-device models), so people are told its
+size before they download, and Wi-Fi is suggested.
 
 ## If something goes wrong
 
@@ -115,6 +146,8 @@ update.
 | "…could not be verified (bad signature)" | Signed with a different key than the app was built with. Sign with `~/.lafina/lafina-android-update-key.pem`. |
 | "…did not start properly on this phone, so it was undone" | The version crashed during startup and was rolled back. Fix it and publish a higher version. |
 | "Update not applied yet … development builds" | Debug builds load JavaScript from Metro. Test updates with a release APK. |
+| "…signed differently from the installed app, so Android refused it" | The phone has a debug build, or an APK signed with another keystore. Install the release APK by hand once. |
+| "…needs a new install" on a native release | The phone's build predates in-app APK installs, or the release has no APK (published without `--apk`). |
 
 If the **private key** leaks, anyone holding it can sign an update that phones
 will run. Create a new key (delete the old line in `releaseKey.ts` first),

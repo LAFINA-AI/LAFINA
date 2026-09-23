@@ -40,6 +40,10 @@ const ask = (title: string, message: string, confirmLabel: string, cancelLabel: 
     );
   });
 
+/** "642 MB", for the dialogs. */
+const sizeLabel = (bytes: number | null): string =>
+  bytes ? `${Math.max(1, Math.round(bytes / 1024 / 1024))} MB` : '';
+
 const labelFor = (state: UpdateState): string => {
   switch (state.phase) {
     case 'checking':
@@ -53,7 +57,7 @@ const labelFor = (state: UpdateState): string => {
     case 'downloading':
       return `Downloading ${state.percent ?? 0}%`;
     case 'ready':
-      return 'Restart to update';
+      return state.kind === 'apk' ? 'Install update' : 'Restart to update';
     case 'error':
       return 'Update failed — tap to retry';
     default:
@@ -68,7 +72,8 @@ interface AppUpdateItemProps {
 
 /**
  * The Profile screen's update control. One row walks through the whole flow —
- * check, download, restart — and is highlighted when there is something to do.
+ * check, download, then restart (a JS update) or install (a new APK, confirmed
+ * in Android's installer) — and is highlighted when there is something to do.
  */
 export const AppUpdateItem: React.FC<AppUpdateItemProps> = ({ service = appUpdater }) => {
   const { colors } = useTheme();
@@ -96,6 +101,39 @@ export const AppUpdateItem: React.FC<AppUpdateItemProps> = ({ service = appUpdat
     if (after.message) Alert.alert('Update not applied yet', after.message);
   };
 
+  /** A new APK: Android's installer takes it from here, after asking the person. */
+  const offerInstall = async (ready: UpdateState): Promise<void> => {
+    const go = await ask(
+      `Install LAFINA ${ready.version}?`,
+      'Android asks you to confirm the update. LAFINA closes while it installs; your data stays on this phone.',
+      'Install',
+      'Later',
+    );
+    if (!go) return;
+    // Installing replaces the app, which ends a recording.
+    const recording = await meetingRecorder.isRecording().catch(() => false);
+    if (recording) {
+      Alert.alert('A meeting is being recorded', 'Stop the recording first, then install the update.');
+      return;
+    }
+    const outcome = await service.install();
+    if (outcome === 'needs-permission') {
+      const open = await ask(
+        'Allow LAFINA to install its updates',
+        'Android asks this once for apps that update themselves. Turn on "Allow from this source" for LAFINA, ' +
+          'then come back and tap Install update.',
+        'Open settings',
+        'Not now',
+      );
+      if (open) await service.openInstallPermissionSettings();
+    } else if (outcome === 'failed') {
+      Alert.alert('The update was not installed', service.getState().message ?? 'Try again.');
+    }
+  };
+
+  const offerReady = (ready: UpdateState): Promise<void> =>
+    ready.kind === 'apk' ? offerInstall(ready) : offerRestart(ready);
+
   const handlePress = async (): Promise<void> => {
     switch (phase) {
       case 'unsupported':
@@ -113,7 +151,7 @@ export const AppUpdateItem: React.FC<AppUpdateItemProps> = ({ service = appUpdat
         return;
       }
       case 'ready':
-        await offerRestart(state);
+        await offerReady(state);
         return;
       case 'error': {
         const retry = await ask(
@@ -154,14 +192,18 @@ export const AppUpdateItem: React.FC<AppUpdateItemProps> = ({ service = appUpdat
     }
     const download = await ask(
       `LAFINA ${found.version} is available`,
-      `${notes ? `${notes}\n\n` : ''}You have ${found.currentVersion}. The update is downloaded and its ` +
-        'signature checked before it is used. No new APK is installed.',
+      found.kind === 'apk'
+        ? `${notes ? `${notes}\n\n` : ''}You have ${found.currentVersion}. This version updates the app itself, ` +
+            `so it comes as a new app package (${sizeLabel(found.size)}). LAFINA downloads it and checks it, then ` +
+            'Android asks you to confirm the update. Wi-Fi is best for a download this size.'
+        : `${notes ? `${notes}\n\n` : ''}You have ${found.currentVersion}. The update is downloaded and its ` +
+            'signature checked before it is used.',
       'Download',
       'Later',
     );
     if (!download) return;
     const result = await service.download();
-    if (result.phase === 'ready') await offerRestart(result);
+    if (result.phase === 'ready') await offerReady(result);
     else if (result.phase === 'error') Alert.alert('The update did not finish', result.message ?? '');
   };
 

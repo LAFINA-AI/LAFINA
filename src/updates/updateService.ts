@@ -1,13 +1,19 @@
 /**
- * In-app updates: check, download, verify, restart.
+ * In-app updates: check, download, verify, then restart or install.
  *
  * A release on GitHub carries the app's JavaScript bundle and images as a
  * zip, next to a manifest signed with the LAFINA release key. Checking reads
  * that manifest and verifies its signature with the public key built into
- * this app; downloading brings the zip down and checks it against the signed
- * size and SHA-256 before it is staged; restarting starts it. No APK is
- * installed — but a bundle only runs on the APK build it was made for, so a
- * release that changes native code is offered as a new install instead.
+ * this app; downloading brings the file down and checks it against the signed
+ * size and SHA-256.
+ *
+ * A bundle only runs on the APK build it was made for. A release for this
+ * build is applied by restarting into its bundle. A release that changes
+ * native code carries its APK too: that is downloaded the same way and handed
+ * to Android's installer, which asks the person to confirm — the in-app
+ * counterpart of the desktop app running its installer. Only a release
+ * without an APK, or a phone on a build too old to install one, is sent to
+ * the release page.
  *
  * The state lives here, outside any screen, so a download carries on while
  * the person moves around the app, and screens subscribe to it.
@@ -58,7 +64,14 @@ export interface UpdateState {
   message: string | null;
   /** Where to get a new APK, for `needs-install`. */
   releaseUrl: string;
+  /** What the update is: a JS bundle applied by restarting, or a new APK to install. */
+  kind: 'bundle' | 'apk' | null;
+  /** How much will be downloaded, in bytes. */
+  size: number | null;
 }
+
+/** What asking to install a downloaded APK came to. */
+export type InstallOutcome = 'installing' | 'needs-permission' | 'failed';
 
 type Fetch = typeof fetch;
 
@@ -125,6 +138,8 @@ export const createUpdateService = (deps: UpdateServiceDeps = {}) => {
     percent: null,
     message: unsupportedReason,
     releaseUrl: latestReleasePageUrl(config),
+    kind: null,
+    size: null,
   };
   let offer: UpdateManifest | null = null;
   const listeners = new Set<(next: UpdateState) => void>();
@@ -136,6 +151,13 @@ export const createUpdateService = (deps: UpdateServiceDeps = {}) => {
   };
 
   const getState = (): UpdateState => state;
+
+  // Android's installer reports back after the confirmation; success ends this process.
+  native?.onInstallStatus?.(({ status, message }) => {
+    if (state.kind !== 'apk') return;
+    if (status === 'failure') setState({ message: message ?? 'The update could not be installed. Try again.' });
+    else if (status === 'cancelled') setState({ message: null });
+  });
 
   const subscribe = (listener: (next: UpdateState) => void): (() => void) => {
     listeners.add(listener);
@@ -203,6 +225,8 @@ export const createUpdateService = (deps: UpdateServiceDeps = {}) => {
           notes: null,
           percent: null,
           message: request.quiet ? null : message,
+          kind: null,
+          size: null,
         });
       };
       if (!signed) return nothingNew();
@@ -221,9 +245,34 @@ export const createUpdateService = (deps: UpdateServiceDeps = {}) => {
       }
       if (manifest.nativeVersionCode < info.nativeVersionCode) return nothingNew();
       if (manifest.nativeVersionCode > info.nativeVersionCode) {
+        // A newer native build: installed from inside the app when the release
+        // carries its APK and this build knows how to install one.
+        if (manifest.apk && native.downloadApk && native.installApk) {
+          offer = manifest;
+          if (info.readyApkVersionCode === manifest.apk.versionCode) {
+            return setState({
+              phase: 'ready',
+              kind: 'apk',
+              size: manifest.apk.size,
+              version: manifest.version,
+              notes: null,
+              percent: 100,
+            });
+          }
+          return setState({
+            phase: 'available',
+            kind: 'apk',
+            size: manifest.apk.size,
+            version: manifest.version,
+            notes: await fetchNotes(manifest.file),
+            percent: null,
+          });
+        }
         offer = null;
         return setState({
           phase: 'needs-install',
+          kind: null,
+          size: manifest.apk?.size ?? null,
           version: manifest.version,
           notes: await fetchNotes(manifest.file),
           percent: null,
@@ -233,10 +282,19 @@ export const createUpdateService = (deps: UpdateServiceDeps = {}) => {
       offer = manifest;
       // Downloaded earlier and still waiting for a restart.
       if (info.pendingVersion === manifest.version) {
-        return setState({ phase: 'ready', version: manifest.version, notes: null, percent: 100 });
+        return setState({
+          phase: 'ready',
+          kind: 'bundle',
+          size: manifest.size,
+          version: manifest.version,
+          notes: null,
+          percent: 100,
+        });
       }
       return setState({
         phase: 'available',
+        kind: 'bundle',
+        size: manifest.size,
         version: manifest.version,
         notes: await fetchNotes(manifest.file),
         percent: null,
@@ -260,13 +318,22 @@ export const createUpdateService = (deps: UpdateServiceDeps = {}) => {
       if (total > 0) setState({ percent: Math.min(100, Math.floor((received / total) * 100)) });
     });
     try {
-      await native.downloadBundle({
-        url: latestAssetUrl(config, manifest.file),
-        version: manifest.version,
-        nativeVersionCode: manifest.nativeVersionCode,
-        size: manifest.size,
-        sha256: manifest.sha256,
-      });
+      if (state.kind === 'apk' && manifest.apk && native.downloadApk) {
+        await native.downloadApk({
+          url: latestAssetUrl(config, manifest.apk.file),
+          versionCode: manifest.apk.versionCode,
+          size: manifest.apk.size,
+          sha256: manifest.apk.sha256,
+        });
+      } else {
+        await native.downloadBundle({
+          url: latestAssetUrl(config, manifest.file),
+          version: manifest.version,
+          nativeVersionCode: manifest.nativeVersionCode,
+          size: manifest.size,
+          sha256: manifest.sha256,
+        });
+      }
       return setState({ phase: 'ready', percent: 100 });
     } catch (error) {
       const failure = fromNativeError(error);
@@ -300,6 +367,35 @@ export const createUpdateService = (deps: UpdateServiceDeps = {}) => {
   };
 
   /**
+   * Hands a downloaded APK to Android's installer, which shows its own
+   * confirmation. Android asks once whether LAFINA may install apps at all;
+   * until that is allowed this answers `needs-permission`, and
+   * `openInstallPermissionSettings` takes the person there.
+   */
+  const install = async (): Promise<InstallOutcome> => {
+    const apk = offer?.apk;
+    if (!native?.installApk || state.phase !== 'ready' || state.kind !== 'apk' || !apk) return 'failed';
+    if (native.canInstallApks && !(await native.canInstallApks().catch(() => false))) return 'needs-permission';
+    try {
+      setState({ message: null });
+      await native.installApk({ versionCode: apk.versionCode, sha256: apk.sha256 });
+      return 'installing';
+    } catch (error) {
+      const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+      if (code === 'E_PERMISSION') return 'needs-permission';
+      setState({
+        message: typeof message === 'string' && message ? message : 'The update could not be installed. Try again.',
+      });
+      return 'failed';
+    }
+  };
+
+  /** Opens Android's "Install unknown apps" setting for LAFINA. */
+  const openInstallPermissionSettings = async (): Promise<void> => {
+    await native?.openInstallPermissionSettings?.().catch(() => undefined);
+  };
+
+  /**
    * Tells the native side this launch started properly, so a downloaded
    * version is kept. One that never gets here is undone on the next start.
    */
@@ -307,7 +403,17 @@ export const createUpdateService = (deps: UpdateServiceDeps = {}) => {
     await native?.markLaunchSuccessful().catch(() => undefined);
   };
 
-  return { getState, subscribe, check, download, cancel, restart, markLaunchSuccessful };
+  return {
+    getState,
+    subscribe,
+    check,
+    download,
+    cancel,
+    restart,
+    install,
+    openInstallPermissionSettings,
+    markLaunchSuccessful,
+  };
 };
 
 export type UpdateService = ReturnType<typeof createUpdateService>;

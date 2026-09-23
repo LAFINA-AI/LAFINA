@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Installing its own updates (a new APK); Android asks the person to allow it once. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
       android:name=".MainApplication"
@@ -45,6 +47,11 @@
         android:theme="@android:style/Theme.Translucent.NoTitleBar"
         android:excludeFromRecents="true"
         android:noHistory="true"
+        android:exported="false" />
+
+      <!-- Android's package installer reports on an in-app APK update here. -->
+      <receiver
+        android:name=".LafinaApkInstallReceiver"
         android:exported="false" />
 
       <receiver

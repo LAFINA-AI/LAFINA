@@ -13,6 +13,21 @@ export interface UpdaterInfo {
   pendingVersion: string | null;
   /** Versions rolled back after they failed to start; never offered again. */
   rejectedVersions: string[];
+  /** The build of a new APK already downloaded and waiting to be installed. */
+  readyApkVersionCode?: number;
+}
+
+export interface ApkDownloadRequest {
+  url: string;
+  versionCode: number;
+  size: number;
+  sha256: string;
+}
+
+/** What Android's package installer reported about an APK update. */
+export interface InstallStatus {
+  status: 'confirming' | 'success' | 'cancelled' | 'failure';
+  message: string | null;
 }
 
 export interface DownloadRequest {
@@ -37,11 +52,18 @@ export interface NativeUpdater {
   markLaunchSuccessful: () => Promise<boolean>;
   restart: () => Promise<boolean>;
   onProgress: (listener: (progress: DownloadProgress) => void) => { remove: () => void };
+  /** APK updates; absent in builds before in-app APK installs. */
+  downloadApk?: (request: ApkDownloadRequest) => Promise<boolean>;
+  installApk?: (request: { versionCode: number; sha256: string }) => Promise<boolean>;
+  canInstallApks?: () => Promise<boolean>;
+  openInstallPermissionSettings?: () => Promise<boolean>;
+  onInstallStatus?: (listener: (status: InstallStatus) => void) => { remove: () => void };
 }
 
-type LafinaUpdaterNativeModule = Omit<NativeUpdater, 'onProgress'>;
+type LafinaUpdaterNativeModule = Omit<NativeUpdater, 'onProgress' | 'onInstallStatus'>;
 
 const PROGRESS_EVENT = 'LafinaUpdaterProgress';
+const INSTALL_STATUS_EVENT = 'LafinaUpdaterInstallStatus';
 
 /** The native updater, or null in a build without it (tests, an older APK). */
 export const getNativeUpdater = (): NativeUpdater | null => {
@@ -55,5 +77,15 @@ export const getNativeUpdater = (): NativeUpdater | null => {
     markLaunchSuccessful: () => module.markLaunchSuccessful(),
     restart: () => module.restart(),
     onProgress: (listener) => DeviceEventEmitter.addListener(PROGRESS_EVENT, listener),
+    ...(module.downloadApk && module.installApk
+      ? {
+          downloadApk: (request: ApkDownloadRequest) => module.downloadApk!(request),
+          installApk: (request: { versionCode: number; sha256: string }) => module.installApk!(request),
+          canInstallApks: () => module.canInstallApks?.() ?? Promise.resolve(true),
+          openInstallPermissionSettings: () => module.openInstallPermissionSettings?.() ?? Promise.resolve(false),
+          onInstallStatus: (listener: (status: InstallStatus) => void) =>
+            DeviceEventEmitter.addListener(INSTALL_STATUS_EVENT, listener),
+        }
+      : {}),
   };
 };

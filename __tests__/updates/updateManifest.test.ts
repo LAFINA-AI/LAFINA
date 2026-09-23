@@ -101,3 +101,25 @@ describe('verified manifest', () => {
     expect(refusal(manifest(overrides))).toContain(detail);
   });
 });
+
+describe('the APK a native release carries', () => {
+  const apk = { file: 'lafina-android-1.4.0.apk', size: 673_354_212, sha256: 'c'.repeat(64), versionCode: 5 };
+
+  it('reads it when it is for the release build', () => {
+    expect(readVerifiedManifest(manifest({ apk }), { product: 'com.lafina' }).apk).toEqual(apk);
+  });
+
+  it('leaves it out of a release that has none', () => {
+    expect(readVerifiedManifest(manifest(), { product: 'com.lafina' }).apk).toBeUndefined();
+  });
+
+  it.each([
+    ['for another build', { ...apk, versionCode: 6 }],
+    ['with a path in its name', { ...apk, file: '../lafina.apk' }],
+    ['that is not an APK', { ...apk, file: 'lafina.exe' }],
+    ['with a hostile size', { ...apk, size: 3 * 1024 * 1024 * 1024 }],
+    ['with a bad checksum', { ...apk, sha256: 'nope' }],
+  ])('refuses one %s', (_label, entry) => {
+    expect(refusal(manifest({ apk: entry }))).toContain('invalid app package');
+  });
+});

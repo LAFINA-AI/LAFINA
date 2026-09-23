@@ -6,6 +6,7 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -34,6 +35,10 @@ object OtaBundles {
   private const val STATE_FILE = "state.json"
   private const val DOWNLOAD_FILE = "download.part"
   const val BUNDLE_FILE = "index.android.bundle"
+  /** Downloaded APKs for a newer native build, kept until installed or superseded. */
+  private const val APK_DIR = "apk"
+  /** GitHub's limit for one release asset; the app APK is well under it. */
+  private const val MAX_APK_BYTES = 2L * 1024 * 1024 * 1024
 
   /** Far above a real bundle, low enough that a hostile archive cannot fill the phone. */
   private const val MAX_EXTRACTED_BYTES = 300L * 1024 * 1024
@@ -195,11 +200,124 @@ object OtaBundles {
 
   /** Deletes bundle folders and partial downloads nothing refers to any more. */
   private fun removeUnused(context: Context, state: State) {
-    val keep = listOfNotNull(state.current, state.previous, state.pending).map { it.dir }.toSet()
+    val keep = listOfNotNull(state.current, state.previous, state.pending).map { it.dir }.toSet() + APK_DIR
     root(context).listFiles()?.forEach { file ->
       if (file.isDirectory && file.name !in keep) file.deleteRecursively()
       if (file.isFile && file.name == DOWNLOAD_FILE) file.delete()
     }
+    pruneApks(context)
+  }
+
+  // ── APKs for a newer native build ─────────────────────────────────────────
+
+  private fun apkDir(context: Context): File = File(root(context), APK_DIR)
+
+  private fun apkFile(context: Context, versionCode: Int): File =
+    File(apkDir(context), "lafina-$versionCode.apk")
+
+  private fun apkVersionOf(file: File): Int? =
+    Regex("""^lafina-(\d+)\.apk$""").find(file.name)?.groupValues?.get(1)?.toIntOrNull()
+
+  /** Drops APKs already installed (or older), and any download that did not finish. */
+  private fun pruneApks(context: Context) {
+    apkDir(context).listFiles()?.forEach { file ->
+      val versionCode = apkVersionOf(file)
+      if (versionCode == null || versionCode <= BuildConfig.VERSION_CODE) file.delete()
+    }
+  }
+
+  /** The newest fully downloaded APK for a build above this one, or null. */
+  fun readyApkVersionCode(context: Context): Int? =
+    apkDir(context).listFiles()
+      ?.mapNotNull { apkVersionOf(it) }
+      ?.filter { it > BuildConfig.VERSION_CODE }
+      ?.maxOrNull()
+
+  private fun checkedUrl(url: String): URL {
+    val parsed = try {
+      URL(url)
+    } catch (error: Exception) {
+      throw OtaException("E_VERIFY", "The update has an invalid address.")
+    }
+    if (parsed.protocol != "https" || parsed.host != "github.com") {
+      throw OtaException("E_VERIFY", "Updates are only downloaded from GitHub over HTTPS.")
+    }
+    return parsed
+  }
+
+  private fun sha256Of(file: File): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    FileInputStream(file).use { input ->
+      val buffer = ByteArray(1024 * 1024)
+      while (true) {
+        val read = input.read(buffer)
+        if (read < 0) break
+        digest.update(buffer, 0, read)
+      }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
+  }
+
+  /**
+   * Downloads the APK of a newer native build, checked against the signed
+   * size and SHA-256 before it is kept. Installing it is a separate step
+   * (`LafinaUpdaterModule.installApk`), because Android asks the person first.
+   */
+  fun downloadApk(
+    context: Context,
+    url: String,
+    versionCode: Int,
+    size: Long,
+    sha256: String,
+    isCancelled: () -> Boolean,
+    onProgress: (received: Long, total: Long) -> Unit,
+  ) {
+    if (versionCode <= BuildConfig.VERSION_CODE) {
+      throw OtaException("E_INCOMPATIBLE", "This phone already has this version of the app or a newer one.")
+    }
+    if (size <= 0 || size > MAX_APK_BYTES) {
+      throw OtaException("E_VERIFY", "The update has an invalid size, so it was not downloaded.")
+    }
+    val parsed = checkedUrl(url)
+    val dir = apkDir(context)
+    dir.mkdirs()
+    // The download, plus the copy Android's installer makes of it.
+    val needed = size * 2 + 100L * 1024 * 1024
+    if (StatFs(dir.absolutePath).availableBytes < needed) {
+      throw OtaException(
+        "E_STORAGE",
+        "The update needs about ${needed / 1024 / 1024} MB free, and this phone does not have enough space.",
+      )
+    }
+    val target = apkFile(context, versionCode)
+    if (target.isFile && target.length() == size && sha256Of(target) == sha256) {
+      onProgress(size, size)
+      return
+    }
+    val partial = File(dir, "${target.name}.part")
+    partial.delete()
+    try {
+      fetch(parsed, partial, size, sha256, isCancelled, onProgress)
+      target.delete()
+      if (!partial.renameTo(target)) {
+        throw OtaException("E_DOWNLOAD", "The update could not be saved. Try again.")
+      }
+      // Only the newest download is worth keeping.
+      dir.listFiles()?.forEach { if (it != target) it.delete() }
+    } finally {
+      partial.delete()
+    }
+  }
+
+  /**
+   * The downloaded APK, checked again right before it is handed to the
+   * installer, in case it changed on disk since. Null when it is gone or no
+   * longer matches.
+   */
+  fun verifiedApk(context: Context, versionCode: Int, sha256: String): File? {
+    val file = apkFile(context, versionCode)
+    if (!file.isFile) return null
+    return if (sha256Of(file) == sha256) file else null
   }
 
   /** Startup finished on the current bundle; it is kept from now on. */
@@ -243,14 +361,7 @@ object OtaBundles {
     if (size <= 0 || size > MAX_EXTRACTED_BYTES) {
       throw OtaException("E_VERIFY", "The update has an invalid size, so it was not downloaded.")
     }
-    val parsed = try {
-      URL(url)
-    } catch (error: Exception) {
-      throw OtaException("E_VERIFY", "The update has an invalid address.")
-    }
-    if (parsed.protocol != "https" || parsed.host != "github.com") {
-      throw OtaException("E_VERIFY", "Updates are only downloaded from GitHub over HTTPS.")
-    }
+    val parsed = checkedUrl(url)
 
     val dir = root(context)
     dir.mkdirs()

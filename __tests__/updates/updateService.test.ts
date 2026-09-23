@@ -1,5 +1,12 @@
 import { createUpdateService } from '../../src/updates/updateService';
-import type { DownloadProgress, DownloadRequest, NativeUpdater, UpdaterInfo } from '../../src/updates/nativeUpdater';
+import type {
+  ApkDownloadRequest,
+  DownloadProgress,
+  DownloadRequest,
+  InstallStatus,
+  NativeUpdater,
+  UpdaterInfo,
+} from '../../src/updates/nativeUpdater';
 import type { UpdateConfig } from '../../src/updates/updateConfig';
 
 const CONFIG: UpdateConfig = {
@@ -250,5 +257,104 @@ describe('in-app updates', () => {
       await serviceWith({}, native).markLaunchSuccessful();
       expect(native.markLaunchSuccessful).toHaveBeenCalled();
     });
+  });
+});
+
+describe('in-app APK updates', () => {
+  const APK = { file: 'lafina-android-1.1.0.apk', size: 600 * 1024 * 1024, sha256: 'd'.repeat(64), versionCode: 6 };
+  const APK_URL = 'https://github.com/LAFINA-AI/LAFINA/releases/latest/download/lafina-android-1.1.0.apk';
+  /** A native release: the bundle is for build 6, and the phone is on build 5. */
+  const nativeRelease = () => ({ [MANIFEST_URL]: response(200, published({ version: '1.1.0', nativeVersionCode: 6, apk: APK })) });
+
+  /** A build that can install APKs, with the install permission as given. */
+  const withApkSupport = (native: jest.Mocked<NativeUpdater>, canInstall = true) => {
+    let statusListener: ((status: InstallStatus) => void) | null = null;
+    native.downloadApk = jest.fn(async (_request: ApkDownloadRequest) => true);
+    native.installApk = jest.fn(async (_request: { versionCode: number; sha256: string }) => true);
+    native.canInstallApks = jest.fn(async () => canInstall);
+    native.openInstallPermissionSettings = jest.fn(async () => true);
+    native.onInstallStatus = jest.fn((listener: (status: InstallStatus) => void) => {
+      statusListener = listener;
+      return { remove: jest.fn() };
+    });
+    return { native, report: (status: InstallStatus) => statusListener?.(status) };
+  };
+
+  beforeEach(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('offers the new APK, with its size, instead of sending people to the release page', async () => {
+    const { native } = withApkSupport(fakeNative());
+    const service = serviceWith(nativeRelease(), native);
+    expect(await service.check()).toMatchObject({ phase: 'available', kind: 'apk', size: APK.size, version: '1.1.0' });
+  });
+
+  it('still sends a build that cannot install APKs to the release page', async () => {
+    const service = serviceWith(nativeRelease(), fakeNative());
+    expect(await service.check()).toMatchObject({ phase: 'needs-install', kind: null });
+  });
+
+  it('still sends people to the release page for a native release without an APK', async () => {
+    const { native } = withApkSupport(fakeNative());
+    const service = serviceWith({ [MANIFEST_URL]: response(200, published({ nativeVersionCode: 6 })) }, native);
+    expect((await service.check()).phase).toBe('needs-install');
+  });
+
+  it('downloads the signed APK, then offers to install it', async () => {
+    const { native } = withApkSupport(fakeNative());
+    const service = serviceWith(nativeRelease(), native);
+    await service.check();
+    expect(await service.download()).toMatchObject({ phase: 'ready', kind: 'apk' });
+    expect(native.downloadApk).toHaveBeenCalledWith({ url: APK_URL, versionCode: 6, size: APK.size, sha256: APK.sha256 });
+    expect(native.downloadBundle).not.toHaveBeenCalled();
+  });
+
+  it('picks up an APK already downloaded', async () => {
+    const { native } = withApkSupport(fakeNative({ readyApkVersionCode: 6 }));
+    const service = serviceWith(nativeRelease(), native);
+    expect(await service.check()).toMatchObject({ phase: 'ready', kind: 'apk' });
+  });
+
+  it('asks for the install permission first, then installs the checked APK', async () => {
+    const { native } = withApkSupport(fakeNative(), false);
+    const service = serviceWith(nativeRelease(), native);
+    await service.check();
+    await service.download();
+
+    expect(await service.install()).toBe('needs-permission');
+    expect(native.installApk).not.toHaveBeenCalled();
+    await service.openInstallPermissionSettings();
+    expect(native.openInstallPermissionSettings).toHaveBeenCalled();
+
+    (native.canInstallApks as jest.Mock).mockResolvedValue(true);
+    expect(await service.install()).toBe('installing');
+    expect(native.installApk).toHaveBeenCalledWith({ versionCode: 6, sha256: APK.sha256 });
+  });
+
+  it('says why when Android refuses the APK', async () => {
+    const { native, report } = withApkSupport(fakeNative());
+    const service = serviceWith(nativeRelease(), native);
+    await service.check();
+    await service.download();
+    await service.install();
+
+    report({ status: 'failure', message: 'The update is signed differently from the installed app.' });
+    expect(service.getState()).toMatchObject({ phase: 'ready', message: 'The update is signed differently from the installed app.' });
+  });
+
+  it('keeps restarting as the way to apply a JavaScript update', async () => {
+    const { native } = withApkSupport(fakeNative());
+    const service = serviceWith({ [MANIFEST_URL]: response(200, published()) }, native);
+    expect(await service.check()).toMatchObject({ phase: 'available', kind: 'bundle' });
+    await service.download();
+    expect(await service.install()).toBe('failed');
+    await service.restart();
+    expect(native.restart).toHaveBeenCalled();
+    expect(native.installApk).not.toHaveBeenCalled();
   });
 });

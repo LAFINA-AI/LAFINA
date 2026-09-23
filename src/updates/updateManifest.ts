@@ -17,11 +17,14 @@
 export const UPDATE_MANIFEST_SCHEMA = 1;
 /** Far above a real bundle, low enough that a hostile size cannot fill the phone. */
 export const MAX_BUNDLE_BYTES = 200 * 1024 * 1024;
+/** GitHub's limit for one release asset; the app APK (with its models) is well under it. */
+export const MAX_APK_BYTES = 2 * 1024 * 1024 * 1024;
 export const MAX_NOTES_CHARS = 4_000;
 const MAX_MANIFEST_CHARS = 16 * 1024;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 /** Bundle names are used in download URLs, so only plain ones are accepted. */
 const SAFE_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,150}\.zip$/;
+const SAFE_APK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,150}\.apk$/;
 
 export type UpdateErrorCode =
   | 'not_configured'
@@ -43,6 +46,18 @@ export class UpdateError extends Error {
   }
 }
 
+/**
+ * The new APK a release carries when it changes native code, so phones on an
+ * older build can install it from inside the app instead of by hand.
+ */
+export interface ApkAsset {
+  file: string;
+  size: number;
+  sha256: string;
+  /** The APK's `versionCode`; always the manifest's `nativeVersionCode`. */
+  versionCode: number;
+}
+
 /** The signed facts about one bundle. */
 export interface UpdateManifest {
   schema: typeof UPDATE_MANIFEST_SCHEMA;
@@ -55,6 +70,8 @@ export interface UpdateManifest {
   size: number;
   sha256: string;
   signedAt: string;
+  /** Present when the release changes native code and ships its APK. */
+  apk?: ApkAsset;
 }
 
 /** The release asset as published: the manifest's exact bytes and a signature over them. */
@@ -187,6 +204,27 @@ export const readVerifiedManifest = (json: string, expected: { product: string }
   }
   if (typeof data.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(data.sha256)) refuse('invalid checksum');
 
+  // Older builds ignore this field, so adding it never breaks them.
+  let apk: ApkAsset | undefined;
+  if (data.apk !== undefined) {
+    const entry = data.apk;
+    if (
+      !isRecord(entry) ||
+      typeof entry.file !== 'string' ||
+      !SAFE_APK_NAME.test(entry.file) ||
+      typeof entry.size !== 'number' ||
+      !Number.isSafeInteger(entry.size) ||
+      entry.size <= 0 ||
+      entry.size > MAX_APK_BYTES ||
+      typeof entry.sha256 !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(entry.sha256) ||
+      entry.versionCode !== data.nativeVersionCode
+    ) {
+      return refuse('invalid app package');
+    }
+    apk = { file: entry.file, size: entry.size, sha256: entry.sha256, versionCode: entry.versionCode as number };
+  }
+
   return {
     schema: UPDATE_MANIFEST_SCHEMA,
     product: data.product as string,
@@ -197,5 +235,6 @@ export const readVerifiedManifest = (json: string, expected: { product: string }
     size: data.size as number,
     sha256: data.sha256 as string,
     signedAt: typeof data.signedAt === 'string' ? data.signedAt : '',
+    ...(apk ? { apk } : {}),
   };
 };
