@@ -34,12 +34,6 @@ interface VoiceModalProps {
 
 type VoiceState = 'idle' | 'listening' | 'processing' | 'success' | 'error';
 
-const PRESET_COMMANDS = [
-  'Add task submit report by 5pm',
-  'Block 2-4pm today for deep work',
-  'Note: review pilot evaluation parameters',
-];
-
 const WAVE_BAR_COUNT = 11;
 
 /** The line under the title: what the mic is doing, in a few words. */
@@ -511,28 +505,6 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
             </View>
           ) : null}
 
-          {/* Simulated presets */}
-          {showFallbackControls && (
-            <View style={styles.presetsBlock}>
-              <Text style={[styles.presetsTitle, themed.presetsTitle]}>
-                Or try one of these
-              </Text>
-              <View style={styles.presetsRow}>
-                {PRESET_COMMANDS.map((cmd) => (
-                  <TouchableOpacity
-                    key={cmd}
-                    style={[styles.presetChip, themed.presetChip]}
-                    onPress={() => handleCommandProcess(cmd)}
-                  >
-                    <Text style={[styles.presetChipText, themed.presetChipText]}>
-                      {cmd}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
-
           {/* Keyboard input fallback */}
           {showFallbackControls && (
             <View style={[styles.inputRow, themed.inputRow]}>
@@ -576,9 +548,6 @@ const getVoiceThemedStyles = (colors: ThemeColors) => ({
   placeholderText: { color: colors.textMuted },
   replyRow: { backgroundColor: colors.inputBg },
   replyText: { color: colors.textPrimary },
-  presetsTitle: { color: colors.textSecondary },
-  presetChip: { backgroundColor: colors.inputBg, borderColor: colors.border },
-  presetChipText: { color: colors.textPrimary },
   inputRow: { backgroundColor: colors.inputBg },
   textInput: { color: colors.textPrimary },
 });
@@ -751,33 +720,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     fontSize: 14,
     lineHeight: 20,
-  },
-
-  // Presets styling
-  presetsBlock: {
-    width: '100%',
-    marginTop: 4,
-  },
-  presetsTitle: {
-    fontFamily: Fonts.body,
-    fontSize: 12,
-    marginBottom: 8,
-  },
-  presetsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 6,
-  },
-  presetChip: {
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-  },
-  presetChipText: {
-    fontSize: 12,
-    fontFamily: Fonts.body,
   },
 
   // Input styling

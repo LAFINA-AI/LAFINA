@@ -98,6 +98,7 @@ const createTheme = (isDarkMode: boolean) => ({
     authGradientCrimson: '#D8163F',
     authGradientBlue: '#2A10F0',
     authVeil: 'rgba(255, 255, 255, 0.12)',
+    holiday: '#0B8043',
   },
 });
 

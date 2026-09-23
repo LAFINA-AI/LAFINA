@@ -62,6 +62,8 @@ interface ProfileScreenProps {
   onRefresh: () => void;
   onLogout?: (isGuest?: boolean) => void;
   onNavigateToRegister?: () => void;
+  /** Runs the walkthrough again, from here. */
+  onReplayTour?: () => void;
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({
@@ -70,6 +72,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onRefresh,
   onLogout,
   onNavigateToRegister,
+  onReplayTour,
 }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
@@ -446,6 +449,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <View style={[styles.settingDivider, themed.settingDivider]} />
             <AppUpdateItem />
             <View style={[styles.settingDivider, themed.settingDivider]} />
+            {onReplayTour && (
+              <>
+                <SettingItem text="Show the walkthrough again" type="link" onPress={onReplayTour} />
+                <View style={[styles.settingDivider, themed.settingDivider]} />
+              </>
+            )}
             <SettingItem
               text="Privacy Policy"
               type="link"

@@ -96,7 +96,7 @@ describe('voice assistant sheet', () => {
     act(() => tree.unmount());
   });
 
-  it('shows every suggested command in full', () => {
+  it('has no suggested commands, only the mic and a box for typing one', () => {
     const tree = render();
     const text = textOf(tree);
     for (const command of [
@@ -104,12 +104,10 @@ describe('voice assistant sheet', () => {
       'Block 2-4pm today for deep work',
       'Note: review pilot evaluation parameters',
     ]) {
-      expect(text).toContain(command);
+      expect(text).not.toContain(command);
     }
-    const truncated = tree.root.findAll(
-      (node) => node.props.numberOfLines === 1 && String(node.props.children).startsWith('Note:'),
-    );
-    expect(truncated).toHaveLength(0);
+    expect(text).not.toContain('Or try one of these');
+    expect(tree.root.findAll((node) => node.props.placeholder === 'Or type a command...').length).toBeGreaterThan(0);
     act(() => tree.unmount());
   });
 });

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Alert, View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Check } from 'lucide-react-native';
 import { useTheme } from '../../../contexts/ThemeContext';
 import type { ThemeColors } from '../../../contexts/ThemeContext';
@@ -15,6 +15,8 @@ import {
   minutesToPixels,
 } from '../utils/timeGridLayout';
 import type { DayEntry } from '../utils/timeGridLayout';
+import { describeHoliday, getHolidaysOn } from '../utils/philippineHolidays';
+import type { Holiday } from '../utils/philippineHolidays';
 import type { TimeBlock, Task, Event } from '../../../../storage';
 
 interface DayViewProps {
@@ -29,6 +31,8 @@ interface DayViewProps {
   onToggleTask: (task: Task) => void;
   onAddBlock: () => void;
   getCategoryColor: (cat: string) => string;
+  /** The built-in "Holidays in the Philippines" layer, on unless hidden in My Calendars. */
+  showHolidays?: boolean;
 }
 
 /** Room above midnight and below the next midnight, so their labels are not cut in half. */
@@ -60,6 +64,7 @@ export const DayView: React.FC<DayViewProps> = ({
   onToggleTask,
   onAddBlock,
   getCategoryColor,
+  showHolidays = true,
 }) => {
   const { colors, isDarkMode } = useTheme();
   const scrollRef = useRef<ScrollView>(null);
@@ -81,6 +86,7 @@ export const DayView: React.FC<DayViewProps> = ({
 
   const isToday = dateStr === formatLocalDate(now);
   const allDayTasks = allTasks.filter((task) => task.dueDate === dateStr && !task.dueTime);
+  const holidays = showHolidays ? getHolidaysOn(dateStr) : [];
 
   const entries = useMemo(
     () =>
@@ -108,10 +114,13 @@ export const DayView: React.FC<DayViewProps> = ({
 
   return (
     <ScrollView ref={scrollRef} style={styles.container} testID="day-view">
-      {allDayTasks.length > 0 && (
+      {(holidays.length > 0 || allDayTasks.length > 0) && (
         <View style={[styles.allDay, { borderBottomColor: colors.border }]}>
           <Text style={[styles.allDayLabel, { color: colors.textSecondary }]}>All-day</Text>
           <View style={styles.allDayList}>
+            {holidays.map((holiday) => (
+              <HolidayChip key={holiday.name} holiday={holiday} colors={colors} isDarkMode={isDarkMode} />
+            ))}
             {allDayTasks.map((task) => {
               const color = getCategoryColor(task.category);
               return (
@@ -235,6 +244,41 @@ export const DayView: React.FC<DayViewProps> = ({
       </View>
       <View style={styles.bottomSpacer} />
     </ScrollView>
+  );
+};
+
+/**
+ * A holiday in the all-day row, as on the desktop: solid green, or a dashed
+ * outline while the date is only an estimate. Tapping it says what kind of
+ * holiday it is.
+ */
+const HolidayChip: React.FC<{ holiday: Holiday; colors: ThemeColors; isDarkMode: boolean }> = ({
+  holiday,
+  colors,
+  isDarkMode,
+}) => {
+  const [name, ...rest] = describeHoliday(holiday).split('\n');
+  return (
+    <TouchableOpacity
+      style={[
+        styles.holiday,
+        holiday.tentative
+          ? {
+              backgroundColor: mixColors(colors.holiday, colors.cardBg, isDarkMode ? 0.28 : 0.14),
+              borderColor: colors.holiday,
+            }
+          : { backgroundColor: colors.holiday, borderColor: colors.holiday },
+        holiday.tentative && styles.holidayTentative,
+      ]}
+      onPress={() => Alert.alert(name, rest.join('\n'))}
+      accessibilityRole="button"
+      accessibilityLabel={describeHoliday(holiday).replace('\n', ', ')}
+      testID="holiday-chip"
+    >
+      <Text style={[styles.holidayText, { color: holiday.tentative ? colors.textPrimary : colors.white }]}>
+        {holiday.name}
+      </Text>
+    </TouchableOpacity>
   );
 };
 
@@ -393,6 +437,21 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     borderLeftWidth: 3,
     minHeight: 28,
+  },
+  holiday: {
+    borderRadius: 5,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  holidayTentative: {
+    borderStyle: 'dashed',
+  },
+  holidayText: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '600',
   },
   allDayTitleButton: {
     flex: 1,

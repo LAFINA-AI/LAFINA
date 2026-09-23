@@ -11,6 +11,7 @@ import { Colors } from '../../../theme';
 import type { TimeBlock, Task, Event } from '../../../../storage';
 import { useCalendarData } from '../hooks/useCalendarData';
 import { DayView } from './DayView';
+import { HOLIDAY_CALENDAR_ID } from '../utils/philippineHolidays';
 
 interface WeekViewProps {
   calendar: ReturnType<typeof useCalendarData>;
@@ -134,6 +135,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
         onToggleTask={onToggleTask}
         onAddBlock={onAddBlock}
         getCategoryColor={getCategoryColor}
+        showHolidays={calendar.visibilityMap[HOLIDAY_CALENDAR_ID] !== false}
       />
     </View>
   );

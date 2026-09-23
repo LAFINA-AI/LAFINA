@@ -144,3 +144,4 @@ export type { RecordedMeeting, MeetingPatch } from './recordedMeetingStore';
 export type { StudySummaryRecord, SaveSummaryInput } from './studyNoteStore';
 export type { FlashcardDeck, SaveDeckInput } from './flashcardStore';
 export { localSettingsStore } from './localSettingsStore';
+export { productTourStore, PRODUCT_TOUR_VERSION } from './productTourStore';

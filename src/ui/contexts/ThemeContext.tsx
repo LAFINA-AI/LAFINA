@@ -68,6 +68,9 @@ export interface ThemeColors {
   authGradientCrimson: string;
   authGradientBlue: string;
   authVeil: string;
+
+  // Philippine holidays in the calendar's all-day row, the desktop's green
+  holiday: string;
 }
 
 const lightColors: ThemeColors = {
@@ -105,6 +108,7 @@ const lightColors: ThemeColors = {
   authGradientCrimson: '#D8163F',
   authGradientBlue: '#2A10F0',
   authVeil: 'rgba(255, 255, 255, 0.12)',
+  holiday: '#0B8043',
 };
 
 const darkColors: ThemeColors = {
@@ -143,6 +147,7 @@ const darkColors: ThemeColors = {
   authGradientCrimson: '#B80E36',
   authGradientBlue: '#2410C8',
   authVeil: 'rgba(10, 6, 28, 0.22)',
+  holiday: '#0B8043',
 };
 
 interface ThemeContextType {

@@ -5,6 +5,8 @@ import { Colors, Fonts, Layout, Shadows } from '../theme';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import type { ThemeColors } from '../contexts/ThemeContext';
+import { tourTargetRef } from '../tour/tourTargets';
+import type { TourAnchor } from '../tour/tourSteps';
 
 import {
   Calendar,
@@ -38,6 +40,14 @@ export const TOOL_TABS: readonly ToolTab[] = ['pomodoro', 'flashcards', 'studyno
 
 export const isToolTab = (tab: TabType): tab is ToolTab =>
   (TOOL_TABS as readonly TabType[]).includes(tab);
+
+/** Tabs the walkthrough points at. */
+const TOUR_TABS: Partial<Record<TabType, TourAnchor>> = {
+  chat: 'tab-chat',
+  calendar: 'tab-calendar',
+  notes: 'tab-notes',
+  profile: 'tab-profile',
+};
 
 /** Gap between the bar and the bottom of the screen. */
 const BAR_BOTTOM_OFFSET = 24;
@@ -111,9 +121,11 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
     IconComponent: React.ComponentType<{ size: number; color: string }>
   ) => {
     const isActive = activeTab === tab;
+    const anchor = mode === 'student' ? TOUR_TABS[tab] : undefined;
     return (
       <TouchableOpacity
         key={tab}
+        ref={anchor ? tourTargetRef(anchor) : undefined}
         style={styles.tab}
         onPress={() => onTabPress(tab)}
         activeOpacity={0.8}
@@ -197,6 +209,7 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
         {/* Central Raised Mic Button: tap to talk, hold for the radial menu */}
         <View style={styles.micContainer}>
           <Pressable
+            ref={tourTargetRef('mic')}
             style={({ pressed }) => [
               styles.micButton,
               Shadows.micButton,

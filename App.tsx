@@ -24,6 +24,7 @@ import {
   businessStore,
   syncOutboxStore,
   formatDuration,
+  productTourStore,
 } from './src/storage';
 import {
   CustomTabBar,
@@ -73,6 +74,8 @@ import { LoginScreen } from './src/ui/screens/LoginScreen';
 import { RegisterScreen } from './src/ui/screens/RegisterScreen';
 import { OnboardingScreen } from './src/ui/screens/OnboardingScreen';
 import { AuthBackdrop } from './src/ui/components/auth/AuthBackdrop';
+import { ProductTour } from './src/ui/tour/ProductTour';
+import { buildTourSteps } from './src/ui/tour/tourSteps';
 import {
   IncomingCallScreen,
   ManagerOverviewScreen,
@@ -129,6 +132,8 @@ function AppContent({
   const [shellMode, setShellMode] = useState<ShellMode>('student');
   const [activeTab, setActiveTab] = useState<TabType>('calendar');
   const [voiceVisible, setVoiceVisible] = useState(false);
+  /** The walkthrough, over the app shell. */
+  const [tourOpen, setTourOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [callVisible, setCallVisible] = useState(false);
@@ -503,10 +508,32 @@ function AppContent({
   };
 
   const handleOnboardingComplete = () => {
+    // A new account or guest has just arrived: the walkthrough follows.
+    if (userId) productTourStore.queue(userId);
     setIsOnboarding(false);
   };
 
+  /**
+   * Opens the walkthrough once the app shell is in front of the person, as on
+   * the desktop: not during onboarding, and only on the student shell, whose
+   * navigation it describes. It stays pending until finished or skipped, so
+   * closing the app halfway brings it back next time.
+   */
+  useEffect(() => {
+    if (!userId || isOnboarding || isLoading || shellMode !== 'student') return;
+    if (productTourStore.isPending(userId)) setTourOpen(true);
+  }, [userId, isOnboarding, isLoading, shellMode]);
+
+  const finishTour = useCallback(
+    (completed: boolean) => {
+      if (userId) productTourStore.markSeen(userId, completed);
+      setTourOpen(false);
+    },
+    [userId],
+  );
+
   const handleLogout = (isGuestParam?: boolean) => {
+    setTourOpen(false);
     setUserId(null);
     setAuthScreen(isGuestParam ? 'welcome' : 'login');
     setIsOnboarding(false);
@@ -673,6 +700,7 @@ function AppContent({
             onRefresh={triggerRefresh}
             onLogout={handleLogout}
             onNavigateToRegister={handleGuestCreateAccount}
+            onReplayTour={() => setTourOpen(true)}
           />
         );
       case 'inbox':
@@ -819,6 +847,15 @@ function AppContent({
           onUpdateStatus={handleUpdateStatus}
           onCancelInvitation={handleCancelInvitation}
         />
+
+        {/* First-run walkthrough, and again on request from Profile */}
+        {tourOpen && shellMode === 'student' && (
+          <ProductTour
+            steps={buildTourSteps({ isGuest: userStore.isGuest(userId), isPro: hasPro })}
+            onNavigate={setActiveTab}
+            onFinish={finishTour}
+          />
+        )}
       </SafeAreaView>
       </MeetingsProvider>
       </PomodoroProvider>

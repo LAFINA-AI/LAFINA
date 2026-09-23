@@ -8,7 +8,6 @@ import {
   KeyboardAvoidingView,
   Alert,
   Keyboard,
-  ActivityIndicator,
   Switch,
 } from 'react-native';
 import { Trash2, Plus, BookOpen, FileSpreadsheet, FileText, Presentation } from 'lucide-react-native';
@@ -32,6 +31,7 @@ import { generateId } from '../../utils';
 // Chat sub-components
 import { ChatMessageItem } from '../components/chat/ChatMessageItem';
 import { ChatInput } from '../components/chat/ChatInput';
+import { TypingBubble } from '../components/chat/TypingBubble';
 import { removeAttachmentFiles, saveGeneratedFile, shareAttachment } from '../components/chat/chatFiles';
 import { ToolSheet } from '../components/tools';
 
@@ -530,14 +530,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           contentContainerStyle={styles.listContent}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
           ListFooterComponent={
-            isSending ? (
-              <View style={[styles.pendingBubble, themed.pendingBubble]} accessibilityRole="progressbar">
-                <ActivityIndicator size="small" color={colors.blue} />
-                <Text style={[styles.pendingText, themed.exampleText]}>
-                  {pendingLabel ?? 'LAFINA is replying…'}
-                </Text>
-              </View>
-            ) : null
+            isSending ? <TypingBubble label={pendingLabel} /> : null
           }
         />
       )}
@@ -613,7 +606,6 @@ const getChatThemedStyles = (colors: ThemeColors) => ({
   onHeader: { color: colors.white },
   handbookReady: { backgroundColor: colors.success },
   handbookDown: { backgroundColor: colors.warning },
-  pendingBubble: { backgroundColor: colors.cardBg, borderColor: colors.border },
   formatRow: { borderColor: colors.border, backgroundColor: colors.cardBg },
   formatRowSelected: { borderColor: colors.red },
   formatLabel: { color: colors.textPrimary },
@@ -736,22 +728,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontFamily: Fonts.heading,
     fontWeight: 'bold',
-  },
-  pendingBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderRadius: 18,
-    borderBottomLeftRadius: 2,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginVertical: 6,
-    gap: 8,
-  },
-  pendingText: {
-    fontSize: 12,
-    fontFamily: Fonts.body,
   },
   formatRow: {
     flexDirection: 'row',
