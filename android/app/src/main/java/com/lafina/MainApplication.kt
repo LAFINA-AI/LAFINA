@@ -25,7 +25,7 @@ class MainApplication : Application(), ReactApplication {
   override fun onCreate() {
     super.onCreate()
     // The restart helper's process only relaunches the app; it never runs React Native.
-    if (getProcessName().endsWith(LafinaRestartActivity.PROCESS_SUFFIX)) return
+    if (getProcessName().endsWith(LafinaRestartActivity.PROCESS_SUFFIX) || getProcessName().endsWith(":reminders")) return
     loadReactNative(this)
   }
 }

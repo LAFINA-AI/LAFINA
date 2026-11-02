@@ -15,7 +15,7 @@ import { generateId } from '../utils';
  * entity-type negotiation for sync.
  * 18: scheduling-only AI guardrail preference on `user_preferences`.
  */
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 type LegacySyncRow = Record<string, unknown>;
 
@@ -263,9 +263,8 @@ const DATABASE_INTEGRITY_PRAGMA = 'PRAGMA quick_check(1)';
  * is silently ignored inside one, so these are applied before the schema transaction.
  */
 const CONNECTION_PRAGMAS: readonly string[] = [
-  // Write-Ahead Logging lets the sync worker read while the UI writes, and keeps
-  // crashes from leaving a half-written main database file.
-  'PRAGMA journal_mode = WAL',
+  // Both SQLite engines use rollback journaling in separate processes; see ADR-001.
+  'PRAGMA journal_mode = DELETE',
   // SQLite does not enforce declared FOREIGN KEY constraints unless asked to.
   'PRAGMA foreign_keys = ON',
   // Wait for a competing writer instead of failing immediately with SQLITE_BUSY.

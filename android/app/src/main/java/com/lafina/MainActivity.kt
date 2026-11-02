@@ -24,7 +24,6 @@ class MainActivity : ReactActivity() {
 
   private fun handleLockScreenIntent(intent: Intent?) {
     if (intent != null && intent.hasExtra("reminderId")) {
-      LafinaReminderModule.captureActivityIntent(this, intent)
       setupLockScreenFlags()
     }
   }

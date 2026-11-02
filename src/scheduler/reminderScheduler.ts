@@ -2,6 +2,7 @@ import { DeviceEventEmitter, NativeModules } from 'react-native';
 import { remindersStore, businessTasksStore } from '../storage';
 import { getReminderPreferences } from './userPreferences';
 import { autoSnoozeReminderAction } from './reminderActions';
+import {hasDurableDelivery} from './reminderAlarm';
 
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
 let activeUserId: string | null = null;
@@ -174,6 +175,7 @@ export const checkAndTriggerReminders = async (userId: string): Promise<void> =>
 export const recoverOrphanedReminderCalls = async (
   userId: string,
 ): Promise<number> => {
+  if (hasDurableDelivery()) return 0;
   const now = Date.now();
   let recovered = 0;
 

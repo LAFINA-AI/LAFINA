@@ -12,6 +12,7 @@ export interface DeliveryJob extends DeliveryIdentity {
   triggerAt: string;
   deliveryState: string;
   deliveryReason: string | null;
+  deadlineAt: string | null;
 }
 export type DeliveryOperation = 'due' | 'timeout' | 'open';
 export type ReminderSourceType = 'task' | 'event' | 'time_block';
@@ -37,16 +38,19 @@ export const deliveryStore = {
       generation: Number(row.generation), state: row.state as DeliveryJob['state'],
       triggerAt: String(row.trigger_at), deliveryState: String(row.delivery_state),
       deliveryReason: row.delivery_reason === null ? null : String(row.delivery_reason),
+      deadlineAt: row.deadline_at == null ? null : String(row.deadline_at),
     };
   },
   /** Attaches a known source ID after verifying both records belong to the same local user. */
   linkSource: (reminderId: string, type: ReminderSourceType, sourceId: string, executor: DatabaseTransaction = db): void => {
     const table = sourceTables[type];
     if (!table) throw new Error('Unsupported reminder source.');
-    const source = executor.executeSync(`SELECT user_id FROM ${table} WHERE id=? AND deleted_at IS NULL`, [sourceId]).rows?.[0] as {user_id?: unknown} | undefined;
+    const fields = type === 'task' ? ['user_id','title','due_date','due_time','is_completed','recurrence_rule'] : ['user_id','title','date','start_time','end_time','recurrence_rule'];
+    const source = executor.executeSync(`SELECT ${fields.join(',')} FROM ${table} WHERE id=? AND deleted_at IS NULL`, [sourceId]).rows?.[0] as Record<string, unknown> | undefined;
     const job = deliveryStore.get(reminderId, executor);
     if (!job || source?.user_id !== job.userId) throw new Error('Reminder source ownership changed.');
-    executor.executeSync('UPDATE reminder_delivery_jobs SET source_type=?,source_id=?,updated_at=? WHERE reminder_id=?',
-      [type, sourceId, new Date().toISOString(), reminderId]);
+    const snapshot = Object.fromEntries(fields.map(field => [field, source?.[field] == null ? null : String(source[field])]));
+    executor.executeSync('UPDATE reminder_delivery_jobs SET source_type=?,source_id=?,source_snapshot=?,updated_at=? WHERE reminder_id=?',
+      [type, sourceId, JSON.stringify(snapshot), new Date().toISOString(), reminderId]);
   },
 };

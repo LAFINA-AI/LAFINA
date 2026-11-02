@@ -187,16 +187,17 @@ export const remindersStore = {
   /**
    * Updates the status of a reminder.
    */
-  updateReminderStatus: (id: string, status: ReminderStatus): void => {
+  updateReminderStatus: (id: string, status: ReminderStatus, executor?: DatabaseTransaction): void => {
     const now = new Date().toISOString();
     try {
-      db.transactionSync((tx) => {
+      const apply = (tx: DatabaseTransaction): void => {
         tx.executeSync(
           `UPDATE reminders SET status = ?, updated_at = ? WHERE id = ?`,
           [status, now, id],
         );
         enqueueReminderUpdate(id, tx);
-      });
+      };
+      if (executor) apply(executor); else db.transactionSync(apply);
     } catch (error) {
       console.error('Error updating reminder status:', error);
       throw error;
@@ -217,20 +218,21 @@ export const remindersStore = {
   /**
    * Snoozes a reminder at an exact UTC trigger time.
    */
-  snoozeReminderAt: (id: string, triggerAt: string): void => {
+  snoozeReminderAt: (id: string, triggerAt: string, executor?: DatabaseTransaction): void => {
     const triggerAtMs = new Date(triggerAt).getTime();
     if (!Number.isFinite(triggerAtMs) || triggerAtMs <= Date.now()) {
       throw new Error('Snooze trigger must be a valid future time.');
     }
     const now = new Date().toISOString();
     try {
-      db.transactionSync((tx) => {
+      const apply = (tx: DatabaseTransaction): void => {
         tx.executeSync(
           `UPDATE reminders SET status = 'snoozed', trigger_at = ?, snooze_count = snooze_count + 1, updated_at = ? WHERE id = ?`,
           [triggerAt, now, id],
         );
         enqueueReminderUpdate(id, tx);
-      });
+      };
+      if (executor) apply(executor); else db.transactionSync(apply);
     } catch (error) {
       console.error('Error snoozing reminder:', error);
       throw error;
@@ -240,16 +242,17 @@ export const remindersStore = {
   /**
    * Acknowledges a reminder, setting status to acknowledged.
    */
-  acknowledgeReminder: (id: string): void => {
+  acknowledgeReminder: (id: string, executor?: DatabaseTransaction): void => {
     const now = new Date().toISOString();
     try {
-      db.transactionSync((tx) => {
+      const apply = (tx: DatabaseTransaction): void => {
         tx.executeSync(
           `UPDATE reminders SET status = 'acknowledged', updated_at = ? WHERE id = ?`,
           [now, id],
         );
         enqueueReminderUpdate(id, tx);
-      });
+      };
+      if (executor) apply(executor); else db.transactionSync(apply);
     } catch (error) {
       console.error('Error acknowledging reminder:', error);
       throw error;

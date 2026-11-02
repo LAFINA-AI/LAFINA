@@ -572,12 +572,12 @@ describe('Storage Layer', () => {
   });
 
   describe('database configuration', () => {
-    it('requests WAL, foreign key enforcement, and a busy timeout at startup', async () => {
+    it('requests rollback journaling, foreign keys and a busy timeout for isolated native delivery', async () => {
       const executeSpy = jest.spyOn(db, 'executeSync');
       await initDatabase();
 
       const appliedStatements = executeSpy.mock.calls.map(call => call[0]);
-      expect(appliedStatements).toContain('PRAGMA journal_mode = WAL');
+      expect(appliedStatements).toContain('PRAGMA journal_mode = DELETE');
       expect(appliedStatements).toContain('PRAGMA foreign_keys = ON');
       expect(appliedStatements).toContain('PRAGMA busy_timeout = 5000');
 

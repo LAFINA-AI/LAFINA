@@ -58,16 +58,24 @@
 
       <receiver
         android:name=".LafinaReminderReceiver"
+        android:process=":reminders"
         android:enabled="true"
         android:exported="false">
         <intent-filter>
             <action android:name="android.intent.action.BOOT_COMPLETED" />
+            <action android:name="android.intent.action.USER_UNLOCKED" />
             <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             <action android:name="android.intent.action.TIME_SET" />
             <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
         </intent-filter>
       </receiver>
+
+      <provider
+        android:name=".LafinaDeliveryProvider"
+        android:authorities="${applicationId}.delivery"
+        android:process=":reminders"
+        android:exported="false" />
 
       <receiver
         android:name=".LafinaTimerAlarmReceiver"

@@ -19,6 +19,7 @@ import { CallAnsweredView } from '../components/call/CallAnsweredView';
 import {
   answerCall,
   declineCall,
+  disconnectCall,
   getReminderPreferences,
   manualAcknowledgeCall,
   manualSnoozeCall,
@@ -46,6 +47,7 @@ interface IncomingCallScreenProps {
   userId: string;
   onClose: () => void;
   initialAction?: NativeCallAction;
+  deliveryKey?: string;
 }
 
 /** Renders and coordinates the complete offline reminder call experience. */
@@ -56,6 +58,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
   userId,
   onClose,
   initialAction = 'call',
+  deliveryKey,
 }) => {
   const { isDarkMode, colors } = useTheme();
   const [callState, setCallState] = useState<CallState>('ringing');
@@ -68,6 +71,13 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
   const processedActionRef = useRef('');
   const closingRef = useRef(false);
   const speechProviderRef = useRef<CallSpeechProvider | null>(null);
+  const presentationOwner=useRef(0);
+  const latestDeliveryKey=useRef(deliveryKey);
+  latestDeliveryKey.current=deliveryKey;
+  useEffect(() => {
+    presentationOwner.current+=1;
+    return () => { presentationOwner.current+=1; if(deliveryKey) disconnectCall(undefined,deliveryKey); };
+  }, [visible,reminderId,deliveryKey,userId]);
 
   const clearResultTimeout = useCallback((): void => {
     if (resultTimeoutRef.current) {
@@ -93,6 +103,15 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
     resetPresentation();
     onClose();
   }, [onClose, resetPresentation]);
+  useEffect(() => {
+    if(!visible || !deliveryKey) return undefined;
+    const subscription=DeviceEventEmitter.addListener('LAFINA_NATIVE_DELIVERY_CHANGED',(event: {deliveryKey?: string}) => {
+      if(event.deliveryKey!==latestDeliveryKey.current) return;
+      disconnectCall(undefined,event.deliveryKey);
+      closeCallScreen();
+    });
+    return () => subscription.remove();
+  }, [visible,deliveryKey,closeCallScreen]);
 
   useEffect(() => {
     if (visible) {
@@ -114,7 +133,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
 
     resetPresentation();
     return undefined;
-  }, [reminderId, resetPresentation, task, userId, visible]);
+  }, [reminderId, resetPresentation, task, userId, visible,deliveryKey]);
 
   useEffect(() => {
     let animLoop: Animated.CompositeAnimation | null = null;
@@ -202,6 +221,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
   }, [clearResultTimeout, closeCallScreen, visible]);
 
   const handleAnswer = useCallback(async (): Promise<void> => {
+    const owner=presentationOwner.current;
     Vibration.cancel();
     setCallState('connected');
 
@@ -219,9 +239,11 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
     }
 
     try {
+      if (owner!==presentationOwner.current || !visible) return;
       const speechProvider =
         speechProviderRef.current || createCallSpeechProvider(userId);
-      await answerCall(reminderId, userId, microphoneGranted, speechProvider);
+      if (deliveryKey) await answerCall(reminderId, userId, microphoneGranted, speechProvider,deliveryKey);
+      else await answerCall(reminderId, userId, microphoneGranted, speechProvider);
       if (!microphoneGranted) {
         setReply(
           'Microphone permission is unavailable. Use Acknowledge or Snooze below.',
@@ -231,20 +253,21 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
       console.error('[CallScreen] Could not answer reminder call:', error);
       setReply('LAFINA could not start the voice call. Use the buttons below.');
     }
-  }, [reminderId, userId]);
+  }, [reminderId, userId, deliveryKey, visible]);
 
   const handleDecline = useCallback(async (): Promise<void> => {
     Vibration.cancel();
     try {
       const speechProvider =
         speechProviderRef.current || createCallSpeechProvider(userId);
-      await declineCall(reminderId, userId, speechProvider);
+      if (deliveryKey) await declineCall(reminderId, userId, speechProvider,deliveryKey);
+      else await declineCall(reminderId, userId, speechProvider);
     } catch (error) {
       console.error('[CallScreen] Could not end reminder call:', error);
     } finally {
       closeCallScreen();
     }
-  }, [closeCallScreen, reminderId, userId]);
+  }, [closeCallScreen, reminderId, userId, deliveryKey]);
 
   const handleManualSnooze = useCallback(
     async (minutes: number): Promise<void> => {
@@ -269,13 +292,13 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
 
   useEffect(() => {
     if (!visible || !reminderId) return;
-    const actionKey = reminderId + ':' + initialAction;
+    const actionKey = reminderId + ':' + initialAction + ':' + (deliveryKey ?? 'legacy');
     if (processedActionRef.current === actionKey) return;
     processedActionRef.current = actionKey;
 
     if (initialAction === 'answer') void handleAnswer();
     if (initialAction === 'decline') void handleDecline();
-  }, [visible, reminderId, initialAction, handleAnswer, handleDecline]);
+  }, [visible, reminderId, initialAction, handleAnswer, handleDecline, deliveryKey]);
 
   useEffect(() => {
     if (!visible || callState !== 'ringing') return;

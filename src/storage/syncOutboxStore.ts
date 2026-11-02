@@ -125,7 +125,8 @@ export const syncOutboxStore = {
           scopeId,
         ],
       );
-      notifyEnqueued(localUserId);
+      if (scopedDb.afterCommit) scopedDb.afterCommit(() => notifyEnqueued(localUserId));
+      else notifyEnqueued(localUserId);
       return;
     }
 
@@ -161,7 +162,8 @@ export const syncOutboxStore = {
         now,
       ],
     );
-    notifyEnqueued(localUserId);
+    if (scopedDb.afterCommit) scopedDb.afterCommit(() => notifyEnqueued(localUserId));
+    else notifyEnqueued(localUserId);
   },
 
   /**

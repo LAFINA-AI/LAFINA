@@ -1,5 +1,6 @@
 import { DeviceEventEmitter, NativeModules } from 'react-native';
 import type { Reminder } from '../storage';
+import {deliveryStore,deliveryIdentityKey} from '../storage/deliveryStore';
 
 /**
  * Native event raised when the platform hands audio to another app or a real
@@ -19,6 +20,8 @@ export interface NativeCallTrigger {
   reminderId: string;
   task: string;
   action: NativeCallAction;
+  deliveryKey?: string;
+  userId?: string;
 }
 
 export interface ReminderPermissionStatus {
@@ -34,10 +37,12 @@ interface ScheduleAlarmOptions {
 }
 
 interface LafinaReminderNativeModule {
+  reconcileDelivery?: () => Promise<boolean>;
+  holdDelivery?: (reminderId: string, deliveryKey: string) => Promise<boolean>;
   scheduleExactAlarm: (options: ScheduleAlarmOptions) => Promise<boolean>;
   cancelAlarm: (reminderId: string) => Promise<boolean>;
   consumePendingCall: () => Promise<NativeCallTrigger | null>;
-  finishIncomingCall: (reminderId: string) => Promise<boolean>;
+  finishIncomingCall: (reminderId: string, deliveryKey?: string | null) => Promise<boolean>;
   startActiveCall?: (task: string) => Promise<boolean>;
   stopActiveCall?: () => Promise<boolean>;
   getPermissionStatus: () => Promise<ReminderPermissionStatus>;
@@ -96,10 +101,12 @@ export const cancelReminderAlarm = async (
  */
 export const finishNativeIncomingCall = async (
   reminderId: string,
+  deliveryKey?: string,
 ): Promise<void> => {
   const module = getNativeModule();
   if (!module) return;
-  await module.finishIncomingCall(reminderId);
+  if (hasDurableDelivery()) await module.finishIncomingCall(reminderId, deliveryKey ?? null);
+  else await module.finishIncomingCall(reminderId);
 };
 
 /**
@@ -183,6 +190,11 @@ export const subscribeToExternalAudioInterruption = (
 export const reconcileReminderAlarms = async (
   reminders: Reminder[],
 ): Promise<void> => {
+  const native = getNativeModule();
+  if (native?.reconcileDelivery) {
+    await native.reconcileDelivery();
+    return;
+  }
   const futureReminders = reminders.filter(
     reminder =>
       (reminder.status === 'pending' || reminder.status === 'snoozed') &&
@@ -204,4 +216,27 @@ export const reconcileReminderAlarms = async (
       );
     }
   }
+};
+
+/** Detects a rebuilt APK whose private coordinator owns all reminder dispatch. */
+export const hasDurableDelivery = (): boolean => typeof getNativeModule()?.reconcileDelivery === 'function';
+
+/** Rejects a queued native UI event whose account, generation or response window changed. */
+export const isCurrentNativeCall = (event: NativeCallTrigger, userId: string): boolean => {
+  if (!hasDurableDelivery()) return true;
+  if (event.userId!==userId || !event.deliveryKey) return false;
+  try {
+    const job=deliveryStore.get(event.reminderId);
+    return !!job && job.userId===userId && job.state==='ringing' && !!job.deadlineAt &&
+      Date.parse(job.deadlineAt)>Date.now() && deliveryIdentityKey(job,'due')===event.deliveryKey;
+  } catch { return false; }
+};
+
+/** Extends only the captured ringing occurrence while its visible call is answered. */
+export const holdNativeDelivery = async (reminderId: string, deliveryKey: string): Promise<boolean> => {
+  const native = getNativeModule();
+  if (!native?.reconcileDelivery) return true;
+  if (!native.holdDelivery) return false;
+  try { return await native.holdDelivery(reminderId, deliveryKey); }
+  catch (error) { console.error('Could not retain this reminder call:', error); return false; }
 };

@@ -1,5 +1,5 @@
 import { remindersStore } from '../storage';
-import { scheduleReminderAlarm } from './reminderAlarm';
+import { scheduleReminderAlarm, hasDurableDelivery } from './reminderAlarm';
 
 export interface ReminderPreferenceRefreshResult {
   updatedCount: number;
@@ -34,6 +34,13 @@ export const refreshPendingReminderLeadTimes = async (
     const triggerAt = new Date(Math.max(preferredTriggerMs, Date.now() + 1000)).toISOString();
 
     try {
+      if (hasDurableDelivery()) {
+        remindersStore.updateReminderTriggerAt(reminder.id,triggerAt);
+        updatedCount+=1;
+        try { await scheduleReminderAlarm(reminder.id,reminder.task,triggerAt); }
+        catch { failedCount+=1; }
+        continue;
+      }
       await scheduleReminderAlarm(reminder.id, reminder.task, triggerAt);
       try {
         remindersStore.updateReminderTriggerAt(reminder.id, triggerAt);

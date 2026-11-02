@@ -60,6 +60,7 @@ import { syncWorker } from './src/sync/syncWorker';
 import { createSyncScheduler } from './src/sync/syncScheduler';
 import { appUpdater } from './src/updates';
 import { businessService } from './src/cloud/businessService';
+import {isCurrentNativeCall} from './src/scheduler/reminderAlarm';
 import type {
   BusinessMemberData,
   BusinessInvitationData,
@@ -144,6 +145,7 @@ function AppContent({
   const [callReminderId, setCallReminderId] = useState('');
   const [callTask, setCallTask] = useState('');
   const [callAction, setCallAction] = useState<NativeCallAction>('call');
+  const [callDeliveryKey, setCallDeliveryKey] = useState<string | undefined>();
   const [calendarViewMode, setCalendarViewMode] = useState<ViewMode>('week');
   const [teamModalVisible, setTeamModalVisible] = useState(false);
   const [businessName, setBusinessName] = useState('My Business');
@@ -288,12 +290,14 @@ function AppContent({
     });
     void consumePendingNativeCall().then((payload) => {
       if (!payload) return;
+      if (!isCurrentNativeCall(payload,userId)) return;
       const reminder = remindersStore.getReminderById(payload.reminderId);
       if (!reminder || reminder.userId !== userId) return;
       setIsLoading(false);
       setCallReminderId(reminder.id);
       setCallTask(payload.task || reminder.task);
       setCallAction(payload.action);
+      setCallDeliveryKey(payload.deliveryKey);
       setCallVisible(true);
     });
   }, [userId]);
@@ -301,11 +305,13 @@ function AppContent({
   // Listen for both foreground scheduler events and native alarm/activity intents.
   useEffect(() => {
     const showCall = (event: NativeCallTrigger): void => {
+      if (!userId || !isCurrentNativeCall(event,userId)) return;
       const reminder = remindersStore.getReminderById(event.reminderId);
-      if (!reminder || (userId && reminder.userId !== userId)) return;
+      if (!userId || !reminder || reminder.userId !== userId || reminder.deletedAt || ['acknowledged','missed'].includes(reminder.status)) return;
       setCallReminderId(reminder.id);
       setCallTask(event.task || reminder.task);
       setCallAction(event.action);
+      setCallDeliveryKey(event.deliveryKey);
       setCallVisible(true);
     };
 
@@ -873,6 +879,7 @@ function AppContent({
             task={callTask}
             userId={userId}
             initialAction={callAction}
+            deliveryKey={callDeliveryKey}
             onClose={() => {
               setCallVisible(false);
               triggerRefresh();

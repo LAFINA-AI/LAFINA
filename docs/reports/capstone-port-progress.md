@@ -37,4 +37,23 @@ Target: original LAFINA repository, `LAFINA-USTP`. Scope: the five items in
   Focused delivery-store line coverage 94.44%; delivery-schema coverage 100%.
 - The configured API 37 x86_64 emulator is booted. Native delivery cutover is not yet active.
 
-Stages 3–5: pending implementation and verification. No new packages or model changes.
+## Stage 3 — native delivery cutover
+
+- Schema 20, a private `:reminders` SQLite coordinator, full-URI alarms and tagged
+  notifications replace the preference-registry dispatcher. Claims, status changes
+  and sync outbox entries commit together; delivery receipts remain separate.
+- Captured delivery identities fence voice results, ACK/snooze, late UI events and
+  cleanup. Registration failures preserve committed work for recovery.
+- TypeScript PASS; 104 suites / 862 tests PASS with normal exit; ESLint no errors.
+  Changed coordinator adapters/actions exceed 80% line coverage.
+- Debug APK and framework-only instrumentation APK built and installed in place on
+  API 37 x86_64. Nine isolated real-SQLite native checks PASS: claim, duplicate and
+  stale claims, receipt/reopen, bounded retry state, source invalidation, rollback,
+  and future-schema refusal. The fixture never opens or clears the student DB.
+- Android's default compatibility WAL initially conflicted with the reviewed DELETE
+  journal protocol; explicit OpenParams fixed it. ADR-001 records the protocol.
+- Main app and isolated reminder process launch after the update. Full application
+  migration/notification smoke and representative physical-phone QA remain pending;
+  passing fixture checks do not certify those scenarios.
+
+Stages 4–5: pending implementation and verification. No new packages or model changes.

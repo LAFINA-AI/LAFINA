@@ -25,6 +25,8 @@ import {
   startActiveCallSession,
   stopActiveCallSession,
   subscribeToExternalAudioInterruption,
+  hasDurableDelivery,
+  holdNativeDelivery,
 } from './reminderAlarm';
 import {
   CallSpeechProvider,
@@ -54,6 +56,7 @@ export interface CallStateEvent {
 }
 
 interface CallDispatcherSession {
+  deliveryKey?: string;
   id: number;
   reminderId: string;
   userId: string;
@@ -220,7 +223,9 @@ const yieldCallToExternalAudio = async (): Promise<void> => {
   const action = await autoSnoozeReminderAction(
     session.reminderId,
     session.userId,
+    session.deliveryKey,
   );
+  if (!isCurrentSession(session)) return;
   disconnectCall(resolutionFromAction(action));
 };
 
@@ -429,7 +434,9 @@ const processCallTranscript = async (
       const action = await acknowledgeReminderAction(
         session.reminderId,
         session.userId,
+        session.deliveryKey,
       );
+      if (!isCurrentSession(session)) return;
       await speakText(action.message);
       if (action.ok) {
         disconnectCall(resolutionFromAction(action));
@@ -441,11 +448,10 @@ const processCallTranscript = async (
     }
 
     const minutes = command.minutes ?? preferences.snoozeDurationMinutes;
-    const action = await snoozeReminderAction(
-      session.reminderId,
-      session.userId,
-      minutes,
-    );
+    const action = session.deliveryKey
+      ? await snoozeReminderAction(session.reminderId,session.userId,minutes,session.deliveryKey)
+      : await snoozeReminderAction(session.reminderId,session.userId,minutes);
+    if (!isCurrentSession(session)) return;
     await speakText(action.message);
     if (action.ok) {
       disconnectCall(resolutionFromAction(action));
@@ -636,6 +642,7 @@ export const answerCall = async (
   userId: string,
   voiceEnabled = true,
   speechProvider?: CallSpeechProvider,
+  expectedDeliveryKey?: string,
 ): Promise<void> => {
   const reminder = remindersStore.getReminderById(reminderId);
   if (!reminder || reminder.userId !== userId) {
@@ -645,7 +652,7 @@ export const answerCall = async (
 
   // A double tap on Answer must not open a second media session for the same
   // reminder: the first session already owns the microphone and the audio focus.
-  if (activeSession?.reminderId === reminderId) {
+  if (activeSession?.reminderId === reminderId && (!hasDurableDelivery() || activeSession.deliveryKey===expectedDeliveryKey)) {
     console.warn(
       '[CallDispatcher] Ignoring duplicate answer for the active reminder:',
       reminderId,
@@ -676,6 +683,7 @@ export const answerCall = async (
   await stopActiveAudioAndCapture();
   sessionSequence += 1;
   const session: CallDispatcherSession = {
+    deliveryKey: expectedDeliveryKey,
     id: sessionSequence,
     reminderId,
     userId,
@@ -689,6 +697,12 @@ export const answerCall = async (
   activeSession = session;
   subscribeToExternalAudioInterruptions();
 
+  if (hasDurableDelivery() && (!expectedDeliveryKey || !await holdNativeDelivery(reminderId,expectedDeliveryKey))) {
+    if (isCurrentSession(session)) disconnectCall();
+    return;
+  }
+  if (!isCurrentSession(session)) return;
+
   if (voiceEnabled) {
     try {
       await startActiveCallSession(reminder.task);
@@ -696,7 +710,7 @@ export const answerCall = async (
       console.error('[CallDispatcher] Active-call service failed:', error);
     }
   }
-  await finishNativeIncomingCall(reminderId);
+  await finishNativeIncomingCall(reminderId,session.deliveryKey);
   remindersStore.updateReminderStatus(reminderId, 'triggered');
   publishCallState('connected');
 
@@ -736,7 +750,9 @@ export const autoSnoozeCall = async (): Promise<void> => {
   const action = await autoSnoozeReminderAction(
     session.reminderId,
     session.userId,
+    session.deliveryKey,
   );
+  if (!isCurrentSession(session)) return;
   if (session.state !== 'ringing') {
     await speakText(action.message);
   }
@@ -750,6 +766,7 @@ export const declineCall = async (
   reminderId: string,
   userId: string,
   speechProvider: CallSpeechProvider = defaultCallSpeechProvider,
+  expectedDeliveryKey?: string,
 ): Promise<void> => {
   const reminder = remindersStore.getReminderById(reminderId);
   if (!reminder || reminder.userId !== userId) {
@@ -758,6 +775,7 @@ export const declineCall = async (
   }
   sessionSequence += 1;
   activeSession = {
+    deliveryKey: expectedDeliveryKey,
     id: sessionSequence,
     reminderId,
     userId,
@@ -789,7 +807,7 @@ export const manualSnoozeCall = async (
     return;
   }
   await stopActiveAudioAndCapture(session);
-  const action = await snoozeReminderAction(reminderId, userId, minutes);
+  const action = await snoozeReminderAction(reminderId, userId, minutes,session.deliveryKey);
   if (!isCurrentSession(session)) return;
   await speakText(action.message);
   if (action.ok) {
@@ -816,7 +834,7 @@ export const manualAcknowledgeCall = async (
     return;
   }
   await stopActiveAudioAndCapture(session);
-  const action = await acknowledgeReminderAction(reminderId, userId);
+  const action = await acknowledgeReminderAction(reminderId, userId,session.deliveryKey);
   if (!isCurrentSession(session)) return;
   await speakText(action.message);
   if (action.ok) {
@@ -829,9 +847,9 @@ export const manualAcknowledgeCall = async (
 /**
  * Stops the active call loop, microphone service, wake lock, and terminal UI state.
  */
-export const disconnectCall = (resolution?: CallResolution): void => {
+export const disconnectCall = (resolution?: CallResolution, retiredDeliveryKey?: string): void => {
   const session = activeSession;
-  if (!session) return;
+  if (!session || (retiredDeliveryKey && session.deliveryKey!==retiredDeliveryKey)) return;
   unsubscribeFromExternalAudioInterruptions();
   session.state = 'disconnected';
   activeSession = null;
@@ -839,5 +857,5 @@ export const disconnectCall = (resolution?: CallResolution): void => {
   void stopActiveCallSession().catch(() => undefined);
   const event: CallStateEvent = { state: 'disconnected' };
   if (resolution) event.resolution = resolution;
-  DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', event);
+  if (!retiredDeliveryKey) DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', event);
 };

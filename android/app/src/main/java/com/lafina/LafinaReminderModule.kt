@@ -7,11 +7,15 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
+import java.util.concurrent.Executors
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -32,10 +36,33 @@ class LafinaReminderModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext), ActivityEventListener, LifecycleEventListener {
 
   private var activeRingtone: Ringtone? = null
+  private val deliveryWorker = Executors.newSingleThreadExecutor()
+  private val postedReceiver=object : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+      deliveryWorker.execute {
+        try {
+          if(!reactContext.hasActiveReactInstance()) return@execute
+          val retired=intent.getStringExtra("retiredKey")
+          if(retired!=null) reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+            .emit("LAFINA_NATIVE_DELIVERY_CHANGED",Arguments.createMap().apply { putString("deliveryKey",retired) })
+          else LafinaDeliveryBridge.payload(reactContext)?.let { payload ->
+            reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java).emit(EVENT_CALL_TRIGGER,mapPayload(payload))
+          }
+        } catch (_: Exception) { android.util.Log.w("LafinaDelivery","Reminder UI refresh will retry on foreground.") }
+      }
+    }
+  }
 
   init {
     reactContext.addActivityEventListener(this)
     reactContext.addLifecycleEventListener(this)
+    ContextCompat.registerReceiver(reactContext,postedReceiver,IntentFilter("com.lafina.DELIVERY_POSTED"),ContextCompat.RECEIVER_NOT_EXPORTED)
+  }
+
+  override fun invalidate() {
+    runCatching { reactContext.unregisterReceiver(postedReceiver) }
+    deliveryWorker.shutdown()
+    super.invalidate()
   }
 
   // Timer alarms stay quiet while the app is in front; its own timer rings.
@@ -89,59 +116,57 @@ class LafinaReminderModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun scheduleExactAlarm(options: ReadableMap, promise: Promise) {
-    try {
-      val reminderId = options.getString("reminderId")?.trim().orEmpty()
-      val task = options.getString("task")?.trim().orEmpty()
-      val triggerAtMs = options.getDouble("triggerAtMs").toLong()
-      require(reminderId.isNotEmpty()) { "reminderId is required" }
-      require(triggerAtMs > System.currentTimeMillis()) { "triggerAtMs must be in the future" }
-      scheduleAlarm(reactContext, reminderId, task, triggerAtMs, persist = true)
-      promise.resolve(true)
-    } catch (e: Exception) {
-      promise.reject("ALARM_ERROR", e.message, e)
+    deliveryWorker.execute {
+      try {
+        val id=options.getString("reminderId") ?: throw IllegalArgumentException("Missing reminder")
+        val result=LafinaDeliveryBridge.request(reactContext,"schedule",id,Bundle().apply { putLong("triggerAtMs",options.getDouble("triggerAtMs").toLong()) })
+        promise.resolve(result.getBoolean("ok"))
+      } catch (error: Exception) { promise.reject("ALARM_ERROR","Reminder saved locally; Android delivery needs recovery.",error) }
+    }
+  }
+
+  @ReactMethod
+  fun reconcileDelivery(promise: Promise) {
+    deliveryWorker.execute {
+      try { promise.resolve(LafinaDeliveryBridge.request(reactContext,"reconcile",extras=Bundle().apply { putBoolean("force",true) }).getBoolean("ok")) }
+      catch (error: Exception) { promise.reject("DELIVERY_ERROR","Android reminder recovery is not ready.",error) }
+    }
+  }
+
+  @ReactMethod
+  fun holdDelivery(reminderId: String, deliveryKey: String, promise: Promise) {
+    deliveryWorker.execute {
+      try { promise.resolve(LafinaDeliveryBridge.request(reactContext,"hold",reminderId,Bundle().apply { putString("deliveryKey",deliveryKey) }).getBoolean("ok")) }
+      catch (error: Exception) { promise.reject("CALL_CHANGED","This reminder changed. Open its current alert.",error) }
     }
   }
 
   @ReactMethod
   fun cancelAlarm(reminderId: String, promise: Promise) {
-    try {
-      cancelScheduledAlarm(reactContext, reminderId, removePersisted = true)
-      promise.resolve(true)
-    } catch (e: Exception) {
-      promise.reject("ALARM_ERROR", e.message, e)
+    deliveryWorker.execute {
+      try { promise.resolve(LafinaDeliveryBridge.request(reactContext,"cancel",reminderId).getBoolean("ok")) }
+      catch (error: Exception) { promise.reject("ALARM_ERROR","Android reminder cleanup is pending.",error) }
     }
+  }
+
+  private fun mapPayload(value: JSONObject): WritableMap = Arguments.createMap().apply {
+    for(field in listOf("reminderId","userId","task","action","deliveryKey")) putString(field,value.getString(field))
   }
 
   @ReactMethod
   fun consumePendingCall(promise: Promise) {
-    try {
-      val preferences = reactContext.getSharedPreferences(PENDING_CALL_PREFS, Context.MODE_PRIVATE)
-      val reminderId = preferences.getString(KEY_PENDING_REMINDER_ID, null)
-      if (reminderId.isNullOrBlank()) {
-        promise.resolve(null)
-        return
-      }
-      val payload = Arguments.createMap().apply {
-        putString("reminderId", reminderId)
-        putString("task", preferences.getString(KEY_PENDING_TASK, "") ?: "")
-        putString("action", preferences.getString(KEY_PENDING_ACTION, ACTION_CALL) ?: ACTION_CALL)
-      }
-      preferences.edit().clear().apply()
-      promise.resolve(payload)
-    } catch (e: Exception) {
-      promise.reject("PENDING_CALL_ERROR", e.message, e)
+    deliveryWorker.execute {
+      try { promise.resolve(LafinaDeliveryBridge.payload(reactContext,reactContext.currentActivity?.intent)?.let(::mapPayload)) }
+      catch (error: Exception) { promise.reject("PENDING_CALL_ERROR","Pending reminders need recovery.",error) }
     }
   }
 
   @ReactMethod
-  fun finishIncomingCall(reminderId: String, promise: Promise) {
-    try {
-      NotificationManagerCompat.from(reactContext).cancel(notificationId(reminderId))
-      stopRingtoneInternal()
-      reactContext.getSharedPreferences(PENDING_CALL_PREFS, Context.MODE_PRIVATE).edit().clear().apply()
-      promise.resolve(true)
-    } catch (e: Exception) {
-      promise.reject("CALL_FINISH_ERROR", e.message, e)
+  fun finishIncomingCall(reminderId: String, deliveryKey: String?, promise: Promise) {
+    stopRingtoneInternal()
+    deliveryWorker.execute {
+      try { promise.resolve(LafinaDeliveryBridge.request(reactContext,"finish",reminderId,Bundle().apply { putString("deliveryKey",deliveryKey) }).getBoolean("ok")) }
+      catch (error: Exception) { promise.reject("CALL_FINISH_ERROR","Reminder notification cleanup is pending.",error) }
     }
   }
 
@@ -249,16 +274,12 @@ class LafinaReminderModule(private val reactContext: ReactApplicationContext) :
   }
 
   override fun onNewIntent(intent: Intent) {
-    val payload = payloadFromIntent(intent) ?: return
-    persistPendingCall(
-        reactContext,
-        payload.getString("reminderId") ?: return,
-        payload.getString("task") ?: "",
-        payload.getString("action") ?: ACTION_CALL
-    )
-    if (reactContext.hasActiveReactInstance()) {
-      reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-          .emit(EVENT_CALL_TRIGGER, payload)
+    deliveryWorker.execute {
+      try {
+        val payload=LafinaDeliveryBridge.payload(reactContext,intent) ?: return@execute
+        if (reactContext.hasActiveReactInstance()) reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+          .emit(EVENT_CALL_TRIGGER,mapPayload(payload))
+      } catch (_: Exception) { android.util.Log.w("LafinaDelivery","Current reminder could not be opened.") }
     }
   }
 
@@ -275,206 +296,5 @@ class LafinaReminderModule(private val reactContext: ReactApplicationContext) :
     const val ACTION_ANSWER = "answer"
     const val ACTION_DECLINE = "decline"
     const val EVENT_CALL_TRIGGER = "LAFINA_NATIVE_CALL_TRIGGER"
-
-    private const val ALARM_PREFS = "lafina_alarm_registry"
-    private const val PENDING_CALL_PREFS = "lafina_pending_call"
-    private const val KEY_PENDING_REMINDER_ID = "reminder_id"
-    private const val KEY_PENDING_TASK = "task"
-    private const val KEY_PENDING_ACTION = "action"
-    private const val CALL_CHANNEL_ID = "lafina_incoming_calls_v2"
-
-    fun scheduleAlarm(
-        context: Context,
-        reminderId: String,
-        task: String,
-        triggerAtMs: Long,
-        persist: Boolean
-    ) {
-      val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-      val canScheduleExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
-      if (canScheduleExact) {
-        alarmManager.setExactAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            triggerAtMs,
-            triggerPendingIntent(context, reminderId, task)
-        )
-      } else {
-        alarmManager.setAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            triggerAtMs,
-            triggerPendingIntent(context, reminderId, task)
-        )
-      }
-      if (persist) {
-        val record = JSONObject()
-            .put("reminderId", reminderId)
-            .put("task", task)
-            .put("triggerAtMs", triggerAtMs)
-        context.getSharedPreferences(ALARM_PREFS, Context.MODE_PRIVATE)
-            .edit().putString(reminderId, record.toString()).apply()
-      }
-    }
-
-    fun cancelScheduledAlarm(context: Context, reminderId: String, removePersisted: Boolean) {
-      val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-      val intent = Intent(context, LafinaReminderReceiver::class.java).apply {
-        action = ACTION_TRIGGER_REMINDER
-      }
-      val pendingIntent = PendingIntent.getBroadcast(
-          context,
-          reminderId.hashCode(),
-          intent,
-          PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-      )
-      if (pendingIntent != null) {
-        alarmManager.cancel(pendingIntent)
-        pendingIntent.cancel()
-      }
-      if (removePersisted) {
-        context.getSharedPreferences(ALARM_PREFS, Context.MODE_PRIVATE)
-            .edit().remove(reminderId).apply()
-      }
-    }
-
-    fun restoreScheduledAlarms(context: Context) {
-      val preferences = context.getSharedPreferences(ALARM_PREFS, Context.MODE_PRIVATE)
-      val now = System.currentTimeMillis()
-      preferences.all.forEach { (key, rawValue) ->
-        try {
-          val record = JSONObject(rawValue as String)
-          val reminderId = record.optString("reminderId", key)
-          val task = record.optString("task", "")
-          val triggerAtMs = record.getLong("triggerAtMs")
-          if (triggerAtMs > now) {
-            scheduleAlarm(context, reminderId, task, triggerAtMs, persist = false)
-          } else {
-            preferences.edit().remove(key).apply()
-            showIncomingCall(context, reminderId, task)
-          }
-        } catch (_: Exception) {
-          preferences.edit().remove(key).apply()
-        }
-      }
-    }
-
-    fun handleAlarmTrigger(context: Context, reminderId: String, task: String) {
-      context.getSharedPreferences(ALARM_PREFS, Context.MODE_PRIVATE)
-          .edit().remove(reminderId).apply()
-      showIncomingCall(context, reminderId, task)
-    }
-
-    fun showIncomingCall(context: Context, reminderId: String, task: String) {
-      createCallChannel(context)
-      persistPendingCall(context, reminderId, task, ACTION_CALL)
-      val fullScreenIntent = callActivityPendingIntent(context, reminderId, task, ACTION_CALL, 0)
-      val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-      val notification = NotificationCompat.Builder(context, CALL_CHANNEL_ID)
-          .setSmallIcon(android.R.drawable.sym_call_incoming)
-          .setContentTitle("LAFINA Reminder")
-          .setContentText(task.ifBlank { "Scheduled academic reminder" })
-          .setCategory(NotificationCompat.CATEGORY_CALL)
-          .setPriority(NotificationCompat.PRIORITY_MAX)
-          .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-          .setOngoing(true)
-          .setAutoCancel(false)
-          .setSound(ringtoneUri)
-          .setVibrate(longArrayOf(0, 1000, 1000, 1000, 1000))
-          .setContentIntent(fullScreenIntent)
-          .setFullScreenIntent(fullScreenIntent, true)
-          .build()
-      notification.flags = notification.flags or Notification.FLAG_INSISTENT
-      try {
-        NotificationManagerCompat.from(context).notify(notificationId(reminderId), notification)
-      } catch (_: SecurityException) {
-        // The JS permission preflight provides recovery UI.
-      }
-    }
-
-    fun captureActivityIntent(context: Context, intent: Intent?) {
-      val reminderId = intent?.getStringExtra("reminderId")?.takeIf { it.isNotBlank() } ?: return
-      persistPendingCall(
-          context,
-          reminderId,
-          intent.getStringExtra("task") ?: "",
-          intent.getStringExtra("action") ?: ACTION_CALL
-      )
-    }
-
-    fun payloadFromIntent(intent: Intent?): WritableMap? {
-      val reminderId = intent?.getStringExtra("reminderId")?.takeIf { it.isNotBlank() } ?: return null
-      return Arguments.createMap().apply {
-        putString("reminderId", reminderId)
-        putString("task", intent.getStringExtra("task") ?: "")
-        putString("action", intent.getStringExtra("action") ?: ACTION_CALL)
-      }
-    }
-
-    private fun persistPendingCall(context: Context, reminderId: String, task: String, action: String) {
-      context.getSharedPreferences(PENDING_CALL_PREFS, Context.MODE_PRIVATE)
-          .edit()
-          .putString(KEY_PENDING_REMINDER_ID, reminderId)
-          .putString(KEY_PENDING_TASK, task)
-          .putString(KEY_PENDING_ACTION, action)
-          .apply()
-    }
-
-    private fun triggerPendingIntent(context: Context, reminderId: String, task: String): PendingIntent {
-      val intent = Intent(context, LafinaReminderReceiver::class.java).apply {
-        action = ACTION_TRIGGER_REMINDER
-        putExtra("reminderId", reminderId)
-        putExtra("task", task)
-      }
-      return PendingIntent.getBroadcast(
-          context,
-          reminderId.hashCode(),
-          intent,
-          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-      )
-    }
-
-    private fun callActivityPendingIntent(
-        context: Context,
-        reminderId: String,
-        task: String,
-        action: String,
-        requestOffset: Int
-    ): PendingIntent {
-      val intent = Intent(context, MainActivity::class.java).apply {
-        putExtra("reminderId", reminderId)
-        putExtra("task", task)
-        putExtra("action", action)
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-      }
-      return PendingIntent.getActivity(
-          context,
-          reminderId.hashCode() + requestOffset,
-          intent,
-          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-      )
-    }
-
-    private fun createCallChannel(context: Context) {
-      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-      val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-      val audioAttributes = AudioAttributes.Builder()
-          .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-          .build()
-      val channel = NotificationChannel(
-          CALL_CHANNEL_ID,
-          "LAFINA reminder calls",
-          NotificationManager.IMPORTANCE_HIGH
-      ).apply {
-        description = "Incoming offline academic reminder calls"
-        lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-        enableVibration(true)
-        vibrationPattern = longArrayOf(0, 1000, 1000, 1000, 1000)
-        setSound(ringtoneUri, audioAttributes)
-      }
-      (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-          .createNotificationChannel(channel)
-    }
-
-    private fun notificationId(reminderId: String): Int = reminderId.hashCode()
   }
 }

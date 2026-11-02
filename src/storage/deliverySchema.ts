@@ -29,6 +29,13 @@ export const initializeDeliverySchema = (tx: DatabaseTransaction): void => {
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL
   )`);
   tx.executeSync('CREATE INDEX IF NOT EXISTS idx_delivery_due ON reminder_delivery_jobs(user_id,state,trigger_at)');
+  const columns = tx.executeSync('PRAGMA table_info(reminder_delivery_jobs)').rows as Array<{name?: string}>;
+  if (!columns.some(column => column.name === 'source_snapshot')) {
+    tx.executeSync('ALTER TABLE reminder_delivery_jobs ADD COLUMN source_snapshot TEXT');
+  }
+  for (const column of ['registration_attempts','registration_failure_generation']) {
+    if (!columns.some(existing => existing.name===column)) tx.executeSync(`ALTER TABLE reminder_delivery_jobs ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0`);
+  }
   tx.executeSync('CREATE INDEX IF NOT EXISTS idx_delivery_source ON reminder_delivery_jobs(source_type,source_id,user_id)');
   tx.executeSync(`CREATE TRIGGER IF NOT EXISTS delivery_events_bound AFTER INSERT ON native_alarm_events BEGIN
     DELETE FROM native_alarm_events WHERE id NOT IN (SELECT id FROM native_alarm_events ORDER BY id DESC LIMIT 200);
