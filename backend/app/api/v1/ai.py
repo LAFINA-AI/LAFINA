@@ -82,6 +82,27 @@ LAFINA_SYSTEM_INSTRUCTION = (
     "Rule 3: Do not use emojis in the chat"
 )
 
+LAFINA_SCHEDULING_ONLY_RULE = (
+    "Rule 4: The student has scheduling-only mode on, which overrides every earlier mention of general "
+    "questions. Politely decline anything unrelated to scheduling, calendars, tasks, productivity, or study, "
+    "and offer to help with the student's schedule instead. In this mode, do not answer general knowledge, "
+    "entertainment, or small-talk requests."
+)
+
+
+def build_lafina_instruction(scheduling_only: bool) -> str:
+    """Return the chat system instruction, adding the scheduling-only guardrail when active.
+
+    Args:
+        scheduling_only: Whether the student has kept general inquiries switched off.
+
+    Returns:
+        The system instruction for the cloud chat model.
+    """
+    if not scheduling_only:
+        return LAFINA_SYSTEM_INSTRUCTION
+    return f"{LAFINA_SYSTEM_INSTRUCTION} {LAFINA_SCHEDULING_ONLY_RULE}"
+
 
 def get_deepseek_client(request: Request) -> DeepSeekClient:
     """Dependency helper providing the application-scoped DeepSeekClient."""
@@ -150,6 +171,9 @@ class AIChatRequest(BaseModel):
     # handbook off: the admin panel's `handbook_rag` flag still has the final
     # say, and clients that never send it (mobile, older desktops) keep it on.
     useHandbook: bool = True
+    # The student's scheduling-only guardrail. Clients that never send it keep the
+    # guarded default, which matches the setting's shipped state.
+    schedulingOnly: bool = True
 
 
 class HandbookSource(BaseModel):
@@ -261,7 +285,7 @@ async def chat_proxy(
         else []
     )
     formatted_messages = (
-        [{"role": "system", "content": LAFINA_SYSTEM_INSTRUCTION}]
+        [{"role": "system", "content": build_lafina_instruction(req.schedulingOnly)}]
         + handbook_context
         + [{"role": m.role, "content": m.content} for m in req.messages]
     )

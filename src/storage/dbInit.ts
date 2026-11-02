@@ -12,8 +12,9 @@ import { generateId } from '../utils';
  * SQLite `user_version` this build migrates to.
  * 16: study tools (Pomodoro, flashcards, study notes, meetings) and
  * entity-type negotiation for sync.
+ * 18: scheduling-only AI guardrail preference on `user_preferences`.
  */
-const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 type LegacySyncRow = Record<string, unknown>;
 
@@ -421,6 +422,7 @@ export const initDatabase = async (): Promise<void> => {
           snooze_tendency TEXT NOT NULL,
           weekly_class_count TEXT NOT NULL,
           longest_class_gap TEXT NOT NULL,
+          scheduling_only INTEGER NOT NULL DEFAULT 1,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
@@ -1088,6 +1090,12 @@ export const initDatabase = async (): Promise<void> => {
 
         if (currentVersion < 15) {
           try { tx.executeSync('ALTER TABLE active_session ADD COLUMN pending_cloud_credential TEXT'); } catch {}
+        }
+
+        // v18: the scheduling-only guardrail ships enabled for every existing
+        // account, and stays enabled for new ones via the column default.
+        if (currentVersion < 18) {
+          applyMigrationStep(tx, 'ALTER TABLE user_preferences ADD COLUMN scheduling_only INTEGER NOT NULL DEFAULT 1');
         }
 
         if (currentVersion < 8) {

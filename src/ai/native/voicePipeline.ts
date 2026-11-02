@@ -4,6 +4,11 @@ import { parseNluJson } from '../nlu/jsonParser';
 import { buildNluPrompt } from '../nlu/prompt';
 import { createFallbackNluResult, processCommand, normalizeTranscript } from '../nlu/parser';
 import { applyNluScheduleResult } from '../nlu/scheduler';
+import {
+  SCHEDULING_ONLY_DECLINE_REPLY,
+  shouldDeclineAsOffTopic,
+} from '../nlu/guardrail';
+import { preferencesStore } from '../../storage';
 import type { CreatedScheduleItemType, NluResult } from '../nlu/types';
 import type { OfflineModelReference } from '../modelAssets';
 import {
@@ -170,6 +175,23 @@ export const runOfflineVoiceScheduling = async (
     // result. This keeps compact times, dates, and titles stable even when the
     // small local language model would otherwise invent or truncate a field.
     const deterministicResult = createFallbackNluResult(transcript);
+    const schedulingOnly = preferencesStore.getSchedulingOnly(userId);
+
+    // The guardrail answers first when it applies, so an off-topic sentence
+    // never reaches the local model at all.
+    if (
+      shouldDeclineAsOffTopic(transcript, deterministicResult.intent, schedulingOnly)
+    ) {
+      return {
+        didUpdate: false,
+        transcript,
+        reply: SCHEDULING_ONLY_DECLINE_REPLY,
+        createdItemType: null,
+        nluResult: { ...deterministicResult, reply: SCHEDULING_ONLY_DECLINE_REPLY },
+        errorCode: null,
+      };
+    }
+
     let nluResult: NluResult;
     if (deterministicResult.intent === 'schedule') {
       nluResult = deterministicResult;
@@ -177,7 +199,7 @@ export const runOfflineVoiceScheduling = async (
       const rawNluJson = await withTimeout(
         modules.LafinaIntentExtractor.extractIntentJson({
           transcript,
-          prompt: buildNluPrompt(transcript),
+          prompt: buildNluPrompt(transcript, new Date(), schedulingOnly),
           model: AI_MODEL_ASSETS.llm,
           temperature: LLM_TEMPERATURE,
           maxTokens: LLM_MAX_TOKENS,
@@ -228,12 +250,19 @@ export const runLocalLlmChat = async (
     return applyNluScheduleResult(deterministicResult, userId).reply;
   }
 
+  const schedulingOnly = preferencesStore.getSchedulingOnly(userId);
+  if (
+    shouldDeclineAsOffTopic(normalizedUserText, deterministicResult.intent, schedulingOnly)
+  ) {
+    return SCHEDULING_ONLY_DECLINE_REPLY;
+  }
+
   if (modules.LafinaIntentExtractor) {
     try {
       const rawNluJson = await withTimeout(
         modules.LafinaIntentExtractor.extractIntentJson({
           transcript: normalizedUserText,
-          prompt: buildNluPrompt(normalizedUserText),
+          prompt: buildNluPrompt(normalizedUserText, new Date(), schedulingOnly),
           model: AI_MODEL_ASSETS.llm,
           temperature: LLM_TEMPERATURE,
           maxTokens: LLM_MAX_TOKENS,

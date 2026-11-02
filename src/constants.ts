@@ -87,3 +87,12 @@ export const DEFAULT_REMINDER_LEAD = '15';
 export const DEFAULT_SNOOZE_TENDENCY = 'snooze_once';
 export const DEFAULT_CLASS_COUNT = '4-6';
 export const DEFAULT_LONGEST_GAP = '1 hour';
+
+/**
+ * Guardrail default: scheduling-only mode is on for every account.
+ *
+ * The assistant declines anything outside scheduling, calendars, and productivity
+ * until the student turns it off from Preferences, which also keeps the offline
+ * model's token budget on the task it was built for.
+ */
+export const DEFAULT_SCHEDULING_ONLY = true;

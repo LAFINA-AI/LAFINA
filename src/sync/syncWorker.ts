@@ -319,6 +319,9 @@ const applyProfile = (
     'longest_class_gap',
     '1 hour'
   );
+  // Absent in payloads written before the guardrail existed; those accounts stay
+  // guarded, which is also the column default.
+  const schedulingOnly = booleanOrDefault(payload, 'scheduling_only', true) ? 1 : 0;
   const userUpdate = tx.executeSync(
     `UPDATE users
      SET username = ?, time_format_24h = ?, week_starts_monday = ?,
@@ -346,7 +349,7 @@ const applyProfile = (
       `UPDATE user_preferences
        SET wake_time = ?, sleep_time = ?, study_peak_hours = ?, busiest_day = ?,
            reminder_lead_minutes = ?, snooze_tendency = ?, weekly_class_count = ?,
-           longest_class_gap = ?, updated_at = ?
+           longest_class_gap = ?, scheduling_only = ?, updated_at = ?
        WHERE user_id = ?`,
       [
         wakeTime,
@@ -357,6 +360,7 @@ const applyProfile = (
         snoozeTendency,
         weeklyClassCount,
         longestClassGap,
+        schedulingOnly,
         change.updatedAt,
         localUserId,
       ]
@@ -368,8 +372,8 @@ const applyProfile = (
     `INSERT INTO user_preferences (
        id, user_id, wake_time, sleep_time, study_peak_hours, busiest_day,
        reminder_lead_minutes, snooze_tendency, weekly_class_count,
-       longest_class_gap, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       longest_class_gap, scheduling_only, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       `sync_pref_${localUserId}`,
       localUserId,
@@ -381,6 +385,7 @@ const applyProfile = (
       snoozeTendency,
       weeklyClassCount,
       longestClassGap,
+      schedulingOnly,
       change.updatedAt,
       change.updatedAt,
     ]

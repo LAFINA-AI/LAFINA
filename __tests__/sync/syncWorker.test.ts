@@ -8,6 +8,7 @@ import { cloudClient } from '../../src/cloud/cloudClient';
 import { reconcileReminderAlarms } from '../../src/scheduler';
 import { db } from '../../src/storage/database';
 import { initDatabase } from '../../src/storage/dbInit';
+import { preferencesStore } from '../../src/storage/preferencesStore';
 import { syncConflictStore } from '../../src/storage/syncConflictStore';
 import { syncMetadataStore } from '../../src/storage/syncMetadataStore';
 import { syncOutboxStore } from '../../src/storage/syncOutboxStore';
@@ -244,6 +245,7 @@ describe('syncWorker account-scoped synchronization', () => {
           snooze_tendency: 'snooze_once',
           weekly_class_count: '4-6',
           longest_class_gap: '1 hour',
+          scheduling_only: false,
           time_format_24h: true,
           week_starts_monday: true,
           dark_mode: true,
@@ -368,6 +370,8 @@ describe('syncWorker account-scoped synchronization', () => {
     expect(
       db.executeSync('SELECT user_id FROM user_preferences').rows[0]?.user_id
     ).toBe(localUserId);
+    // The guardrail choice follows the account across devices.
+    expect(preferencesStore.getSchedulingOnly(localUserId)).toBe(false);
     for (const table of [
       'tasks',
       'events',

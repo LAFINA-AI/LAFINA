@@ -1,7 +1,19 @@
 export { parseNluJson } from './nlu/jsonParser';
 export { buildNluPrompt } from './nlu/prompt';
-export { createFallbackNluResult, processCommand, normalizeTranscript, resolveRelativeTime } from './nlu/parser';
+export {
+  createFallbackNluResult,
+  processCommand,
+  normalizeTranscript,
+  resolveRelativeTime,
+  formatClockLabel,
+  formatScheduleDateLabel,
+} from './nlu/parser';
 export { applyNluScheduleResult } from './nlu/scheduler';
+export {
+  SCHEDULING_ONLY_DECLINE_REPLY,
+  isSchedulingRelatedText,
+  shouldDeclineAsOffTopic,
+} from './nlu/guardrail';
 export { hasOfflineVoiceRuntime, runLocalLlmChat, runOfflineVoiceScheduling } from './native/voicePipeline';
 export {
   isTtsAvailable,

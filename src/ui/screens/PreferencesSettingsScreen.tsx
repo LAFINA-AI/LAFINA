@@ -5,12 +5,13 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { ChevronLeft } from 'lucide-react-native';
-import { preferencesStore } from '../../storage';
+import { behaviorStore, preferencesStore } from '../../storage';
 import type {
   LongestClassGap,
   SnoozeTendency,
@@ -27,6 +28,17 @@ interface PreferencesSettingsScreenProps {
   onBack: () => void;
   onSaved: (preferences: UserPreferences) => void;
 }
+
+/**
+ * Warning shown before the scheduling-only guardrail is lifted, verbatim.
+ *
+ * The cost of general answers is the point: they are longer, so they drain the
+ * student's token limit far faster than a scheduling acknowledgement.
+ */
+export const ALLOW_GENERAL_INQUIRIES_WARNING =
+  'Disabling this restriction allows the AI to answer general questions outside of scheduling. ' +
+  'Please note that general inquiries often generate longer responses and may consume your token limit significantly faster. ' +
+  'Are you sure you want to proceed?';
 
 interface PreferenceOption {
   label: string;
@@ -152,6 +164,10 @@ export const PreferencesSettingsScreen: React.FC<PreferencesSettingsScreenProps>
   );
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The switch shows the inverse of the stored guardrail: on means unrestricted. */
+  const [allowGeneralInquiries, setAllowGeneralInquiries] = useState(
+    () => !preferencesStore.getSchedulingOnly(userId)
+  );
   const { colors } = useTheme();
 
   const wakeOptions = useMemo(
@@ -176,6 +192,55 @@ export const PreferencesSettingsScreen: React.FC<PreferencesSettingsScreenProps>
         ? current.filter((entry) => entry !== typedValue)
         : [...current, typedValue]
     );
+  };
+
+  /**
+   * Persists the guardrail choice and records it for feature-adoption analysis.
+   *
+   * The preference is stored on its own so it takes effect immediately rather
+   * than waiting for Save Preferences, and the local behavior log stays offline.
+   */
+  const applyGeneralInquiries = (allow: boolean): void => {
+    try {
+      preferencesStore.setSchedulingOnly(userId, !allow);
+    } catch (toggleError) {
+      console.error('Failed saving the general inquiries preference:', toggleError);
+      Alert.alert(
+        'Preference Not Saved',
+        'The scheduling-only setting could not be changed. Please try again.'
+      );
+      return;
+    }
+
+    try {
+      behaviorStore.logBehaviorEvent(
+        userId,
+        'ai_preference',
+        'allow_general_inquiries',
+        allow ? 'true' : 'false'
+      );
+    } catch (logError) {
+      console.warn('Could not log the general inquiries preference:', logError);
+    }
+
+    setAllowGeneralInquiries(allow);
+  };
+
+  /** Turning the guardrail off costs tokens, so it is confirmed first. */
+  const handleToggleGeneralInquiries = (allow: boolean): void => {
+    if (!allow) {
+      applyGeneralInquiries(false);
+      return;
+    }
+
+    Alert.alert('Allow General Inquiries?', ALLOW_GENERAL_INQUIRIES_WARNING, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Proceed',
+        style: 'destructive',
+        onPress: () => applyGeneralInquiries(true),
+      },
+    ]);
   };
 
   const handleSave = async (): Promise<void> => {
@@ -292,6 +357,29 @@ export const PreferencesSettingsScreen: React.FC<PreferencesSettingsScreenProps>
           />
         </View>
 
+        <View style={[styles.card, Shadows.card, { backgroundColor: colors.cardBg }]}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>AI Preferences</Text>
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleText}>
+              <Text style={[styles.toggleLabel, { color: colors.textPrimary }]}>
+                Allow General Inquiries
+              </Text>
+              <Text style={[styles.toggleHint, { color: colors.textSecondary }]}>
+                {allowGeneralInquiries
+                  ? 'LAFINA may also answer general questions outside scheduling. Longer answers use your token limit faster.'
+                  : 'Scheduling-only: LAFINA politely declines anything outside tasks, calendars, and study plans.'}
+              </Text>
+            </View>
+            <Switch
+              value={allowGeneralInquiries}
+              onValueChange={handleToggleGeneralInquiries}
+              trackColor={{ false: colors.switchTrackOff, true: colors.blue }}
+              thumbColor={colors.switchThumb}
+              accessibilityLabel="Allow General Inquiries"
+            />
+          </View>
+        </View>
+
         {error && <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>}
 
         <TouchableOpacity
@@ -363,6 +451,27 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textTransform: 'uppercase',
     marginBottom: 9,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    gap: 12,
+  },
+  toggleText: {
+    flex: 1,
+  },
+  toggleLabel: {
+    fontFamily: Fonts.body,
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  toggleHint: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    lineHeight: 17,
   },
   chipRow: {
     flexDirection: 'row',

@@ -8,6 +8,16 @@ const TIME_24H_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const TIME_RANGE_PATTERN =
   /(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:-|to|until)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i;
 const DEFAULT_SCHEDULE_TITLE = 'Scheduled Event';
+const MINUTES_PER_DAY = 24 * 60;
+
+/**
+ * Verbs that mean "turn what follows into a schedule item".
+ *
+ * Used to decide whether a leftover leading "to" is the infinitive the student
+ * typed ("add a task to submit the report") or part of the title itself
+ * ("to kill a mockingbird essay").
+ */
+const ACTION_VERB_PATTERN = /\b(schedule|set|add|create|remind|block)\b/i;
 
 interface ParsedTimeRange {
   startTime: string;
@@ -386,11 +396,15 @@ export const resolveRelativeTime = (
 
 const cleanTaskTitle = (command: string): string => {
   let title = normalizeCommandText(command);
+  const hasActionVerb = ACTION_VERB_PATTERN.test(title);
 
-  // 1. Remove conversational intros & action keywords
+  // 1. Remove conversational intros & action keywords. The optional pronoun
+  // handles "set me a schedule for the Google dev meeting": without it the verb
+  // is dropped but the filler words between it and the noun ("me a") leak into
+  // the title, producing "me a for Google dev meeting".
   title = title
     .replace(/\b(um|uh|so|like|i\s+need\s+to|remember\s+to|need\s+to|have\s+to)\b/gi, '')
-    .replace(/\b(schedule|set(?:\s+up)?|add|create|remind\s+me(?:\s+to)?|remind)\s*(a|an|the)?\b/gi, '')
+    .replace(/\b(schedule|set(?:\s+up)?|add|create|remind\s+me(?:\s+to)?|remind)\s*(?:me\s+)?(?:a|an|the)?\b/gi, '')
     .replace(/\b(task|timeblock|time\s+block|block|event)\s*(a|an|the)?\b/gi, '');
 
   // 2. Remove date expressions
@@ -428,6 +442,13 @@ const cleanTaskTitle = (command: string): string => {
     .replace(/^[\s,:-]*(?:(?:on|at|by|for|starting)\b[\s,:-]*)+/i, '')
     .replace(/(?:[\s,:-]*(?:on|at|by|for|starting)\b)+[\s,:-]*$/i, '');
 
+  // The infinitive left behind by "add a task to submit the report" only counts
+  // when the command actually carried an action verb, so a genuine title that
+  // starts with "to" is preserved.
+  if (hasActionVerb) {
+    title = title.replace(/^[\s,:-]*to\b[\s,:-]*/i, '');
+  }
+
   // 6. Strip punctuation & whitespace
   title = title.replace(/^[.\s,]+|[.\s,]+$/g, '').replace(/\s+/g, ' ').trim();
 
@@ -441,6 +462,83 @@ const cleanTaskTitle = (command: string): string => {
   }
 
   return title;
+};
+
+/**
+ * Renders a stored HH:MM time as a 12-hour label the assistant can speak.
+ *
+ * @param time Stored 24-hour time value.
+ * @returns A spoken label such as "3:00 PM", or the input when it is unparseable.
+ */
+export const formatClockLabel = (time: string): string => {
+  const [rawHours, rawMinutes] = time.split(':');
+  const hours = Number(rawHours);
+  const minutes = Number(rawMinutes);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return time;
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 === 0 ? 12 : hours % 12;
+  return `${displayHours}:${`${minutes}`.padStart(2, '0')} ${period}`;
+};
+
+/**
+ * Renders a stored ISO date as a short human label ("Mon, Aug 25").
+ *
+ * The raw ISO string made the reply read like a database value, which is why a
+ * correctly scheduled "3pm" looked wrong next to "2026-08-25". The year is only
+ * spoken when the item falls outside the current year.
+ *
+ * @param isoDate Stored YYYY-MM-DD date.
+ * @param referenceDate Date the command was interpreted against.
+ * @returns A spoken date label, or the input when it is unparseable.
+ */
+export const formatScheduleDateLabel = (
+  isoDate: string,
+  referenceDate: Date = new Date()
+): string => {
+  const parsed = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return isoDate;
+
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  };
+  if (parsed.getFullYear() !== referenceDate.getFullYear()) {
+    options.year = 'numeric';
+  }
+  return parsed.toLocaleDateString('en-US', options);
+};
+
+/**
+ * Adds minutes to a stored HH:MM time, wrapping inside a single day.
+ */
+const addMinutesToClock = (time: string, minutes: number): string => {
+  const [rawHours, rawMinutes] = time.split(':');
+  const startMinutes = Number(rawHours) * 60 + Number(rawMinutes);
+  const total = startMinutes + minutes;
+  const normalized = ((total % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+  const hours = Math.floor(normalized / 60);
+  return `${`${hours}`.padStart(2, '0')}:${`${normalized % 60}`.padStart(2, '0')}`;
+};
+
+/**
+ * Builds the spoken confirmation for a newly scheduled item.
+ *
+ * @param title Title stored with the item.
+ * @param dateIso Stored ISO date.
+ * @param time Stored HH:MM time, or null when the item has no time yet.
+ * @param referenceDate Date the command was interpreted against.
+ * @returns A one-line reply naming the title, day, and time.
+ */
+const buildScheduledReply = (
+  title: string,
+  dateIso: string,
+  time: string | null,
+  referenceDate: Date
+): string => {
+  const day = formatScheduleDateLabel(dateIso, referenceDate);
+  const when = time ? `${day} at ${formatClockLabel(time)}` : day;
+  return `Task "${title}" has been added to your schedule for ${when}.`;
 };
 
 /**
@@ -501,7 +599,11 @@ export const createFallbackNluResult = (
       duration_minutes: range.durationMinutes,
       recurrence: recurrence !== 'none' ? recurrence : null,
       status: 'success',
-      reply: `I blocked time for "${title}".`,
+      reply:
+        `I blocked ${formatClockLabel(range.startTime)} to ` +
+        `${formatClockLabel(
+          addMinutesToClock(range.startTime, range.durationMinutes)
+        )} for "${title}" on ${formatScheduleDateLabel(date, referenceDate)}.`,
     };
   }
 
@@ -524,7 +626,12 @@ export const createFallbackNluResult = (
       duration_minutes: null,
       recurrence: recurrence !== 'none' ? recurrence : null,
       status: 'success',
-      reply: `Task "${title}" has been added to your schedule for ${date}.`,
+      reply: buildScheduledReply(
+        title,
+        date,
+        relativeTime ? relativeTime.time : singleTime,
+        referenceDate
+      ),
     };
   }
 

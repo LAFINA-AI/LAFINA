@@ -6,7 +6,10 @@
  * step that fails halfway, and a rollback that fails on top of the original error.
  */
 import { db } from '../../src/storage/database';
-import { initDatabase } from '../../src/storage/dbInit';
+import { SCHEMA_VERSION, initDatabase } from '../../src/storage/dbInit';
+
+// Read from the schema module so a version bump never leaves a stale literal here.
+const RECORDED_VERSION = `PRAGMA user_version = ${SCHEMA_VERSION}`;
 
 interface FakeFailure {
   pattern: RegExp;
@@ -106,7 +109,7 @@ describe('database boot resilience', () => {
 
     await expect(initDatabase()).resolves.toBeUndefined();
 
-    expect(recorded()).toContain('PRAGMA user_version = 17');
+    expect(recorded()).toContain(RECORDED_VERSION);
   });
 
   it('aborts without recording the version when a migration fails', async () => {
@@ -117,7 +120,7 @@ describe('database boot resilience', () => {
     await expect(initDatabase()).rejects.toThrow('disk I/O error');
 
     // The version must stay behind, otherwise the half-migrated schema is never retried.
-    expect(recorded()).not.toContain('PRAGMA user_version = 17');
+    expect(recorded()).not.toContain(RECORDED_VERSION);
   });
 
   it('preserves the original failure when the rollback also fails', async () => {

@@ -128,6 +128,9 @@ class ProfilePayload(BaseModel):
     snooze_tendency: str = "snooze_once"
     weekly_class_count: str = "4-6"
     longest_class_gap: str = "1 hour"
+    # Scheduling-only AI guardrail. Enabled by default, including for clients that
+    # have not been updated to send it yet.
+    scheduling_only: bool = True
     time_format_24h: bool = False
     week_starts_monday: bool = False
     dark_mode: bool = False

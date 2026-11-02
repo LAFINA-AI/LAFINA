@@ -3,6 +3,7 @@ import {
   DEFAULT_CLASS_COUNT,
   DEFAULT_LONGEST_GAP,
   DEFAULT_REMINDER_LEAD,
+  DEFAULT_SCHEDULING_ONLY,
   DEFAULT_SLEEP_TIME,
   DEFAULT_SNOOZE_TENDENCY,
   DEFAULT_STUDY_PEAK_HOURS,
@@ -24,7 +25,7 @@ export const buildProfileSyncPayload = (
   const preferences = executor.executeSync(
     `SELECT wake_time, sleep_time, study_peak_hours, busiest_day,
             reminder_lead_minutes, snooze_tendency, weekly_class_count,
-            longest_class_gap
+            longest_class_gap, scheduling_only
      FROM user_preferences WHERE user_id = ?`,
     [localUserId],
   ).rows?.[0];
@@ -55,6 +56,11 @@ export const buildProfileSyncPayload = (
     longest_class_gap: typeof preferences?.longest_class_gap === 'string'
       ? preferences.longest_class_gap
       : DEFAULT_LONGEST_GAP,
+    // Carried in the profile mutation so the scheduling-only choice follows the
+    // account to the student's other devices.
+    scheduling_only: typeof preferences?.scheduling_only === 'number'
+      ? preferences.scheduling_only === 1
+      : DEFAULT_SCHEDULING_ONLY,
     time_format_24h: user?.time_format_24h === 1,
     week_starts_monday: user?.week_starts_monday === 1,
     dark_mode: user?.dark_mode === 1,

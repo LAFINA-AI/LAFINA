@@ -57,7 +57,7 @@
         android:exported="false" />
 
       <receiver
-        android:name=".LafinaAlarmReceiver"
+        android:name=".LafinaReminderReceiver"
         android:enabled="true"
         android:exported="false">
         <intent-filter>

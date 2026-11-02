@@ -3,6 +3,7 @@ import {
   DEFAULT_CLASS_COUNT,
   DEFAULT_LONGEST_GAP,
   DEFAULT_REMINDER_LEAD,
+  DEFAULT_SCHEDULING_ONLY,
   DEFAULT_SLEEP_TIME,
   DEFAULT_SNOOZE_TENDENCY,
   DEFAULT_STUDY_PEAK_HOURS,
@@ -201,6 +202,105 @@ export const preferencesStore = {
       weeklyClassCount: stored.weeklyClassCount,
       longestClassGap: stored.longestClassGap,
     };
+  },
+
+  /**
+   * Reports whether the scheduling-only guardrail is active for a user.
+   *
+   * An account with no saved preferences row (a new account, or one that skipped
+   * onboarding) is treated as guarded, so the restriction is on by default for
+   * both new and existing accounts.
+   *
+   * @param userId Active local user ID.
+   * @returns True when off-topic questions must be declined.
+   */
+  getSchedulingOnly: (userId: string): boolean => {
+    try {
+      const result = db.executeSync(
+        'SELECT scheduling_only FROM user_preferences WHERE user_id = ?',
+        [userId]
+      );
+      const row = result.rows?.[0] as { scheduling_only?: number | null } | undefined;
+      if (!row || row.scheduling_only === null || row.scheduling_only === undefined) {
+        return DEFAULT_SCHEDULING_ONLY;
+      }
+      return row.scheduling_only === 1;
+    } catch (error) {
+      console.error('Error fetching the scheduling-only guardrail preference:', error);
+      return DEFAULT_SCHEDULING_ONLY;
+    }
+  },
+
+  /**
+   * Stores the scheduling-only guardrail choice and queues it for account sync.
+   *
+   * The preference is written on its own, so flipping the switch in Preferences
+   * takes effect immediately instead of waiting for the form's Save button, and
+   * the row is created with the onboarding defaults when none exists yet.
+   *
+   * @param userId Active local user ID.
+   * @param schedulingOnly True to keep the assistant scheduling-only.
+   */
+  setSchedulingOnly: (userId: string, schedulingOnly: boolean): void => {
+    const storedValue = schedulingOnly ? 1 : 0;
+    const now = new Date().toISOString();
+
+    try {
+      db.transactionSync((tx) => {
+        const existingResult = tx.executeSync(
+          'SELECT id FROM user_preferences WHERE user_id = ?',
+          [userId],
+        );
+        const existingId = existingResult.rows?.[0]?.id;
+
+        if (typeof existingId === 'string') {
+          tx.executeSync(
+            `UPDATE user_preferences
+             SET scheduling_only = ?, updated_at = ?
+             WHERE id = ?`,
+            [storedValue, now, existingId],
+          );
+        } else {
+          const defaults = getDefaultUserPreferences();
+          tx.executeSync(
+            `INSERT INTO user_preferences (
+               id, user_id, wake_time, sleep_time, study_peak_hours, busiest_day,
+               reminder_lead_minutes, snooze_tendency, weekly_class_count,
+               longest_class_gap, scheduling_only, created_at, updated_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              generateId('pref'),
+              userId,
+              defaults.wakeTime,
+              defaults.sleepTime,
+              JSON.stringify(defaults.studyPeakHours),
+              defaults.busiestDay,
+              defaults.reminderLeadMinutes,
+              defaults.snoozeTendency,
+              defaults.weeklyClassCount,
+              defaults.longestClassGap,
+              storedValue,
+              now,
+              now,
+            ],
+          );
+        }
+
+        syncOutboxStore.enqueueMutation(
+          userId,
+          'profile',
+          'profile',
+          'update',
+          buildProfileSyncPayload(userId, tx),
+          'account',
+          userId,
+          tx,
+        );
+      });
+    } catch (error) {
+      console.error('Error saving the scheduling-only guardrail preference:', error);
+      throw error;
+    }
   },
 
   /**
