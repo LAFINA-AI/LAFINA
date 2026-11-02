@@ -63,31 +63,6 @@ const enqueueProfileMutation = (
   );
 };
 
-// Ensure active_session table exists with auth token persistence columns
-try {
-  db.executeSync(`
-    CREATE TABLE IF NOT EXISTS active_session (
-      user_id TEXT PRIMARY KEY,
-      access_token TEXT,
-      refresh_token TEXT,
-      pending_cloud_credential TEXT,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  try {
-    db.executeSync('ALTER TABLE active_session ADD COLUMN access_token TEXT');
-  } catch {}
-  try {
-    db.executeSync('ALTER TABLE active_session ADD COLUMN refresh_token TEXT');
-  } catch {}
-  try {
-    db.executeSync('ALTER TABLE active_session ADD COLUMN pending_cloud_credential TEXT');
-  } catch {}
-} catch (e) {
-  console.error('Error creating active_session table:', e);
-}
-
 export const userStore = {
   /**
    * Creates or restores the persistent offline guest account.

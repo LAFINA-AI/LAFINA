@@ -5,11 +5,12 @@
  * driven through the failures a real device produces: a corrupt file, a migration
  * step that fails halfway, and a rollback that fails on top of the original error.
  */
-import { db } from '../../src/storage/database';
-import { SCHEMA_VERSION, initDatabase } from '../../src/storage/dbInit';
+let db: typeof import('../../src/storage/database')['db'];
+let initDatabase: typeof import('../../src/storage/dbInit')['initDatabase'];
+let SCHEMA_VERSION: number;
 
 // Read from the schema module so a version bump never leaves a stale literal here.
-const RECORDED_VERSION = `PRAGMA user_version = ${SCHEMA_VERSION}`;
+const recordedVersion = (): string => `PRAGMA user_version = ${SCHEMA_VERSION}`;
 
 interface FakeFailure {
   pattern: RegExp;
@@ -17,6 +18,7 @@ interface FakeFailure {
 }
 
 interface FakeEngineState {
+  userVersion: number;
   statements: string[];
   failures: FakeFailure[];
   integrityVerdict: string;
@@ -24,6 +26,7 @@ interface FakeEngineState {
 
 jest.mock('@op-engineering/op-sqlite', () => {
   const state = {
+    userVersion: 0,
     statements: [] as string[],
     failures: [] as FakeFailure[],
     integrityVerdict: 'ok',
@@ -42,7 +45,7 @@ jest.mock('@op-engineering/op-sqlite', () => {
       return { rows: [], rowsAffected: 0 };
     }
     if (query.includes('user_version')) {
-      return { rows: [{ user_version: 0 }] };
+      return { rows: [{ user_version: state.userVersion }] };
     }
     return { rows: [], rowsAffected: 0 };
   };
@@ -50,7 +53,7 @@ jest.mock('@op-engineering/op-sqlite', () => {
   return { open: () => ({ executeSync }), __state: state };
 });
 
-const engine = jest.requireMock('@op-engineering/op-sqlite') as {
+let engine: {
   __state: FakeEngineState;
 };
 
@@ -61,9 +64,17 @@ describe('database boot resilience', () => {
   let consoleWarnSpy: jest.SpyInstance;
 
   beforeEach(() => {
+    jest.isolateModules(() => {
+      db = (require('../../src/storage/database') as typeof import('../../src/storage/database')).db;
+      const schema = require('../../src/storage/dbInit') as typeof import('../../src/storage/dbInit');
+      initDatabase = schema.initDatabase;
+      SCHEMA_VERSION = schema.SCHEMA_VERSION;
+      engine = jest.requireMock('@op-engineering/op-sqlite') as typeof engine;
+    });
     engine.__state.statements.length = 0;
     engine.__state.failures = [];
     engine.__state.integrityVerdict = 'ok';
+    engine.__state.userVersion = 0;
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
     consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
   });
@@ -86,16 +97,22 @@ describe('database boot resilience', () => {
     expect(probeIndex).toBeLessThan(firstWriteIndex);
   });
 
-  it('reports corruption but still boots instead of taking the app down', async () => {
+  it('refuses a newer schema before writes or connection changes', async () => {
+    engine.__state.userVersion = SCHEMA_VERSION + 1;
+    await expect(initDatabase()).rejects.toThrow('newer version');
+    expect(recorded()).toEqual(['PRAGMA user_version']);
+  });
+
+  it('reports corruption without running schema writes', async () => {
     engine.__state.integrityVerdict = 'database disk image is malformed';
 
-    await expect(initDatabase()).resolves.toBeUndefined();
+    await expect(initDatabase()).rejects.toThrow('integrity check');
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining('integrity check reported'),
     );
     expect(recorded().some(statement => statement.includes('CREATE TABLE'))).toBe(
-      true,
+      false,
     );
   });
 
@@ -109,7 +126,7 @@ describe('database boot resilience', () => {
 
     await expect(initDatabase()).resolves.toBeUndefined();
 
-    expect(recorded()).toContain(RECORDED_VERSION);
+    expect(recorded()).toContain(recordedVersion());
   });
 
   it('aborts without recording the version when a migration fails', async () => {
@@ -120,7 +137,7 @@ describe('database boot resilience', () => {
     await expect(initDatabase()).rejects.toThrow('disk I/O error');
 
     // The version must stay behind, otherwise the half-migrated schema is never retried.
-    expect(recorded()).not.toContain(RECORDED_VERSION);
+    expect(recorded()).not.toContain(recordedVersion());
   });
 
   it('preserves the original failure when the rollback also fails', async () => {
@@ -139,12 +156,12 @@ describe('database boot resilience', () => {
     );
   });
 
-  it('keeps degrading safely when the integrity probe itself fails', async () => {
+  it('does not migrate when the integrity probe itself fails', async () => {
     engine.__state.failures = [
       { pattern: /quick_check/, message: 'disk I/O error' },
     ];
 
-    await expect(initDatabase()).resolves.toBeUndefined();
+    await expect(initDatabase()).rejects.toThrow('verified safely');
 
     expect(consoleWarnSpy).toHaveBeenCalledWith(
       '[dbInit] Could not run the SQLite integrity check:',

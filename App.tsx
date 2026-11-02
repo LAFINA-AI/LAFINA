@@ -130,6 +130,7 @@ function AppContent({
   setUserId: React.Dispatch<React.SetStateAction<string | null>>;
 }) {
   const [isLoading, setIsLoading] = useState(true);
+  const [startupError, setStartupError] = useState<string | null>(null);
   const [authScreen, setAuthScreen] = useState<'welcome' | 'login' | 'register'>('welcome');
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [shellMode, setShellMode] = useState<ShellMode>('student');
@@ -377,6 +378,7 @@ function AppContent({
         void appUpdater.markLaunchSuccessful().then(() => appUpdater.check({ quiet: true }));
       } catch (error) {
         console.error('Failed application startup setup:', error);
+        setStartupError('Local storage could not be opened safely. Close and reopen LAFINA before trying again. Your existing data has not been reset.');
         setIsLoading(false);
       }
     };
@@ -757,6 +759,12 @@ function AppContent({
         return <View style={[styles.errorScreen, themed.errorScreen]}><Text style={themed.errorText}>Page Not Found</Text></View>;
     }
   };
+
+  if (startupError) {
+    return <View accessibilityRole="alert" style={[styles.errorScreen, themed.errorScreen]}>
+      <Text style={themed.errorText}>{startupError}</Text>
+    </View>;
+  }
 
   // Render Splash Loading Screen
   if (isLoading) {

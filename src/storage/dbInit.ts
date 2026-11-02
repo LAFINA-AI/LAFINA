@@ -293,7 +293,8 @@ const verifyDatabaseIntegrity = (): boolean => {
     return false;
   } catch (error) {
     console.warn('[dbInit] Could not run the SQLite integrity check:', error);
-    return true;
+    db.requireRecovery();
+    throw new Error('Local storage could not be verified safely. Restart LAFINA before trying again.');
   }
 };
 
@@ -379,15 +380,29 @@ const SCHEMA_INDEXES: readonly string[] = [
  */
 export const initDatabase = async (): Promise<void> => {
   try {
+    if (!db.isFallback()) {
+      const installed = Number(db.executeSync('PRAGMA user_version').rows?.[0]?.user_version ?? 0);
+      if (!Number.isInteger(installed) || installed < 0 || installed > SCHEMA_VERSION) {
+        throw new Error('This database requires a compatible newer version of LAFINA. Existing data has not been changed.');
+      }
+    }
     applyConnectionPragmas();
     const integrityOk = verifyDatabaseIntegrity();
     if (!integrityOk) {
-      console.warn(
-        '[dbInit] Continuing with a database that failed its integrity check; reads degrade and writes may fail.',
-      );
+      db.requireRecovery();
+      throw new Error('Local storage failed its integrity check. Restart LAFINA; existing data has not been reset.');
     }
-
-    await db.transaction(async (tx: DatabaseTransaction) => {
+    db.transactionSync((tx: DatabaseTransaction) => {
+      // Session DDL belongs to the guarded migration, never module import.
+      tx.executeSync(`CREATE TABLE IF NOT EXISTS active_session (
+        user_id TEXT PRIMARY KEY, access_token TEXT, refresh_token TEXT,
+        pending_cloud_credential TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+      for (const column of ['access_token', 'refresh_token', 'pending_cloud_credential']) {
+        applyMigrationStep(tx, `ALTER TABLE active_session ADD COLUMN ${column} TEXT`);
+      }
       // Create users table
       tx.executeSync(`
         CREATE TABLE IF NOT EXISTS users (

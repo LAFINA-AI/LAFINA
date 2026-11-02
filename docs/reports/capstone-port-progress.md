@@ -15,4 +15,15 @@ Target: original LAFINA repository, `LAFINA-USTP`. Scope: the five items in
 - No physical phone or emulator was connected during these checks. No device outcome
   is inferred from these host tests.
 
-Stages 1–5: pending implementation and verification. No new packages or model changes.
+## Stage 1 — storage
+
+- Test-only volatile fallback; production failures cannot claim durable saves.
+- Quarantined rollback failures, expiring transaction handles, nested/async sync-callback
+  guards, and async-transaction ownership checks.
+- Synchronous atomic schema setup; session DDL moved out of import-time execution;
+  unsupported future schemas and failed integrity checks stop before schema writes.
+- Startup shows recovery guidance rather than proceeding with unsafe storage.
+- TypeScript PASS; 101 suites / 846 tests PASS with normal exit; ESLint no errors.
+  Database line coverage 90.86%; schema initializer 98.47%.
+
+Stages 2–5: pending implementation and verification. No new packages or model changes.

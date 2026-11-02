@@ -7,12 +7,22 @@ export interface QueryResult {
 
 /** Minimal transaction interface with executeSync */
 export interface DatabaseTransaction {
-  executeSync: (query: string, params?: any[]) => QueryResult;
+  executeSync: (query: string, params?: unknown[]) => QueryResult;
   afterCommit?: (callback: () => void) => void;
 }
 
 let dbInstance: any;
 let useFallback = false;
+let storageFailure: string | null = null;
+let transactionOwner: symbol | null = null;
+let asynchronousTransaction = false;
+
+export interface StorageHealth {
+  status: 'ready' | 'temporary' | 'unavailable' | 'quarantined';
+  durable: boolean;
+  message: string | null;
+}
+let quarantined = false;
 
 // 1. Try to initialize native OP-SQLite
 try {
@@ -24,6 +34,9 @@ try {
 } catch (error) {
   console.warn('Native OP-SQLite not available or failed to load. Initializing JS Fallback Database Engine...', error);
   useFallback = true;
+  if (process.env.NODE_ENV !== 'test') {
+    storageFailure = 'Local storage is unavailable. Restart LAFINA before saving. Your existing data has not been reset.';
+  }
 }
 
 // 2. JS Fallback Database Engine (Mock SQL Parser)
@@ -219,115 +232,109 @@ const executeFallbackQuery = (query: string, params: any[] = []): QueryResult =>
 };
 
 // 3. Export Database API
-export const db = {
-  /** Returns whether the in-memory compatibility database is active. */
-  isFallback: (): boolean => useFallback,
-
-  executeSync: (query: string, params?: any[]): QueryResult => {
-    if (useFallback) {
-      return executeFallbackQuery(query, params);
-    }
-    return dbInstance.executeSync(query, params);
+const assertUsable = (): void => {
+  if (storageFailure) throw new Error(storageFailure);
+};
+const executeRaw = (query: string, params?: unknown[]): QueryResult => {
+  assertUsable();
+  return useFallback ? executeFallbackQuery(query, params) : dbInstance.executeSync(query, params);
+};
+const begin = (asynchronous: boolean): symbol => {
+  assertUsable();
+  if (transactionOwner) throw new Error('Nested or concurrent SQLite transactions are not supported.');
+  if (!useFallback) executeRaw('BEGIN TRANSACTION;');
+  transactionOwner = Symbol('transaction');
+  asynchronousTransaction = asynchronous;
+  return transactionOwner;
+};
+const transactionHandle = (owner: symbol, callbacks: Array<() => void>): DatabaseTransaction => ({
+  executeSync: (query, params) => {
+    if (transactionOwner !== owner) throw new Error('This transaction is no longer active.');
+    return asynchronousTransaction ? executeRaw(query, params) : db.executeSync(query, params);
   },
-
-  /** Runs synchronous local writes atomically and rolls them back if the callback throws. */
-  transactionSync: <T>(cb: (tx: DatabaseTransaction) => T): T => {
-    const afterCommitCallbacks: Array<() => void> = [];
-    const runAfterCommitCallbacks = (): void => {
-      afterCommitCallbacks.forEach((callback) => {
-        try {
-          callback();
-        } catch (error) {
-          console.error('Post-commit database callback failed:', error);
-        }
-      });
-    };
-
+  afterCommit: callback => {
+    if (transactionOwner !== owner) throw new Error('This transaction is no longer active.');
+    callbacks.push(callback);
+  },
+});
+const rollback = (snapshot: typeof fallbackTables): void => {
+  try {
     if (useFallback) {
-      const snapshot = JSON.parse(JSON.stringify(fallbackTables)) as typeof fallbackTables;
-      const txFallback: DatabaseTransaction = {
-        executeSync: (query: string, params?: any[]) => db.executeSync(query, params),
-        afterCommit: (callback: () => void) => afterCommitCallbacks.push(callback),
-      };
+      Object.keys(fallbackTables).forEach(name => delete fallbackTables[name]);
+      Object.assign(fallbackTables, snapshot);
+    } else executeRaw('ROLLBACK;');
+  } catch (error) {
+    quarantined = true;
+    storageFailure = 'Restart LAFINA before retrying storage. The previous transaction could not be rolled back.';
+    console.warn('[Database] Could not roll back the failed transaction:', error);
+  } finally {
+    transactionOwner = null;
+    asynchronousTransaction = false;
+  }
+};
+const commit = (callbacks: Array<() => void>): void => {
+  if (!useFallback) executeRaw('COMMIT;');
+  transactionOwner = null;
+  asynchronousTransaction = false;
+  callbacks.forEach(callback => {
+    try { callback(); } catch (error) { console.error('Post-commit database callback failed:', error); }
+  });
+};
+const snapshotTables = (): typeof fallbackTables =>
+  useFallback ? JSON.parse(JSON.stringify(fallbackTables)) as typeof fallbackTables : {};
 
-      try {
-        const result = cb(txFallback);
-        runAfterCommitCallbacks();
-        return result;
-      } catch (error) {
-        Object.keys(fallbackTables).forEach((tableName) => delete fallbackTables[tableName]);
-        Object.assign(fallbackTables, snapshot);
-        throw error;
-      }
+export const db = {
+  /** Blocks further use after an integrity check finds unsafe storage. */
+  requireRecovery: (): void => {
+    storageFailure = 'Restart LAFINA before retrying storage. Local data could not be verified safely.';
+  },
+  /** Reports whether the explicitly test-only compatibility engine is active. */
+  isFallback: (): boolean => useFallback,
+  /** Reports durability and whether the connection requires recovery. */
+  getHealth: (): StorageHealth => ({
+    status: quarantined ? 'quarantined' : storageFailure ? 'unavailable' : useFallback ? 'temporary' : 'ready',
+    durable: !storageFailure && !useFallback,
+    message: storageFailure,
+  }),
+  /** Executes a statement, rejecting work on an unsafe or asynchronously owned connection. */
+  executeSync: (query: string, params?: unknown[]): QueryResult => {
+    assertUsable();
+    if (asynchronousTransaction) throw new Error('Local storage is busy. Please retry.');
+    return executeRaw(query, params);
+  },
+  /** Runs synchronous local writes atomically; handles expire at transaction end. */
+  transactionSync: <T>(callback: (tx: DatabaseTransaction) => T): T => {
+    if (Object.prototype.toString.call(callback) === '[object AsyncFunction]') {
+      throw new Error('SQLite transactionSync requires a synchronous callback.');
     }
-
-    dbInstance.executeSync('BEGIN TRANSACTION;');
+    const snapshot = snapshotTables();
+    const owner = begin(false);
+    const callbacks: Array<() => void> = [];
     try {
-      const tx: DatabaseTransaction = {
-        executeSync: (query: string, params?: any[]) => db.executeSync(query, params),
-        afterCommit: (callback: () => void) => afterCommitCallbacks.push(callback),
-      };
-      const result = cb(tx);
-      dbInstance.executeSync('COMMIT;');
-      runAfterCommitCallbacks();
+      const result = callback(transactionHandle(owner, callbacks));
+      if (result !== null && (typeof result === 'object' || typeof result === 'function') &&
+          typeof (result as {then?: unknown}).then === 'function') {
+        void Promise.resolve(result).catch(() => undefined);
+        throw new Error('SQLite transactionSync requires a synchronous callback.');
+      }
+      commit(callbacks);
       return result;
     } catch (error) {
-      try {
-        dbInstance.executeSync('ROLLBACK;');
-      } catch (rollbackError) {
-        console.warn(
-          '[Database] Could not roll back the failed transaction:',
-          rollbackError
-        );
-      }
+      rollback(snapshot);
       throw error;
     }
   },
-
-  transaction: async (cb: (tx: DatabaseTransaction) => Promise<void>): Promise<void> => {
-    const afterCommitCallbacks: Array<() => void> = [];
-    const runAfterCommitCallbacks = (): void => {
-      afterCommitCallbacks.forEach((callback) => {
-        try {
-          callback();
-        } catch (error) {
-          console.error('Post-commit database callback failed:', error);
-        }
-      });
-    };
-
-    if (useFallback) {
-      const txFallback: DatabaseTransaction = {
-        executeSync: (query: string, params?: any[]) => db.executeSync(query, params),
-        afterCommit: (callback: () => void) => afterCommitCallbacks.push(callback),
-      };
-      await cb(txFallback);
-      runAfterCommitCallbacks();
-      return;
-    }
-
-    // For native OP-SQLite, run manual transaction commands
-    dbInstance.executeSync('BEGIN TRANSACTION;');
+  /** Compatibility transaction API; unrelated access is blocked across awaited work. */
+  transaction: async (callback: (tx: DatabaseTransaction) => Promise<void>): Promise<void> => {
+    const snapshot = snapshotTables();
+    const owner = begin(true);
+    const callbacks: Array<() => void> = [];
     try {
-      const tx: DatabaseTransaction = {
-        executeSync: (query: string, params?: any[]) => db.executeSync(query, params),
-        afterCommit: (callback: () => void) => afterCommitCallbacks.push(callback),
-      };
-      await cb(tx);
-      dbInstance.executeSync('COMMIT;');
-      runAfterCommitCallbacks();
-    } catch (err) {
-      // A failing ROLLBACK (already-closed connection, disk gone) must never mask
-      // the error that caused it: that is the one the caller has to see and log.
-      try {
-        dbInstance.executeSync('ROLLBACK;');
-      } catch (rollbackError) {
-        console.warn(
-          '[Database] Could not roll back the failed transaction:',
-          rollbackError
-        );
-      }
-      throw err;
+      await callback(transactionHandle(owner, callbacks));
+      commit(callbacks);
+    } catch (error) {
+      rollback(snapshot);
+      throw error;
     }
   },
 };
