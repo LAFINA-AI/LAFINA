@@ -71,14 +71,15 @@ const NOTES = {
   key_points: [],
 };
 
+const mountedProviders: ReactTestRenderer.ReactTestRenderer[] = [];
 const renderProvider = () => {
   const ref = React.createRef<MeetingsValue>();
   act(() => {
-    ReactTestRenderer.create(
+    mountedProviders.push(ReactTestRenderer.create(
       <MeetingsProvider userId={USER}>
         <Probe ref={ref} />
       </MeetingsProvider>,
-    );
+    ));
   });
   return ref;
 };
@@ -98,7 +99,10 @@ describe('MeetingsProvider on mobile', () => {
     jest.spyOn(PermissionsAndroid, 'request').mockResolvedValue(PermissionsAndroid.RESULTS.GRANTED);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await act(async () => {
+      mountedProviders.splice(0).forEach(renderer => renderer.unmount());
+    });
     jest.useRealTimers();
     jest.restoreAllMocks();
     delete (NativeModules as Record<string, unknown>).LafinaMeetingRecorder;

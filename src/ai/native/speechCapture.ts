@@ -32,6 +32,7 @@ interface OfflineSpeechNativeModule {
 
 let captureSequence = 0;
 let activeCaptureId: string | null = null;
+let activeCancellation: {captureId: string; settle: () => void} | null = null;
 
 /**
  * Hard ceiling on how long one capture may own the shared microphone slot.
@@ -95,6 +96,24 @@ export const startOfflineSpeechCapture = (
   const captureId = `${options.context}-${Date.now()}-${captureSequence}`;
   activeCaptureId = captureId;
 
+  let nativeResult: Promise<OfflineSpeechResult>;
+  try {
+    nativeResult = module.startListening({ ...options, captureId });
+  } catch (error) {
+    activeCaptureId = null;
+    throw error;
+  }
+
+  const cancellation = new Promise<OfflineSpeechResult>(resolve => {
+    activeCancellation = {
+      captureId,
+      settle: () => resolve({
+        captureId, transcript: '', speechDetected: false, cancelled: true,
+        captureDurationMs: 0, inferenceDurationMs: 0,
+      }),
+    };
+  });
+
   let watchdog: ReturnType<typeof setTimeout> | null = null;
   const captureTimeout = new Promise<never>((_resolve, reject) => {
     watchdog = setTimeout(() => {
@@ -108,18 +127,20 @@ export const startOfflineSpeechCapture = (
   });
 
   const result = Promise.race([
-    module.startListening({ ...options, captureId }).then(nativeResult => {
-      if (nativeResult.captureId !== captureId) {
+    nativeResult.then(value => {
+      if (value.captureId !== captureId) {
         throw new Error(
           'Offline speech result did not match the active capture owner.',
         );
       }
-      return nativeResult;
+      return value;
     }),
     captureTimeout,
+    cancellation,
   ]).finally(() => {
     if (watchdog) clearTimeout(watchdog);
     if (activeCaptureId === captureId) activeCaptureId = null;
+    if (activeCancellation?.captureId === captureId) activeCancellation = null;
   });
   return { captureId, result };
 };
@@ -141,6 +162,11 @@ export const stopOfflineSpeechCapture = async (
 export const cancelOfflineSpeechCapture = async (
   captureId: string,
 ): Promise<boolean> => {
+  if (activeCancellation?.captureId === captureId) {
+    activeCancellation.settle();
+    activeCancellation = null;
+    activeCaptureId = null;
+  }
   const module = getNativeModule();
   if (!module) {
     if (activeCaptureId === captureId) activeCaptureId = null;

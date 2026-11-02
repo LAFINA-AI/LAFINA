@@ -1,0 +1,43 @@
+{
+  "donorHead": "a53ea93f76021db1f0589e0e18fe68421815c0e8",
+  "includesWorkingTree": true,
+  "targetHead": "e84a96e2643636124932cba830c19ddd7068df3b",
+  "files": [
+    {
+      "path": "src/core/storage/plannerDatabase.ts",
+      "sha256": "1559fd723cabe6bf31ed97b5175a26fcfe58e65c1e1b2cb1530af42cc860a268"
+    },
+    {
+      "path": "src/core/storage/openLocalDatabase.ts",
+      "sha256": "d4d9a23039097f4260aa77ac2bbfce285b94ae2535e310688ac60af88b156471"
+    },
+    {
+      "path": "src/core/ai/commandSession.ts",
+      "sha256": "7a7e8e75d6b1640b22fe77caf0fe6bf09ccb11b87fe3eb4b90a01b3fc2b3142c"
+    },
+    {
+      "path": "src/features/chat/SpeechInputPanel.tsx",
+      "sha256": "aa35074e59b0e53009ea8b36939062edf00dd15edc0244a93ea4b723ae34ecf1"
+    },
+    {
+      "path": "src/features/chat/useSpeechInputSession.ts",
+      "sha256": "d2d3904c06de568825de5511f1a1132c3862fddf9ec31674af8db370f97290cf"
+    },
+    {
+      "path": "android/app/src/main/java/com/lafina/capstone/reminders/ReminderIdentityKey.kt",
+      "sha256": "3bdda78767637152d29e5fd022c9b7295c3ef2acd87a45bc70d6349dba212fb1"
+    },
+    {
+      "path": "android/app/src/main/java/com/lafina/capstone/reminders/ReminderStore.kt",
+      "sha256": "1455559fb35c12eeb797404cce52170ae54c37deea4be2fd968985f73099b016"
+    },
+    {
+      "path": "android/app/src/main/java/com/lafina/capstone/reminders/ReminderRuntime.kt",
+      "sha256": "a9e47c7d2f8e80ab526299e24c91a1a1598085c38f6072765229b33c5697548e"
+    },
+    {
+      "path": "android/app/src/main/java/com/lafina/capstone/reminders/AlarmRegistrationPolicy.kt",
+      "sha256": "72ca5774ed953e812afed023953f46ee64046c48ab37d5c846db56764e3e0705"
+    }
+  ]
+}

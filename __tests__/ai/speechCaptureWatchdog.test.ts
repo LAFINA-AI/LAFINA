@@ -7,6 +7,7 @@
  */
 import { NativeModules } from 'react-native';
 import {
+  cancelOfflineSpeechCapture,
   getActiveOfflineCaptureId,
   startOfflineSpeechCapture,
 } from '../../src/ai/native/speechCapture';
@@ -26,6 +27,32 @@ describe('offline capture watchdog', () => {
     delete NativeModules.LafinaSpeechToText;
     jest.useRealTimers();
     jest.restoreAllMocks();
+  });
+
+  it('settles cancellation and clears its watchdog when native never returns', async () => {
+    jest.useFakeTimers();
+    NativeModules.LafinaSpeechToText = {
+      startListening: jest.fn(() => new Promise(() => undefined)),
+      stopListening: jest.fn().mockResolvedValue(true),
+      cancelListening: jest.fn().mockResolvedValue(true),
+    };
+    const capture = startOfflineSpeechCapture({mode: 'manual', bargeIn: false, context: 'main_mic'});
+    await cancelOfflineSpeechCapture(capture.captureId);
+    await expect(capture.result).resolves.toMatchObject({captureId: capture.captureId, cancelled: true});
+    expect(jest.getTimerCount()).toBe(0);
+    expect(getActiveOfflineCaptureId()).toBeNull();
+  });
+
+  it('releases ownership without a timer when native start throws synchronously', () => {
+    jest.useFakeTimers();
+    NativeModules.LafinaSpeechToText = {
+      startListening: jest.fn(() => { throw new Error('audio unavailable'); }),
+      stopListening: jest.fn().mockResolvedValue(true),
+      cancelListening: jest.fn().mockResolvedValue(true),
+    };
+    expect(() => startOfflineSpeechCapture({mode: 'manual', bargeIn: false, context: 'main_mic'})).toThrow('audio unavailable');
+    expect(getActiveOfflineCaptureId()).toBeNull();
+    expect(jest.getTimerCount()).toBe(0);
   });
 
   it('releases the shared microphone slot when the native result never settles', async () => {
