@@ -5,6 +5,8 @@ Implementation scope: approved CAPSTONE high-priority port, Sprint 9.
 - Keep `com.lafina`, `lafina.sqlite`, existing reminder statuses, NLU JSON and AI models.
 - Schema 20 adds a source snapshot to schema 19 local delivery jobs. SQLite triggers
   cover every reminder writer, including sync, without transmitting local generations.
+- Schema 21 adds command receipts/revisions without changing native delivery columns.
+  This coordinator explicitly accepts 20–21 and refuses every later schema.
 - OP-SQLite and Android framework SQLite access the same file in separate processes.
   The provider/receiver/coordinator run privately in `:reminders`; no React startup there.
   Both use DELETE journal, busy timeout 5000 ms; native uses full synchronous writes.

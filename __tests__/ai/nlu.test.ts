@@ -6,7 +6,6 @@ import {
   normalizeTranscript,
   resolveRelativeTime,
 } from '../../src/ai';
-import type { NluResult } from '../../src/ai';
 import { db, initDatabase, tasksStore, timeBlocksStore } from '../../src/storage';
 
 const insertUser = (userId: string): void => {
@@ -65,29 +64,11 @@ describe('offline NLU scheduling', () => {
     ).toThrow('Invalid NLU field "time"');
   });
 
-  it('creates a time block when duration_minutes is present', () => {
-    const userId = 'voice_user';
-    insertUser(userId);
-
-    const nluResult: NluResult = {
-      intent: 'schedule',
-      task: 'Deep work',
-      date: '2026-07-06',
-      time: '14:00',
-      duration_minutes: 120,
-      status: 'success',
-      reply: 'I blocked deep work.',
-    };
-
-    const result = applyNluScheduleResult(nluResult, userId);
-    const blocks = timeBlocksStore.getAll(userId);
-
-    expect(result.didUpdate).toBe(true);
-    expect(result.createdItemType).toBe('time_block');
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].title).toBe('Deep work');
-    expect(blocks[0].startTime).toBe('14:00');
-    expect(blocks[0].endTime).toBe('16:00');
+  it('requires review instead of applying raw NLU output', () => {
+    const result=applyNluScheduleResult(createFallbackNluResult('block 14:00-16:00 for deep work tomorrow'),'voice_user');
+    expect(result.didUpdate).toBe(false);
+    expect(result.reply).toMatch(/Confirm/);
+    expect(timeBlocksStore.getAll('voice_user')).toHaveLength(0);
   });
 
   it('parses explicit calendar date "schedule a meeting 9pm on July 8th"', () => {
@@ -267,19 +248,12 @@ describe('offline NLU scheduling', () => {
     });
   });
 
-  it('schedules a recurring weekly time block for "every monday at 10-11 am schedule a timeblock for studying"', () => {
-    const userId = 'studying_user';
-    insertUser(userId);
-
-    const reply = processCommand('every monday at 10-11 am schedule a timeblock for studying', userId);
-    const blocks = timeBlocksStore.getAll(userId);
-
-    expect(reply).toContain('studying');
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].title).toBe('studying');
-    expect(blocks[0].startTime).toBe('10:00');
-    expect(blocks[0].endTime).toBe('11:00');
-    expect(blocks[0].recurrenceRule).toBe('FREQ=WEEKLY');
+  it('preserves recurring weekly grammar while requiring review before storage', () => {
+    const text='every monday at 10-11 am schedule a timeblock for studying';
+    const parsed=createFallbackNluResult(text,MOCK_MONDAY_NOON);
+    expect(parsed).toMatchObject({task:'studying',time:'10:00',duration_minutes:60});
+    expect(processCommand(text,'studying_user')).toMatch(/Confirm/);
+    expect(timeBlocksStore.getAll('studying_user')).toHaveLength(0);
   });
 
   it('replies conversationally to greetings like "hey there" without modifying the schedule', () => {

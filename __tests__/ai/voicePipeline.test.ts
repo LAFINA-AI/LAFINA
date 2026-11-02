@@ -88,11 +88,9 @@ describe('Voice Pipeline Integration', () => {
     const reminders = remindersStore.getAllReminders(userId);
 
     expect(reply).toContain('Thesis Defense');
-    expect(tasks).toHaveLength(1);
-    expect(tasks[0].title).toBe('Thesis Defense');
-    expect(tasks[0].dueTime).toBe('15:00');
-    expect(reminders).toHaveLength(1);
-    expect(reminders[0].task).toBe('Thesis Defense');
+    expect(reply).toMatch(/Confirm/);
+    expect(tasks).toHaveLength(0);
+    expect(reminders).toHaveLength(0);
   });
 
   it('accepts structured offline transcription metadata from the native bridge', async () => {
@@ -132,7 +130,7 @@ describe('Voice Pipeline Integration', () => {
     try {
       const result = await runOfflineVoiceScheduling(userId);
       expect(result).toMatchObject({
-        didUpdate: true,
+        didUpdate: false,
         transcript: 'schedule review session at 3 pm tomorrow',
         errorCode: null,
       });
@@ -188,11 +186,8 @@ describe('Voice Pipeline Integration', () => {
         date: '2026-07-15',
         time: '16:15',
       });
-      expect(tasks[0]).toMatchObject({
-        title: 'thesis review',
-        dueDate: '2026-07-15',
-        dueTime: '16:15',
-      });
+      expect(result.didUpdate).toBe(false);
+      expect(tasks).toHaveLength(0);
     } finally {
       jest.useRealTimers();
       permissionSpy.mockRestore();

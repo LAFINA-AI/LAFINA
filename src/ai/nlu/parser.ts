@@ -1,7 +1,3 @@
-import { generateId } from '../../utils';
-import { notesStore, tasksStore } from '../../storage';
-import { DEFAULT_NOTE_CATEGORY, DEFAULT_NOTE_TITLE } from '../../constants';
-import { applyNluScheduleResult } from './scheduler';
 import type { NluResult } from './types';
 
 const TIME_24H_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -647,75 +643,11 @@ export const createFallbackNluResult = (
   };
 };
 
-const processNoteCommand = (command: string, userId: string): string | null => {
-  if (!/^note:?(\s|$)/i.test(command)) {
-    return null;
-  }
-
-  const noteBody = command.replace(/^note:?\s*/i, '').trim();
-  notesStore.insert({
-    id: generateId('note'),
-    userId,
-    title: DEFAULT_NOTE_TITLE,
-    body: noteBody || 'Empty note contents.',
-    isPinned: false,
-    tags: ['AI Transcribed'],
-    category: DEFAULT_NOTE_CATEGORY,
-    isVoiceTranscribed: true,
-  });
-
-  return "I've captured that note for you.";
-};
-
-const processCompletionCommand = (command: string, userId: string): string | null => {
-  if (!command.toLowerCase().startsWith('complete')) {
-    return null;
-  }
-
-  const searchTitle = command.replace(/^complete\s*/i, '').trim().toLowerCase();
-  const allTasks = tasksStore.getAllTasks(userId);
-  const matchingTask = allTasks.find((task) => task.title.toLowerCase().includes(searchTitle));
-
-  if (!matchingTask) {
-    return `I couldn't find a task matching "${searchTitle}".`;
-  }
-
-  tasksStore.updateTask({
-    id: matchingTask.id,
-    isCompleted: true,
-  });
-
-  return `Marked "${matchingTask.title}" as completed.`;
-};
-
-/**
- * Parses typed command text, performs local schedule writes, and returns a spoken reply.
- *
- * @param command User input text command.
- * @param userId The active local user executing the command.
- * @returns Assistant reply text.
- */
-export const processCommand = (command: string, userId: string): string => {
-  const trimmedCommand = command.trim();
-  if (trimmedCommand.length === 0) {
-    return 'What would you like me to schedule?';
-  }
-
-  try {
-    const noteReply = processNoteCommand(trimmedCommand, userId);
-    if (noteReply !== null) {
-      return noteReply;
-    }
-
-    const completionReply = processCompletionCommand(trimmedCommand, userId);
-    if (completionReply !== null) {
-      return completionReply;
-    }
-
-    const nluResult = createFallbackNluResult(trimmedCommand);
-    return applyNluScheduleResult(nluResult, userId).reply;
-  } catch (error) {
-    console.error('Error processing command in NLU parser:', error);
-    return 'Sorry, I encountered an error while processing that request.';
-  }
+/** Parses a command without mutation; the UI owns a separate review session. */
+export const processCommand = (command: string, _userId: string): string => {
+  const text=command.trim();
+  if (!text) return 'What would you like me to schedule?';
+  if (/^(?:note:?(?:\s|$)|complete(?:\s|$))/i.test(text)) return 'Prepare this command for review and choose Confirm before saving.';
+  const result=createFallbackNluResult(text);
+  return result.intent==='schedule' ? 'Review the proposed schedule and choose Confirm before saving.' : result.reply;
 };

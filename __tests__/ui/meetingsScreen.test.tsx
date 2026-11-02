@@ -108,6 +108,7 @@ const seedMeeting = (id: string, options: { hasAudio: boolean }): void => {
   if (!options.hasAudio) db.executeSync('UPDATE recorded_meetings SET has_audio = 0 WHERE id = ?', [id]);
 };
 
+const mountedTrees:ReactTestRenderer.ReactTestRenderer[]=[];
 const render = (registerBack = jest.fn()) => {
   let tree: ReactTestRenderer.ReactTestRenderer;
   act(() => {
@@ -117,6 +118,7 @@ const render = (registerBack = jest.fn()) => {
       </MeetingsProvider>,
     );
   });
+  mountedTrees.push(tree!);
   return tree!;
 };
 
@@ -142,7 +144,8 @@ describe('MeetingsScreen', () => {
     };
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await act(async()=>{for(const tree of mountedTrees.splice(0)) tree.unmount();});
     jest.restoreAllMocks();
     delete (NativeModules as Record<string, unknown>).LafinaMeetingRecorder;
   });

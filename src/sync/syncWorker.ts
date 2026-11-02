@@ -1,3 +1,4 @@
+import {refreshLinkedReminders} from '../storage/linkedReminders';
 import { accountLinkService } from '../cloud/accountLinkService';
 import { cloudClient } from '../cloud/cloudClient';
 import { reconcileReminderAlarms } from '../scheduler';
@@ -653,6 +654,7 @@ const applyChange = (
 ): boolean => {
   if (change.operation === 'delete') {
     applyDelete(tx, localUserId, change);
+    if (change.entityType==='task' || change.entityType==='event' || change.entityType==='time_block') refreshLinkedReminders(change.entityType,change.entityId,tx);
     return change.entityType === 'reminder';
   }
 
@@ -685,6 +687,7 @@ const applyChange = (
         );
       }
   }
+  if (change.entityType==='task' || change.entityType==='event' || change.entityType==='time_block') refreshLinkedReminders(change.entityType,change.entityId,tx);
   return false;
 };
 

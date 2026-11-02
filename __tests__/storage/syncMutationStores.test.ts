@@ -1,3 +1,4 @@
+import {deliveryStore} from '../../src/storage/deliveryStore';
 import { db } from '../../src/storage/database';
 import { initDatabase } from '../../src/storage/dbInit';
 import { notesStore } from '../../src/storage/notesStore';
@@ -157,6 +158,7 @@ describe('personal store sync mutations', () => {
     )?.entityId;
     db.executeSync('DELETE FROM sync_outbox');
 
+    deliveryStore.linkSource('reminder-delete','task','task-delete');
     tasksStore.deleteTask('task-delete');
     notesStore.delete('note-delete');
     notesStore.deleteCustomCategory(USER_ID, 'Delete me');

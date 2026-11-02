@@ -32,14 +32,14 @@ class LafinaDeliveryStore(context: Context, private val beforeCommit: () -> Unit
     // handler delete the student's database. OpenParams disables compatibility WAL.
     val handler=DatabaseErrorHandler { throw IllegalStateException("DATABASE_CORRUPT") }
     SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,handler).use { inspect ->
-      check(inspect.version==20) { "DATABASE_SCHEMA_NOT_READY" }
+      check(inspect.version in 20..21) { "DATABASE_SCHEMA_NOT_READY" }
       inspect.rawQuery("PRAGMA journal_mode",null).use { check(it.moveToFirst() && it.getString(0).lowercase()=="delete") { "DATABASE_JOURNAL_NOT_READY" } }
     }
     db = SQLiteDatabase.openDatabase(file,SQLiteDatabase.OpenParams.Builder()
       .setOpenFlags(SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
       .setErrorHandler(handler).setJournalMode("DELETE").setSynchronousMode("FULL").build())
     try {
-      check(db.version == 20) { "DATABASE_SCHEMA_NOT_READY" }
+      check(db.version in 20..21) { "DATABASE_SCHEMA_NOT_READY" }
       db.rawQuery("PRAGMA journal_mode", null).use { check(it.moveToFirst() && it.getString(0).lowercase() == "delete") { "DATABASE_JOURNAL_NOT_READY" } }
       db.rawQuery("PRAGMA busy_timeout=5000", null).use { check(it.moveToFirst() && it.getInt(0) == 5000) }
       db.execSQL("PRAGMA foreign_keys=ON")
@@ -68,7 +68,7 @@ class LafinaDeliveryStore(context: Context, private val beforeCommit: () -> Unit
   }
   private fun <T> transaction(block: () -> T): T {
     db.beginTransaction()
-    try { check(db.version==20) { "DATABASE_SCHEMA_NOT_READY" }; val result=block(); beforeCommit(); db.setTransactionSuccessful(); return result } finally { db.endTransaction() }
+    try { check(db.version in 20..21) { "DATABASE_SCHEMA_NOT_READY" }; val result=block(); beforeCommit(); db.setTransactionSuccessful(); return result } finally { db.endTransaction() }
   }
   private fun matches(job: LafinaDeliveryJob?, identity: LafinaDeliveryIdentity): Boolean = job != null && !job.deleted && job.identity == identity && identity.userId == activeUser()
   fun sourceLive(job: LafinaDeliveryJob): Boolean {

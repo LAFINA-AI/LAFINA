@@ -126,10 +126,10 @@ export const remindersStore = {
   /**
    * Inserts a new reminder.
    */
-  insertReminder: (reminder: Omit<Reminder, 'createdAt' | 'updatedAt' | 'deletedAt' | 'snoozeCount'>): void => {
+  insertReminder: (reminder: Omit<Reminder, 'createdAt' | 'updatedAt' | 'deletedAt' | 'snoozeCount'>, executor?: DatabaseTransaction): void => {
     const now = new Date().toISOString();
     try {
-      db.transactionSync((tx) => {
+      const apply = (tx: DatabaseTransaction): void => {
         tx.executeSync(
           `INSERT INTO reminders (id, user_id, task, description, scheduled_at, trigger_at, status, precast_audio_path, snooze_count, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -155,7 +155,8 @@ export const remindersStore = {
           status: reminder.status,
           snooze_count: 0,
         }, 'account', reminder.userId, tx);
-      });
+      };
+      if (executor) apply(executor); else db.transactionSync(apply);
     } catch (error) {
       console.error('Error inserting reminder:', error);
       throw error;

@@ -56,4 +56,23 @@ Target: original LAFINA repository, `LAFINA-USTP`. Scope: the five items in
   migration/notification smoke and representative physical-phone QA remain pending;
   passing fixture checks do not certify those scenarios.
 
-Stages 4–5: pending implementation and verification. No new packages or model changes.
+## Stage 4 — reviewed assistant commands
+
+- Chat, dictation, parser helpers and local-model paths cannot write before review.
+  Private five-minute reviews display resolved local timing/timezone, recurrence,
+  reminder lead and immediate delivery where applicable. Notes remain literal;
+  task completion requires one exact title and a matching local revision.
+- Schema 21 adds minimal operation receipts and SQL-triggered revisions, including
+  sync writers. Confirm commits the item/reminder/job/outbox/receipt atomically.
+  Failed transactions can retry; repeated Confirm does not duplicate an item.
+- Source-linked edits refresh reminders atomically; source deletion never guesses
+  ownership from titles. Calendar creation now links source and reminder together.
+- TypeScript PASS; 106 suites / 876 tests PASS with normal exit; ESLint no errors.
+  Command session 98.03% lines; command schema 100%; linked reminders 94.11%;
+  review hook 100%; Voice sheet 80.6%; Chat 70.24%.
+- Schema-compatible Android build PASS. Existing emulator DB opened and upgraded
+  through versions 20 and 21 without reset. Nine native fixture checks PASS after
+  installing the compatible build. Final concurrent-call recovery tweak is compiled;
+  final installed-build smoke remains part of the closing device checks.
+
+Stage 5: pending implementation and verification. No new packages or model changes.

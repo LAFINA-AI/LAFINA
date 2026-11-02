@@ -15,10 +15,10 @@ import {
 } from 'react-native';
 import { Fonts, Shadows } from '../theme';
 import { X, Check, ArrowRight, Mic, CircleAlert } from 'lucide-react-native';
-import { processCommand } from '../../ai';
+import {useCommandReview} from '../hooks/useCommandReview';
+import {CommandReviewPanel} from './CommandReviewPanel';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
-import { NLU_PARSER_DELAY_MS, VOICE_SUCCESS_DELAY_MS } from '../../constants';
 import type { ThemeColors } from '../contexts/ThemeContext';
 import {
   cancelOfflineSpeechCapture,
@@ -50,6 +50,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   userId,
   onClose,
 }) => {
+  const commands=useCommandReview(userId,visible);
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   /** What was heard, live while talking and final once the mic is let go. */
   const [transcript, setTranscript] = useState('');
@@ -302,17 +303,9 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
         return;
       }
 
-      const reply = processCommand(finalTranscript, userId);
-      setAiReply(reply);
-      setVoiceState('success');
-
-      setTimeout(() => {
-        if (activeCaptureRef.current === uiCaptureId) {
-          onClose(true);
-          setVoiceState('idle');
-          setInputText('');
-        }
-      }, VOICE_SUCCESS_DELAY_MS);
+      setInputText(finalTranscript);
+      setAiReply('Edit the transcript, then prepare it for review. Nothing has been saved.');
+      setVoiceState('idle');
     } catch (error) {
       console.error('Failed to process offline Whisper capture:', error);
       if (speechCaptureRef.current?.captureId === capture.captureId) {
@@ -321,7 +314,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
       setNotice('Speech recognition could not finish. Please try again.');
       triggerErrorShake('idle');
     }
-  }, [onClose, triggerErrorShake, userId]);
+  }, [triggerErrorShake]);
 
   const handleCommandProcess = (command: string) => {
     if (!command.trim()) return;
@@ -329,24 +322,9 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
     Keyboard.dismiss();
     setTranscript(command);
     setNotice('');
-    setVoiceState('processing');
-
-    setTimeout(() => {
-      try {
-        const reply = processCommand(command, userId);
-        setAiReply(reply);
-        setVoiceState('success');
-
-        setTimeout(() => {
-          onClose(true);
-          setVoiceState('idle');
-          setInputText('');
-        }, VOICE_SUCCESS_DELAY_MS);
-      } catch (err) {
-        console.error(err);
-        triggerErrorShake();
-      }
-    }, NLU_PARSER_DELAY_MS);
+    const proposal=commands.prepare(command);
+    setAiReply(proposal.reply);
+    setVoiceState('idle');
   };
 
   const showFallbackControls =
@@ -372,6 +350,8 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
       : colors.textSecondary;
 
   return (
+    <>
+    <CommandReviewPanel review={commands.review} onCancel={commands.cancel} onConfirm={()=>{const result=commands.confirm();setAiReply(result.reply);if(result.status==='saved'){setInputText('');setTranscript('');setVoiceState('success');} }} />
     <Modal
       transparent
       animationType="fade"
@@ -513,7 +493,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
                 placeholder="Or type a command..."
                 placeholderTextColor={colors.textSecondary}
                 value={inputText}
-                onChangeText={setInputText}
+                onChangeText={(text)=>{commands.cancel();setInputText(text);}}
                 onSubmitEditing={() => handleCommandProcess(inputText)}
               />
               <TouchableOpacity
@@ -529,6 +509,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
+    </>
   );
 };
 

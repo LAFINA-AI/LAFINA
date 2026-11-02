@@ -61,7 +61,8 @@ object LafinaDeliveryBridge {
   }
   fun payload(context: Context, intent: android.content.Intent? = null): JSONObject? {
     val method=if(intent?.data?.scheme=="lafina-reminder") "open" else "pending"
-    val json=request(context,method,if(method=="open") intent?.data?.toString() else null).getString("json") ?: return null
+    val json=request(context,method,if(method=="open") intent?.data?.toString() else null).getString("json")
+      ?: (if(method=="open") request(context,"pending").getString("json") else null) ?: return null
     return JSONObject(json)
   }
 }

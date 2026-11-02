@@ -1,3 +1,6 @@
+import {db} from '../../../../storage/database';
+import type {DatabaseTransaction} from '../../../../storage/database';
+import {deliveryStore} from '../../../../storage/deliveryStore';
 import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
 import type { Task, Event } from '../../../../storage';
@@ -87,11 +90,12 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
       return;
     }
 
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}`;
     const rule = recurrenceRule !== undefined ? recurrenceRule : (form.recurrenceRule || null);
 
-    const syncReminder = (title: string, date: string, time: string) => {
-      try {
+    const syncReminder = (title: string, date: string, time: string, sourceId:string, tx:DatabaseTransaction) => {
+      {
+        if(tx.executeSync("SELECT reminder_id FROM reminder_delivery_jobs WHERE source_type=? AND source_id=? AND state IN ('pending','ringing')",[modalType,sourceId]).rows.length) return;
         const prefs = getReminderPreferences(userId);
         const leadTimeMinutes = prefs.leadTimeMinutes;
         const localScheduledDate = new Date(`${date}T${time}:00`);
@@ -114,28 +118,29 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
           triggerAt,
           status: 'pending',
           preCastAudioPath: null,
-        });
+        },tx);
+        deliveryStore.linkSource(reminderId,modalType,sourceId,tx);
 
-        void scheduleReminderAlarm(reminderId, title, triggerAt).catch((err) => {
+        tx.afterCommit?.(()=>{ void scheduleReminderAlarm(reminderId, title, triggerAt).catch((err) => {
           console.error('[Calendar] Failed to schedule reminder alarm:', err);
-        });
-      } catch (err) {
-        console.error('[Calendar] Failed to create auto-reminder:', err);
+        }); });
       }
     };
 
+    try { db.transactionSync(tx=>{
     if (modalType === 'task') {
       if (editingItem) {
         tasksStore.updateTask({
           id: editingItem.id,
           title: form.title,
+          dueDate: dateStr,
           dueTime: form.time,
           priority: form.priority as Priority,
           category: form.category,
           notes: form.notes,
           recurrenceRule: rule,
-        });
-        syncReminder(form.title, dateStr, form.time);
+        },tx);
+        syncReminder(form.title,dateStr,form.time,editingItem.id,tx);
       } else {
         const taskId = generateId('task');
         tasksStore.insertTask({
@@ -149,8 +154,8 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
           category: form.category,
           notes: form.notes,
           recurrenceRule: rule,
-        });
-        syncReminder(form.title, dateStr, form.time);
+        },tx);
+        syncReminder(form.title,dateStr,form.time,taskId,tx);
       }
     } else {
       if (editingItem) {
@@ -162,8 +167,8 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
           endTime: form.endTime,
           location: form.location,
           recurrenceRule: rule,
-        });
-        syncReminder(form.title, dateStr, form.time);
+        },tx);
+        syncReminder(form.title,dateStr,form.time,editingItem.id,tx);
       } else {
         const eventId = generateId('event');
         tasksStore.insertEvent({
@@ -175,11 +180,12 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
           endTime: form.endTime,
           location: form.location,
           recurrenceRule: rule,
-        });
-        syncReminder(form.title, dateStr, form.time);
+        },tx);
+        syncReminder(form.title,dateStr,form.time,eventId,tx);
       }
     }
 
+    }); } catch { Alert.alert('Not saved','The item and reminder could not be saved. Please try again.'); return; }
     setVisible(false);
     onSaved();
     onRefresh();

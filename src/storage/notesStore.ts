@@ -77,11 +77,11 @@ export const notesStore = {
     }
   },
 
-  insert: (note: Omit<Note, 'createdAt' | 'updatedAt' | 'deletedAt' | 'sortOrder'> & { sortOrder?: number }): void => {
+  insert: (note: Omit<Note, 'createdAt' | 'updatedAt' | 'deletedAt' | 'sortOrder'> & { sortOrder?: number }, executor?: DatabaseTransaction): void => {
     const now = new Date().toISOString();
     const tagsJson = JSON.stringify(note.tags);
     try {
-      db.transactionSync((tx) => {
+      const apply = (tx: DatabaseTransaction): void => {
         let finalSortOrder = note.sortOrder;
         if (finalSortOrder === undefined) {
           try {
@@ -122,7 +122,8 @@ export const notesStore = {
           is_voice_transcribed: note.isVoiceTranscribed,
           sort_order: finalSortOrder,
         }, 'account', note.userId, tx);
-      });
+      };
+      if (executor) apply(executor); else db.transactionSync(apply);
     } catch (error) {
       console.error('Error inserting note:', error);
       throw error;

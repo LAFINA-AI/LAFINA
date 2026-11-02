@@ -20,13 +20,14 @@ import {
   runLocalLlmChat,
   createFallbackNluResult,
   normalizeTranscript,
-  applyNluScheduleResult,
   detectDocumentRequest,
 } from '../../ai';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../contexts/ThemeContext';
 import { generateId } from '../../utils';
+import {useCommandReview} from '../hooks/useCommandReview';
+import {CommandReviewPanel} from '../components/CommandReviewPanel';
 
 // Chat sub-components
 import { ChatMessageItem } from '../components/chat/ChatMessageItem';
@@ -82,6 +83,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   refreshTrigger,
   onRefresh,
 }) => {
+  const commands=useCommandReview(userId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -292,6 +294,14 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     // the file sends the conversation to the server.
     const pickedFormat = docFormat;
     const fileFormat = pickedFormat ?? detectDocumentRequest(userText);
+    const nlu=createFallbackNluResult(normalizeTranscript(userText));
+    if (!fileFormat && (nlu.intent==='schedule' || /^(?:note:?(?:\s|$)|complete(?:\s|$))/i.test(userText))) {
+      const proposal=commands.prepare(userText);
+      if (!proposal.review) Alert.alert('Command needs more detail',proposal.reply);
+      Keyboard.dismiss();
+      return;
+    }
+    commands.cancel();
     setInputText('');
     setDocFormat(null);
     Keyboard.dismiss();
@@ -338,17 +348,6 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         setPendingLabel(`Creating your ${DOCUMENT_FORMATS[fileFormat].label} file…`);
         ({ reply: aiReply, attachment } = await createDocumentReply(fileFormat, tempMessages));
       } else if (shouldUseOnline) {
-        // Apply scheduling actions locally if user message expresses scheduling intent
-        const normalizedUserText = normalizeTranscript(userText);
-        const scheduleNlu = createFallbackNluResult(normalizedUserText);
-        let localScheduleReply: string | null = null;
-        if (scheduleNlu.intent === 'schedule') {
-          const scheduleRes = applyNluScheduleResult(scheduleNlu, userId);
-          if (scheduleRes.didUpdate) {
-            localScheduleReply = scheduleRes.reply;
-          }
-        }
-
         // FastAPI is authoritative for entitlements and re-checks the live account
         // role on every request, including SQLAdmin upgrades and downgrades.
         const chatPayload = tempMessages.map((m) => ({
@@ -357,13 +356,12 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         }));
         const cloudRes = await onlineChatSkill.sendChatMessage(chatPayload, { useHandbook: handbookOn });
         if (cloudRes.status === 'success' && cloudRes.data) {
-          aiReply = localScheduleReply ?? cloudRes.data.reply;
-          handbookNote = localScheduleReply ? null : handbookSourceLabel(cloudRes.data.sources);
+          aiReply = cloudRes.data.reply;
+          handbookNote = handbookSourceLabel(cloudRes.data.sources);
           setIsOnlineMode(true);
           // The admin may have flipped the switch since the badge last asked.
           refreshHandbookStatus();
-        } else if (localScheduleReply) {
-          aiReply = localScheduleReply;
+
         } else if (cloudRes.status === 'auth_required') {
           setIsOnlineMode(false);
           aiReply = '[Cloud AI Error (auth_required)]: Cloud session expired. Sign in again while online. Offline mode remains available.';
@@ -535,10 +533,23 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         />
       )}
 
+      <CommandReviewPanel review={commands.review} onCancel={commands.cancel} onConfirm={()=>{
+        const result=commands.confirm();
+        if(result.status==='saved') {
+          const sessionId=chatStore.ensureDefaultSession(userId);
+          try {
+            chatStore.insertMessage({id:generateId('msg'),sessionId,sender:'user',content:inputText.trim()});
+            chatStore.insertMessage({id:generateId('msg'),sessionId,sender:'assistant',content:result.reply});
+            loadChatHistory();
+          } catch { /* The command itself has already committed. */ }
+          setInputText('');onRefresh();
+        }
+        Alert.alert(result.status==='saved'?'Saved':'Command not saved',result.reply);
+      }} />
       {/* Input Row */}
       <ChatInput
         inputText={inputText}
-        setInputText={setInputText}
+        setInputText={(text)=>{commands.cancel();setInputText(text);}}
         onSend={handleSend}
         isKeyboardVisible={isKeyboardVisible}
         onOpenFiles={handleOpenFiles}

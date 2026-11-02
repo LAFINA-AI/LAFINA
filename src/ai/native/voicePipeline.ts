@@ -121,9 +121,9 @@ export const hasOfflineVoiceRuntime = (): boolean => {
 };
 
 /**
- * Records a spoken command, transcribes it locally, extracts NLU JSON locally, and applies it.
+ * Records a spoken command, transcribes it locally, extracts NLU JSON locally, and returns a draft for review.
  *
- * @param userId Active local user ID that owns any created schedule item.
+ * @param userId Active local user ID that owns the proposed schedule item.
  * @returns The pipeline result, including transcript, reply, and storage update status.
  */
 export const runOfflineVoiceScheduling = async (

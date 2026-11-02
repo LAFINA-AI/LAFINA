@@ -1,3 +1,4 @@
+import {deliveryStore} from '../../src/storage/deliveryStore';
 /**
  * Unit tests for the update, cascade-cleanup and failure paths of the notes,
  * tasks, events and time-block stores.
@@ -275,6 +276,7 @@ describe('store cleanup and update paths', () => {
       insertReminder('rem_task', 'Study session', '/cache/study.wav');
       insertReminder('rem_unrelated', 'Other task', null);
 
+      deliveryStore.linkSource('rem_task','task','task_1');
       tasksStore.deleteTask('task_1');
 
       expect(tasksStore.getAllTasks('user1')).toEqual([]);
@@ -321,6 +323,7 @@ describe('store cleanup and update paths', () => {
       insertEvent('event_1', 'Physics lecture');
       insertReminder('rem_event', 'Physics lecture', '/cache/physics.wav');
 
+      deliveryStore.linkSource('rem_event','event','event_1');
       tasksStore.deleteEvent('event_1');
 
       expect(tasksStore.getAllEvents('user1')).toEqual([]);
@@ -416,6 +419,7 @@ describe('store cleanup and update paths', () => {
       insertBlock('block_1', 'Deep work');
       insertReminder('rem_block', 'Deep work', '/cache/deep.wav');
 
+      deliveryStore.linkSource('rem_block','time_block','block_1');
       timeBlocksStore.delete('block_1');
 
       expect(timeBlocksStore.getAll('user1')).toEqual([]);

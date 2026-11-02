@@ -1,5 +1,6 @@
 import { db, DatabaseTransaction } from './database';
 import {initializeDeliverySchema} from './deliverySchema';
+import {initializeCommandSchema} from './commandSchema';
 import { seedLocalDemoAccounts } from './demoSeed';
 import { buildProfileSyncPayload } from './profileSyncPayload';
 import type {
@@ -15,7 +16,7 @@ import { generateId } from '../utils';
  * entity-type negotiation for sync.
  * 18: scheduling-only AI guardrail preference on `user_preferences`.
  */
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 type LegacySyncRow = Record<string, unknown>;
 
@@ -1068,6 +1069,7 @@ export const initDatabase = async (): Promise<void> => {
       // migrations safely. Fresh CREATE statements above are sufficient for it.
       if (!db.isFallback()) {
         initializeDeliverySchema(tx);
+        initializeCommandSchema(tx);
         // Versioned schema migrations
         const versionResult = tx.executeSync('PRAGMA user_version');
         const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;

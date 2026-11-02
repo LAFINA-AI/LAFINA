@@ -110,11 +110,16 @@ object LafinaDeliveryRuntime {
           ((registration.kind=="due" && job.state=="pending") || (registration.kind=="timeout" && job.state=="ringing"))
         if(!valid) { cancel(context,registration,job==null || job.deleted || job.identity!=registration.identity || job.state!="ringing" || job.identity.userId!=store.activeUser()); store.forgetRegistration(registration) }
       }
-      for(job in store.jobs("pending",256)) {
+      val pendingBatch=store.jobs("pending",256)
+      if(pendingBatch.size==256) maintain(now+1000)
+      for(job in pendingBatch) {
         val due=time(job.triggerAt)
         if(due==null || due<=now) {
           if(due==null || now-due>15*60_000L || channelEnabled(context)) {
             runCatching { store.claim(job.identity,now) }.onFailure { store.blocked(job.identity,"CLAIM_FAILED") }
+            // A concurrent ringing call can defer this claim. Its one-shot due
+            // alarm has already fired, so retain a finite recovery wakeup.
+            if(store.current(job.identity.reminderId)?.state=="pending") maintain(minOf(now+30_000,(due ?: now)+15*60_000L+1))
           } else { store.blocked(job.identity,"NOTIFICATIONS_DISABLED"); maintain(due+15*60_000L+1) }
         }
       }

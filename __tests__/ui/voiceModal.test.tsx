@@ -1,6 +1,8 @@
 import React from 'react';
 import ReactTestRenderer, { act } from 'react-test-renderer';
-import { DeviceEventEmitter } from 'react-native';
+import { DeviceEventEmitter,NativeModules,PermissionsAndroid,TextInput } from 'react-native';
+import {db} from '../../src/storage/database';
+import {initDatabase} from '../../src/storage/dbInit';
 
 jest.mock('react-native/Libraries/Modal/Modal', () => ({
   __esModule: true,
@@ -59,7 +61,14 @@ const render = (): ReactTestRenderer.ReactTestRenderer => {
 };
 
 describe('voice assistant sheet', () => {
+  beforeAll(async()=>{await initDatabase();});
+
   beforeEach(() => {
+    db.executeSync('DELETE FROM notes');db.executeSync('DELETE FROM active_session');
+    const now=new Date().toISOString();
+    db.executeSync('INSERT OR IGNORE INTO users(id,username,created_at,updated_at) VALUES(?,?,?,?)',['voice-user','voice-user',now,now]);
+    db.executeSync('INSERT INTO active_session(user_id,created_at,updated_at) VALUES(?,?,?)',['voice-user',now,now]);
+
     // Jest runs as iOS, where PermissionsAndroid only logs that it does nothing.
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     jest.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -110,4 +119,32 @@ describe('voice assistant sheet', () => {
     expect(tree.root.findAll((node) => node.props.placeholder === 'Or type a command...').length).toBeGreaterThan(0);
     act(() => tree.unmount());
   });
+  it('prepares typed text, permits cancellation, and saves only on Confirm',()=>{
+    const tree=render();
+    act(()=>tree.root.findByType(TextInput).props.onChangeText('note: reviewed text'));
+    act(()=>tree.root.findByProps({accessibilityLabel:'Send command'}).props.onPress());
+    expect(db.executeSync('SELECT * FROM notes').rows).toHaveLength(0);
+    act(()=>tree.root.findByProps({accessibilityLabel:'Cancel review'}).props.onPress());
+    expect(tree.root.findByType(TextInput).props.value).toBe('note: reviewed text');
+    act(()=>tree.root.findByProps({accessibilityLabel:'Send command'}).props.onPress());
+    act(()=>tree.root.findByProps({accessibilityLabel:'Confirm command'}).props.onPress());
+    expect(db.executeSync('SELECT body FROM notes').rows[0].body).toBe('reviewed text');
+    act(()=>tree.unmount());
+  });
+  it('turns a finished recording into an editable draft without saving',async()=>{
+    jest.spyOn(PermissionsAndroid,'check').mockResolvedValue(true);
+    NativeModules.LafinaSpeechToText={startListening:jest.fn(({captureId}:{captureId:string})=>Promise.resolve({captureId,transcript:'note: dictated text',speechDetected:true,cancelled:false})),stopListening:jest.fn().mockResolvedValue(true),cancelListening:jest.fn().mockResolvedValue(true)};
+    const tree=render();
+    await act(async()=>{await tree.root.findByProps({accessibilityLabel:'Hold to talk'}).props.onPressIn();});
+    await act(async()=>{await tree.root.findByProps({accessibilityLabel:'Hold to talk'}).props.onPressOut();});
+    expect(tree.root.findByType(TextInput).props.value).toBe('note: dictated text');
+    expect(db.executeSync('SELECT * FROM notes').rows).toHaveLength(0);
+    act(()=>tree.root.findByType(TextInput).props.onChangeText('note: corrected text'));
+    act(()=>tree.root.findByProps({accessibilityLabel:'Send command'}).props.onPress());
+    expect(textOf(tree)).toContain('corrected text');
+    act(()=>tree.root.findByProps({accessibilityLabel:'Confirm command'}).props.onPress());
+    expect(db.executeSync('SELECT body FROM notes').rows[0].body).toBe('corrected text');
+    act(()=>tree.unmount());delete NativeModules.LafinaSpeechToText;
+  });
+
 });

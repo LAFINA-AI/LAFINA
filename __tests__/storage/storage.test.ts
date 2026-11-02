@@ -1,3 +1,4 @@
+import {deliveryStore} from '../../src/storage/deliveryStore';
 import { db } from '../../src/storage/database';
 import { initDatabase } from '../../src/storage/dbInit';
 import { timeBlocksStore } from '../../src/storage/timeBlocksStore';
@@ -153,6 +154,7 @@ describe('Storage Layer', () => {
         ['rem_block_del', 'user_block_del', 'Delete test block', new Date().toISOString(), new Date().toISOString(), 'pending', new Date().toISOString(), new Date().toISOString()]
       );
 
+      deliveryStore.linkSource('rem_block_del','time_block','block_del');
       // Delete block
       timeBlocksStore.delete('block_del');
 
@@ -257,6 +259,7 @@ describe('Storage Layer', () => {
         ['rem_task_del', 'user_del_test', 'Delete test task', new Date().toISOString(), new Date().toISOString(), 'pending', new Date().toISOString(), new Date().toISOString()]
       );
 
+      deliveryStore.linkSource('rem_task_del','task','task_del');
       // Delete task
       tasksStore.deleteTask('task_del');
 
@@ -285,6 +288,7 @@ describe('Storage Layer', () => {
         ['rem_event_del', 'user_del_test', 'Delete test event', new Date().toISOString(), new Date().toISOString(), 'pending', new Date().toISOString(), new Date().toISOString()]
       );
 
+      deliveryStore.linkSource('rem_event_del','event','event_del');
       // Delete event
       tasksStore.deleteEvent('event_del');
 

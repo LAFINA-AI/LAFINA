@@ -1,3 +1,4 @@
+import {deliveryStore} from '../../src/storage/deliveryStore';
 import { db } from '../../src/storage/database';
 import { initDatabase } from '../../src/storage/dbInit';
 import { syncOutboxStore } from '../../src/storage/syncOutboxStore';
@@ -148,6 +149,7 @@ describe('calendar import persistence', () => {
         NOW,
       ],
     );
+    deliveryStore.linkSource('linked-reminder','event',ids.eventIds[0]);
     db.executeSync('DELETE FROM sync_outbox');
     const originalEnqueue = syncOutboxStore.enqueueMutation;
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);

@@ -41,3 +41,6 @@ export type {
 } from './native/voicePipeline';
 export type { MeetingRecordingSession, MeetingSegment } from './native/meetingRecorder';
 export type { ActionCandidate, RosterMember } from './meeting/actionCandidateExtractor';
+
+export {createCommandSession} from './nlu/commandSession';
+export type {CommandSession,CommandReview,CommandProposal,CommandExecutionResult} from './nlu/commandSession';

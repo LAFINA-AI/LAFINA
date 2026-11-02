@@ -1,3 +1,4 @@
+import {refreshLinkedReminders} from './linkedReminders';
 import { db, DatabaseTransaction } from './database';
 import { syncOutboxStore } from './syncOutboxStore';
 
@@ -180,6 +181,7 @@ export const timeBlocksStore = {
     try {
       db.transactionSync((tx) => {
         tx.executeSync(`UPDATE time_blocks SET ${sets.join(', ')} WHERE id = ?`, params);
+        refreshLinkedReminders('time_block',block.id,tx);
         const row = tx.executeSync('SELECT * FROM time_blocks WHERE id = ?', [block.id]).rows?.[0] as StoredSyncRow | undefined;
         if (row) {
           const userId = String(row.user_id);
@@ -218,8 +220,8 @@ export const timeBlocksStore = {
       );
 
       const reminders = executor.executeSync(
-        `SELECT id, precast_audio_path FROM reminders WHERE user_id = ? AND task = ? AND deleted_at IS NULL AND status IN ('pending', 'snoozed')`,
-        [userId, blockRow.title]
+        `SELECT id, precast_audio_path FROM reminders WHERE user_id = ? AND id IN (SELECT reminder_id FROM reminder_delivery_jobs WHERE source_type='time_block' AND source_id=?) AND deleted_at IS NULL AND status IN ('pending', 'snoozed', 'triggered')`,
+        [userId, id]
       ).rows || [];
       for (const reminder of reminders) {
         executor.executeSync(
