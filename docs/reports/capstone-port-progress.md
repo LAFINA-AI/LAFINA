@@ -26,4 +26,15 @@ Target: original LAFINA repository, `LAFINA-USTP`. Scope: the five items in
 - TypeScript PASS; 101 suites / 846 tests PASS with normal exit; ESLint no errors.
   Database line coverage 90.86%; schema initializer 98.47%.
 
-Stages 2–5: pending implementation and verification. No new packages or model changes.
+## Stage 2 — delivery metadata and identity
+
+- Schema 19 adds local jobs, retained platform registrations and bounded redacted events.
+  SQLite triggers pair reminder changes with delivery work for every writer, including sync.
+- Generations retire on snooze/edit/delete; due claims retain their identity; cache-only
+  updates do not invalidate calls. Legacy rows remain standalone until explicitly linked.
+- Full URI identities include user, reminder, occurrence, generation and operation.
+- TypeScript PASS; 102 suites / 854 tests PASS; ESLint no errors; Kotlin compile PASS.
+  Focused delivery-store line coverage 94.44%; delivery-schema coverage 100%.
+- The configured API 37 x86_64 emulator is booted. Native delivery cutover is not yet active.
+
+Stages 3–5: pending implementation and verification. No new packages or model changes.
