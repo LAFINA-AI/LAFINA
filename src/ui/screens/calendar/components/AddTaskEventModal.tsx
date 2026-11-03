@@ -104,6 +104,7 @@ export const AddTaskEventModal: React.FC<AddTaskEventModalProps> = ({ state, tim
             value={state.form.title}
             onChangeText={(v) => state.updateField('title', v)}
           />
+          {state.modalType==='event' && !state.editingItem && state.memoryOffer && <TouchableOpacity accessibilityRole="button" onPress={state.applyMemory}><Text style={{color:colors.textPrimary}}>Apply saved event preferences: {state.memoryOffer.value.startTime??'current start'}, {state.memoryOffer.value.durationMinutes??60} min</Text></TouchableOpacity>}
 
           {state.modalType==='task' && <>
             <View style={styles.modalRow}><Text style={{color:colors.textPrimary}}>Use due date (selected Calendar date for a new deadline)</Text><Switch accessibilityLabel="Use due date" value={state.form.hasDueDate!==false} onValueChange={v=>state.updateField('hasDueDate',v)}/></View>

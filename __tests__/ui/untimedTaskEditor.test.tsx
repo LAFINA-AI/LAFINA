@@ -1,6 +1,7 @@
 import React from 'react';
 import Renderer,{act} from 'react-test-renderer';
-import {db,initDatabase,tasksStore} from '../../src/storage';
+import {db,initDatabase,tasksStore,userStore} from '../../src/storage';
+import {personalMemoryStore as memory} from '../../src/storage/personalMemoryStore';
 import {useScheduleItemModal} from '../../src/ui/screens/calendar/hooks/useScheduleItemModal';
 import {UndatedTasks} from '../../src/ui/components/UndatedTasks';
 import {ThemeProvider} from '../../src/ui/contexts/ThemeContext';
@@ -45,6 +46,14 @@ describe('manual task deadline editing',()=>{
     event=tasksStore.getAllEvents('untimed-owner').find(e=>e.id===event.id)!;expect(event.title).toBe('Changed event');
     act(()=>state.delete(event.id,'event'));act(()=>alert.mock.calls.at(-1)?.[2]?.find(b=>b.text==='Delete')?.onPress?.());
     expect(tasksStore.getAllEvents('untimed-owner').find(e=>e.id===event.id)).toBeUndefined();act(()=>state.close());alert.mockRestore();
+  });
+  it('offers preferences only for unchanged new drafts, and rejects retained Apply after Forget',()=>{
+    userStore.setCurrentUser('untimed-owner');memory.confirm(memory.prepare('untimed-owner',{startTime:'09:30',durationMinutes:90,expiresDays:0}).token,'untimed-owner');
+    act(()=>state.openNew('event'));expect(state.form.time).toBe('12:00');expect(state.memoryOffer).toBeTruthy();act(()=>state.applyMemory?.());expect(state.form.time).toBe('09:30');expect(state.form.endTime).toBe('11:00');
+    expect(tasksStore.getAllEvents('untimed-owner').some(e=>e.startTime==='09:30')).toBe(false);
+    act(()=>state.openNew('event'));const retained=state.applyMemory;act(()=>state.updateField('title','My edited draft'));act(()=>retained?.());expect(state.form.title).toBe('My edited draft');expect(state.form.time).toBe('12:00');
+    act(()=>state.openNew('event'));const stale=state.applyMemory;memory.forget('untimed-owner','all');const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});act(()=>stale?.());expect(state.form.time).toBe('12:00');expect(alert).toHaveBeenCalled();alert.mockRestore();
+    act(()=>state.openNew('task'));expect(state.memoryOffer).toBeNull();
   });
 });
 

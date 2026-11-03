@@ -1,12 +1,14 @@
 import {db} from '../../../../storage/database';
 import type {DatabaseTransaction} from '../../../../storage/database';
 import {deliveryStore} from '../../../../storage/deliveryStore';
-import { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
+import { useState, useCallback,useRef,useEffect } from 'react';
+import { Alert,AppState } from 'react-native';
 import type { Task, Event } from '../../../../storage';
 import { tasksStore, remindersStore } from '../../../../storage';
 import { ScheduleItemForm, ScheduleItemModalState } from '../types';
 import { generateId } from '../../../../utils';
+import {personalMemoryStore} from '../../../../storage/personalMemoryStore';
+import type {EventMemoryOffer} from '../../../../storage/personalMemoryStore';
 import { getReminderPreferences, scheduleReminderAlarm } from '../../../../scheduler';
 
 interface UseScheduleItemModalOptions {
@@ -39,8 +41,14 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
   const [form, setForm] = useState<ScheduleItemForm>(defaultForm());
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [memoryOffer,setMemoryOffer]=useState<EventMemoryOffer|null>(null);
+  const draftEpoch=useRef(0),renderedEpoch=draftEpoch.current;
+  useEffect(()=>{draftEpoch.current++;setMemoryOffer(null);setVisible(false);},[userId]);
+  useEffect(()=>{const subscription=AppState.addEventListener('change',state=>{if(state!=='active'){draftEpoch.current++;setMemoryOffer(null);}});return()=>subscription.remove();},[]);
 
   const updateField = useCallback(<K extends keyof ScheduleItemForm>(key: K, value: ScheduleItemForm[K]) => {
+    setMemoryOffer(null);
+    draftEpoch.current++;
     setForm(prev => {
       const next = { ...prev, [key]: value };
       if (key === 'time') {
@@ -58,15 +66,19 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
   }, []);
 
   const openNew = useCallback((type: 'task' | 'event') => {
+    draftEpoch.current++;
     setModalType(type);
     setEditingItem(null);
     setForm(defaultForm());
+    try{setMemoryOffer(type==='event'?personalMemoryStore.offer(userId):null);}catch{setMemoryOffer(null);}
     setVisible(true);
-  }, []);
+  }, [userId]);
 
   const openEdit = useCallback((item: Task | Event, type: 'task' | 'event') => {
+    draftEpoch.current++;
     setModalType(type);
     setEditingItem(item);
+    setMemoryOffer(null);
     setForm({
       hasDueDate: type==='event'||!!(item as Task).dueDate,
       hasDueTime: type==='event'||!!(item as Task).dueTime,
@@ -82,7 +94,11 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
     setVisible(true);
   }, []);
 
-  const close = useCallback(() => setVisible(false), []);
+  const close = useCallback(() => {draftEpoch.current++;setMemoryOffer(null);setVisible(false);}, []);
+  const applyMemory=()=>{
+    if(draftEpoch.current!==renderedEpoch||!visible||modalType!=='event'||editingItem||!memoryOffer||JSON.stringify(form)!==JSON.stringify(defaultForm()))return;
+    try{const value=personalMemoryStore.apply(memoryOffer,userId);const time=value.startTime??form.time;const [hour,minute]=time.split(':').map(Number);const end=hour*60+minute+(value.durationMinutes??60);if(end>=1440)throw new Error('Event crosses midnight.');setForm({...form,time,endTime:`${String(Math.floor(end/60)).padStart(2,'0')}:${String(end%60).padStart(2,'0')}`});}catch{Alert.alert('Offer unavailable','Preferences changed or expired. Reopen the new event.');}finally{draftEpoch.current++;setMemoryOffer(null);}
+  };
 
   const save = useCallback((recurrenceRule?: string | null) => {
     if (!form.title.trim()) {
@@ -216,6 +232,7 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
   }, [onSaved, onRefresh]);
 
   return {
+    memoryOffer,applyMemory,
     visible,
     modalType,
     editingItem,

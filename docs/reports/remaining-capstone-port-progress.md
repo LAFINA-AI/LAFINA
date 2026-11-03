@@ -82,3 +82,15 @@ return refreshes health; stale account/view results are ignored. Recovery is bou
 active-account checked and described as a registration request, not proof of delivery.
 TypeScript PASS; 115 suites / 928 tests PASS; ESLint zero errors (250 warnings).
 Storage/scheduler health line coverage exceeds 80%; UI exceeds 60%.
+
+## Stage 5 — explicit personal preferences
+
+Implemented opt-in, account-local event start/duration preferences, private expiring
+reviews, correction, disable, individual/all Forget and expiry. Revision, active-account,
+clock and draft-epoch checks reject stale Save/Apply, including after editing a draft.
+Only an explicit Apply changes a new draft; existing events remain independent.
+Plan refinement: use the existing `local_settings` table with a versioned structured
+payload and UTC creation/update timestamps. No schema bump or native compatibility
+policy widening is necessary. Preferences do not sync or infer facts from history.
+TypeScript PASS; 117 suites / 933 tests PASS; ESLint zero errors (251 warnings).
+Memory store line coverage 100%; manager UI exceeds 60%.

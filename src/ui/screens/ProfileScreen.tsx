@@ -32,6 +32,7 @@ import { StudentProTag } from '../components/profile/StudentProTag';
 import { AppUpdateItem } from '../components/profile/AppUpdateItem';
 import { PreferencesSettingsScreen } from './PreferencesSettingsScreen';
 import {ReminderHealth} from '../components/profile/ReminderHealth';
+import {PersonalMemory} from '../components/profile/PersonalMemory';
 
 function getInitials(username: string | null | undefined): string {
   if (!username || username.trim().length === 0) {
@@ -91,6 +92,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [preferenceSummary, setPreferenceSummary] = useState('15 min, Snooze once');
   const [preferencesVisible, setPreferencesVisible] = useState(false);
   const [healthVisible,setHealthVisible]=useState(false);
+  const [memoryVisible,setMemoryVisible]=useState(false);
 
   // Privacy Modal state
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
@@ -361,6 +363,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           {/* Preferences Group */}
           <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Preferences</Text>
           <SettingItem text="Reminder health" onPress={()=>setHealthVisible(true)}/>
+          <SettingItem text="Personal event preferences" onPress={()=>setMemoryVisible(true)}/>
           <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
             <SettingItem
               text="Scheduling & Reminder Preferences"
@@ -491,6 +494,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
       {/* Privacy Policy Modal [Fix #1] */}
       <ReminderHealth key={userId} userId={userId} visible={healthVisible} onClose={()=>setHealthVisible(false)}/>
+      <PersonalMemory key={`memory-${userId}`} userId={userId} visible={memoryVisible} onClose={()=>setMemoryVisible(false)}/>
       <PrivacyModal
         visible={privacyModalVisible}
         onClose={() => setPrivacyModalVisible(false)}

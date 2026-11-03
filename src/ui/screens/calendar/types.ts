@@ -93,6 +93,8 @@ export interface TimeBlockModalState {
 }
 
 export interface ScheduleItemModalState {
+  memoryOffer?: import('../../../storage/personalMemoryStore').EventMemoryOffer|null;
+  applyMemory?:()=>void;
   visible: boolean;
   modalType: 'task' | 'event';
   editingItem: Task | Event | null;
