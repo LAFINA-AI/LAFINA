@@ -296,4 +296,22 @@ describe('Chat files and handbook answers on mobile', () => {
     act(()=>tree.unmount());
   });
 
+  it('answers actual local tasks before any online Chat request',async()=>{
+    db.executeSync('DELETE FROM tasks');
+    const now=new Date().toISOString(),date=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`;
+    db.executeSync('INSERT INTO tasks(id,user_id,title,due_date,due_time,is_completed,priority,category,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',['live-query',PRO,'Actual local quiz',date,'09:00',0,'Medium','Work',now,now]);
+    const request=serve({'/v1/ai/handbook/status':{enabled:false,functional:false,passages:0}});
+    const tree=await render(PRO);await send(tree,'What are my tasks today?');
+    expect(chatStore.getMessages(PRO).at(-1)?.content).toContain('Actual local quiz');
+    expect(request.mock.calls.some(call=>call[0]==='/v1/ai/chat')).toBe(false);
+    act(()=>tree.unmount());
+  });
+  it('selects a command-guide example into the draft without sending it',async()=>{
+    const tree=await render(FREE);act(()=>byLabel(tree,'Command guide').props.onPress());
+    act(()=>byLabel(tree,'Use example: Show agenda tomorrow').props.onPress());
+    expect(tree.root.find(node=>node.props.returnKeyType==='send').props.value).toBe('Show agenda tomorrow');
+    expect(chatStore.getMessages(FREE)).toHaveLength(0);
+    act(()=>tree.unmount());
+  });
+
 });

@@ -35,4 +35,17 @@ while keeping Whisper/Kokoro defaults. No new package has been installed.
 - TypeScript PASS; 110 suites / 898 tests PASS; ESLint zero errors (244 warnings).
   Calendar hook line coverage 89.05%; source-query and Chat logic exceed 80%.
 
-Stages 2–8 remain in progress. Physical-device acceptance is separate from host tests.
+## Stage 2 — factual local planner conversation
+
+- Task/agenda questions read the owner's actual SQLite records, including completed
+  and undated tasks, recurring blocks, today/tomorrow/explicit dates and this week.
+  Replies are bounded, indicate more results, and show unavailable rather than model-
+  invented records on read failure. Supported replies bypass cloud/model requests.
+- Normalized outer polite/greeting request frames without rewriting literal notes
+  or quoted titles. Existing USTP date/weekday scheduling grammar is retained.
+- Added a selectable command guide. Choosing an example populates a protected draft;
+  it does not Send, record or Confirm. Voice preparation uses the same read-only path.
+- TypeScript PASS; 111 suites / 907 tests PASS; ESLint zero errors (244 warnings).
+  Guide and conversation coverage meet their required line thresholds.
+
+Stages 3–8 remain in progress. Physical-device acceptance is separate from host tests.

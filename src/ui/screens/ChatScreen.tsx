@@ -1,3 +1,5 @@
+import {getPlannerReply,normalizePlannerRequest,PLANNER_INPUT_GUIDANCE} from '../../ai/nlu/plannerConversation';
+import {CommandGuide} from '../components/CommandGuide';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -12,7 +14,7 @@ import {
   AppState,
   BackHandler,
 } from 'react-native';
-import { Trash2, Plus, BookOpen, FileSpreadsheet, FileText, Presentation } from 'lucide-react-native';
+import { Trash2, BookOpen, FileSpreadsheet, FileText, Presentation } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { Fonts, Colors } from '../theme';
 import { chatStore } from '../../storage';
@@ -104,6 +106,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   /** The file format picked for the next message, if any. */
   const [docFormat, setDocFormat] = useState<DocumentFormat | null>(null);
   const [filesOpen, setFilesOpen] = useState(false);
+  const [guideOpen,setGuideOpen]=useState(false);
   /** This student's own switch for handbook answers; the admin panel's still rules. */
   const [handbookOn, setHandbookOn] = useState(() => handbookPreference.read(userId));
   /** What the server says about the handbook; null until it has been asked. */
@@ -347,8 +350,10 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     // the file sends the conversation to the server.
     const pickedFormat = docFormat;
     const fileFormat = pickedFormat ?? detectDocumentRequest(userText);
-    const nlu=createFallbackNluResult(normalizeTranscript(userText));
-    if (!fileFormat && (nlu.intent==='schedule' || /^(?:note:?(?:\s|$)|complete(?:\s|$))/i.test(userText))) {
+    let request:string;try{request=normalizePlannerRequest(userText);}catch{Alert.alert('Command needs more detail',PLANNER_INPUT_GUIDANCE);return;}
+    const nlu=createFallbackNluResult(normalizeTranscript(request));
+    const localReply=fileFormat?null:getPlannerReply(request,userId);
+    if (!fileFormat && localReply===null && (nlu.intent==='schedule' || /^(?:note:?(?:\s|$)|complete(?:\s|$))/i.test(request))) {
       const proposal=commands.prepare(userText);
       if (!proposal.review) Alert.alert('Command needs more detail',proposal.reply);
       Keyboard.dismiss();
@@ -392,13 +397,13 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     try {
       const isProOrBusiness = hasProEntitlement(userId);
 
-      const isDeviceOnline = await cloudClient.isOnline();
+      const isDeviceOnline = localReply!==null?false:await cloudClient.isOnline();
       if(epoch!==requestEpoch.current) return;
       const hasToken = !!cloudClient.getAccessToken();
       const shouldUseOnline = isProOrBusiness && (isOnlineMode || (isDeviceOnline && !userExplicitOfflineChoice)) && hasToken;
       const makeFile = !!fileFormat && studentPro && (!!pickedFormat || !userExplicitOfflineChoice);
 
-      if (makeFile && fileFormat) {
+      if(localReply!==null){aiReply=localReply;} else if (makeFile && fileFormat) {
         // Skips the offline scheduler on purpose: it reads "create" as a
         // command, and "create a PDF of my plan" is not a task to add.
         setPendingLabel(`Creating your ${DOCUMENT_FORMATS[fileFormat].label} file…`);
@@ -556,10 +561,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
               {isOnlineMode ? 'Online' : 'Offline'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleClearChat} style={styles.headerIconBtn}>
-            <View style={styles.plusCircle}>
-              <Plus size={16} color="#FFFFFF" />
-            </View>
+          <TouchableOpacity onPress={()=>setGuideOpen(true)} style={styles.headerIconBtn} accessibilityRole="button" accessibilityLabel="Command guide">
+            <BookOpen size={22} color={colors.white}/>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleClearChat} style={styles.headerIconBtn}>
             <Trash2 size={22} color="#FFFFFF" />
@@ -612,6 +615,9 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         }
         Alert.alert(result.status==='saved'?'Saved':'Command not saved',result.reply);
       }} />
+      <CommandGuide visible={guideOpen} onClose={()=>setGuideOpen(false)} onSelect={text=>{
+        setGuideOpen(false);acceptText(text,()=>{});
+      }}/>
       {/* Input Row */}
       <ChatInput
         inputText={inputText}

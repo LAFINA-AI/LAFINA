@@ -1,3 +1,4 @@
+import {getPlannerReply,normalizePlannerRequest,PLANNER_INPUT_GUIDANCE} from '../nlu/plannerConversation';
 import { NativeModules, PermissionsAndroid } from 'react-native';
 import { AI_MODEL_ASSETS } from '../modelAssets';
 import { parseNluJson } from '../nlu/jsonParser';
@@ -240,7 +241,9 @@ export const runLocalLlmChat = async (
   userId: string,
 ): Promise<string> => {
   const modules = getNativeVoiceModules();
-  const normalizedUserText = normalizeTranscript(userText);
+  let normalizedUserText:string;try{normalizedUserText=normalizeTranscript(normalizePlannerRequest(userText));}catch{return PLANNER_INPUT_GUIDANCE;}
+  const localReply=getPlannerReply(normalizedUserText,userId);
+  if(localReply!==null)return localReply;
   const deterministicResult = createFallbackNluResult(normalizedUserText);
 
   // Scheduling commands are handled deterministically first. This avoids an

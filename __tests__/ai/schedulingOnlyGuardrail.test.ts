@@ -149,15 +149,10 @@ describe('scheduling-only guardrail', () => {
       expect(extractor).not.toHaveBeenCalled();
     });
 
-    it('still answers scheduling questions while the guardrail is on', async () => {
-      const extractor = installExtractor('Three tasks are due this week.');
-
-      const reply = await runLocalLlmChat('what is due this week?', USER_ID);
-
-      expect(reply).toBe('Three tasks are due this week.');
-      expect(extractor).toHaveBeenCalledTimes(1);
-      const request = extractor.mock.calls[0][0] as ExtractorRequest;
-      expect(request.prompt).toContain('Refuse to answer anything unrelated');
+    it('answers live planner questions without asking the model to invent saved tasks',async()=>{
+      const extractor=installExtractor('Three tasks are due this week.');
+      const reply=await runLocalLlmChat('what is due this week?',USER_ID);
+      expect(reply).toMatch(/No saved tasks/);expect(extractor).not.toHaveBeenCalled();
     });
 
     it('answers the same off-topic message once general inquiries are allowed', async () => {

@@ -1,3 +1,4 @@
+import {normalizePlannerRequest,getPlannerReply} from './plannerConversation';
 import {db} from '../../storage/database';
 import type {DatabaseTransaction} from '../../storage/database';
 import {tasksStore} from '../../storage/tasksStore';
@@ -119,7 +120,10 @@ export const createCommandSession=(userId:string):CommandSession=>{
       if(disposed) return {review:null,reply:'Open a new command session.'};
       try {
         if(!activeOwner(userId)) return {review:null,reply:'Sign in again before preparing a command.'};
-        const {action,reply}=buildAction(text.trim(),userId);
+        const normalized=normalizePlannerRequest(text);
+        const conversationReply=getPlannerReply(normalized,userId);
+        if(conversationReply!==null)return {review:null,reply:conversationReply};
+        const {action,reply}=buildAction(normalized,userId);
         if(!action) return {review:null,reply};
         const createdMs=Date.now();
         const review=Object.freeze({id:generateId('review'),summary:reply,expiresAt:new Date(createdMs+300000).toISOString()});
