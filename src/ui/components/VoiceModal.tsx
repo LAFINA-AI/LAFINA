@@ -12,6 +12,8 @@ import {
   Keyboard,
   DeviceEventEmitter,
   PermissionsAndroid,
+  Alert,
+  AppState,
 } from 'react-native';
 import { Fonts, Shadows } from '../theme';
 import { X, Check, ArrowRight, Mic, CircleAlert } from 'lucide-react-native';
@@ -30,6 +32,8 @@ interface VoiceModalProps {
   visible: boolean;
   userId: string;
   onClose: (didUpdate?: boolean) => void;
+  onSaved?: () => void;
+  onUseInChat?: (text:string,onAccepted:()=>void) => void;
 }
 
 type VoiceState = 'idle' | 'listening' | 'processing' | 'success' | 'error';
@@ -49,8 +53,11 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   visible,
   userId,
   onClose,
+  onSaved,
+  onUseInChat,
 }) => {
   const commands=useCommandReview(userId,visible);
+  const {cancel:cancelReview}=commands;
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   /** What was heard, live while talking and final once the mic is let go. */
   const [transcript, setTranscript] = useState('');
@@ -58,6 +65,13 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   const [notice, setNotice] = useState('');
   const [aiReply, setAiReply] = useState('');
   const [inputText, setInputText] = useState('');
+  const inputRef=useRef(inputText);inputRef.current=inputText;
+  const mountedRef=useRef(true);
+  const lifecycleRef=useRef({visible,userId,epoch:0,active:true});
+  if(lifecycleRef.current.visible!==visible || lifecycleRef.current.userId!==userId) lifecycleRef.current={visible,userId,epoch:lifecycleRef.current.epoch+1,active:lifecycleRef.current.active};
+  const savedRef=useRef(false);
+  const isCurrent=(epoch:number):boolean=>mountedRef.current && lifecycleRef.current.visible && lifecycleRef.current.active && lifecycleRef.current.epoch===epoch;
+  const changeDraft=(text:string):void=>{cancelReview();inputRef.current=text;setInputText(text);setVoiceState('idle');};
 
   // Animated values
   const pulseAnim = useRef(new Animated.Value(0)).current;
@@ -109,14 +123,8 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   }, []);
 
   useEffect(() => {
-    if (visible) {
-      void ensureMicrophonePermission();
-    }
-  }, [ensureMicrophonePermission, visible]);
-
-  useEffect(() => {
     const showHeard = (e: { captureId?: string; transcript?: string }) => {
-      if (e.captureId && e.captureId !== speechCaptureRef.current?.captureId)
+      if (!mountedRef.current || !lifecycleRef.current.visible || !lifecycleRef.current.active || !speechCaptureRef.current || !e.captureId || e.captureId !== speechCaptureRef.current.captureId)
         return;
       if (e?.transcript) {
         setTranscript(e.transcript);
@@ -154,27 +162,48 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
     }, 200);
   }, [stopWaveform, waveBars]);
 
-  useEffect(() => {
-    if (!visible) {
-      pressActiveRef.current = false;
-      activeCaptureRef.current += 1;
-      const capture = speechCaptureRef.current;
-      speechCaptureRef.current = null;
-      if (capture) void cancelOfflineSpeechCapture(capture.captureId);
-      setVoiceState('idle');
-      setTranscript('');
-      setNotice('');
-      stopWaveform();
-      return;
-    }
-
-    setTranscript('');
-    setNotice('');
-    setAiReply('');
-    setInputText('');
-    setVoiceState('idle');
-  }, [visible, stopWaveform]);
-
+  const retireCapture=useCallback(()=>{
+    pressActiveRef.current=false;activeCaptureRef.current+=1;
+    const capture=speechCaptureRef.current;speechCaptureRef.current=null;
+    if(capture) cancelOfflineSpeechCapture(capture.captureId).catch(()=>{});
+    stopWaveform();
+  },[stopWaveform]);
+  useEffect(()=>{
+    mountedRef.current=true;
+    return ()=>{mountedRef.current=false;lifecycleRef.current.epoch+=1;retireCapture();};
+  },[retireCapture]);
+  useEffect(()=>{
+    retireCapture();cancelReview();savedRef.current=false;
+    inputRef.current='';setInputText('');setTranscript('');setNotice('');setAiReply('');setVoiceState('idle');
+  },[visible,userId,retireCapture,cancelReview]);
+  useEffect(()=>{
+    const listener=AppState.addEventListener('change',state=>{
+      lifecycleRef.current.active=state==='active';
+      if(state!=='active'){
+        lifecycleRef.current.epoch+=1;retireCapture();cancelReview();setVoiceState('idle');
+        setNotice('Recording stopped. Your draft is still here.');
+      }
+    });
+    return ()=>listener.remove();
+  },[retireCapture,cancelReview]);
+  const requestClose=():void=>{
+    retireCapture();cancelReview();setVoiceState('idle');
+    const epoch=lifecycleRef.current.epoch;
+    const draft=inputRef.current;
+    const close=():void=>{if(!isCurrent(epoch) || inputRef.current!==draft) return;inputRef.current='';setInputText('');setTranscript('');onClose(savedRef.current);};
+    if(draft.trim()) Alert.alert('Discard draft?','This text has not been saved. Saved items are kept.',[
+      {text:'Keep editing',style:'cancel'},
+      {text:'Discard',style:'destructive',onPress:close},
+    ]);else close();
+  };
+  const acceptTranscript=(text:string,epoch:number):void=>{
+    const existing=inputRef.current;
+    const replace=():void=>{if(isCurrent(epoch) && inputRef.current===existing) changeDraft(text);};
+    if(existing.trim() && existing!==text) Alert.alert('Replace typed draft?','The transcript is different from your current text.',[
+      {text:'Keep current text',style:'cancel'},
+      {text:'Replace',onPress:replace},
+    ]);else replace();
+  };
   useEffect(() => {
     let animation: Animated.CompositeAnimation | null = null;
     if (visible && voiceState === 'listening') {
@@ -204,48 +233,22 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
     };
   }, [visible, voiceState, pulseAnim, startWaveform, stopWaveform]);
 
-  const triggerErrorShake = useCallback(
-    (nextState: VoiceState = 'idle') => {
-      setVoiceState('error');
-      Animated.sequence([
-        Animated.timing(shakeAnim, {
-          toValue: 10,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shakeAnim, {
-          toValue: -10,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shakeAnim, {
-          toValue: 10,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shakeAnim, {
-          toValue: 0,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        setTimeout(() => {
-          setVoiceState(nextState);
-        }, 1500);
-      });
-    },
-    [shakeAnim],
-  );
+  const triggerErrorShake = useCallback((_nextState:VoiceState='idle')=>{
+    setVoiceState('error');shakeAnim.setValue(0);
+  },[shakeAnim]);
 
   // Push-To-Talk: Press & Hold down mic button to speak.
   const handlePressIn = useCallback(async () => {
+    if(!lifecycleRef.current.visible || !lifecycleRef.current.active || speechCaptureRef.current) return;
+    const epoch=lifecycleRef.current.epoch;
+    cancelReview();
     pressActiveRef.current = true;
     const captureId = activeCaptureRef.current + 1;
     activeCaptureRef.current = captureId;
 
     const hasPermission = await ensureMicrophonePermission();
     if (
-      activeCaptureRef.current !== captureId ||
+      !isCurrent(epoch) || activeCaptureRef.current !== captureId ||
       !pressActiveRef.current
     ) {
       return;
@@ -273,12 +276,13 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
       setNotice('Speech recognition could not start. Please try again.');
       triggerErrorShake('idle');
     }
-  }, [ensureMicrophonePermission, triggerErrorShake]);
+  }, [ensureMicrophonePermission, triggerErrorShake,cancelReview]);
 
   // Release the mic button to stop recording and process the shared Whisper result.
-  const handlePressOut = useCallback(async () => {
+  const handlePressOut = async () => {
     pressActiveRef.current = false;
     const uiCaptureId = activeCaptureRef.current;
+    const epoch=lifecycleRef.current.epoch;
     const capture = speechCaptureRef.current;
     if (!capture) {
       setVoiceState('idle');
@@ -287,12 +291,14 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
 
     setVoiceState('processing');
     try {
-      await stopOfflineSpeechCapture(capture.captureId);
+      // The capture watchdog owns settlement even if a native stop call wedges.
+      stopOfflineSpeechCapture(capture.captureId).catch(()=>cancelOfflineSpeechCapture(capture.captureId).catch(()=>false));
       const result = await capture.result;
       if (speechCaptureRef.current?.captureId === capture.captureId) {
         speechCaptureRef.current = null;
       }
-      if (activeCaptureRef.current !== uiCaptureId) return;
+      if (!isCurrent(epoch) || activeCaptureRef.current !== uiCaptureId) return;
+      if(result.cancelled){setVoiceState('idle');return;}
 
       const finalTranscript = result.transcript.trim();
       setTranscript(finalTranscript);
@@ -303,10 +309,11 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
         return;
       }
 
-      setInputText(finalTranscript);
+      acceptTranscript(finalTranscript,epoch);
       setAiReply('Edit the transcript, then prepare it for review. Nothing has been saved.');
       setVoiceState('idle');
     } catch (error) {
+      if(!isCurrent(epoch) || activeCaptureRef.current!==uiCaptureId) return;
       console.error('Failed to process offline Whisper capture:', error);
       if (speechCaptureRef.current?.captureId === capture.captureId) {
         speechCaptureRef.current = null;
@@ -314,11 +321,11 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
       setNotice('Speech recognition could not finish. Please try again.');
       triggerErrorShake('idle');
     }
-  }, [triggerErrorShake]);
+  };
 
   const handleCommandProcess = (command: string) => {
-    if (!command.trim()) return;
-    activeCaptureRef.current += 1;
+    if (!command.trim() || !mountedRef.current || !lifecycleRef.current.visible || !lifecycleRef.current.active) return;
+    retireCapture();
     Keyboard.dismiss();
     setTranscript(command);
     setNotice('');
@@ -328,7 +335,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   };
 
   const showFallbackControls =
-    voiceState === 'idle' || voiceState === 'listening';
+    voiceState !== 'processing';
   const listening = voiceState === 'listening';
 
   const micColor =
@@ -351,17 +358,17 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
 
   return (
     <>
-    <CommandReviewPanel review={commands.review} onCancel={commands.cancel} onConfirm={()=>{const result=commands.confirm();setAiReply(result.reply);if(result.status==='saved'){setInputText('');setTranscript('');setVoiceState('success');} }} />
+    <CommandReviewPanel review={commands.review} onCancel={cancelReview} onConfirm={()=>{const result=commands.confirm();setAiReply(result.reply);if(result.status==='saved'){savedRef.current=true;inputRef.current='';setInputText('');setTranscript('');setVoiceState('success');onSaved?.();} }} />
     <Modal
       transparent
       animationType="fade"
       visible={visible}
-      onRequestClose={() => onClose(false)}
+      onRequestClose={requestClose}
     >
       <TouchableOpacity
         style={[styles.overlay, themed.overlay]}
         activeOpacity={1}
-        onPress={() => onClose(false)}
+        onPress={requestClose}
       >
         <TouchableOpacity
           style={[styles.modalContent, themed.modalContent]}
@@ -373,7 +380,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
           {/* Close button */}
           <TouchableOpacity
             style={[styles.closeButton, themed.closeButton]}
-            onPress={() => onClose(false)}
+            onPress={requestClose}
             accessibilityRole="button"
             accessibilityLabel="Close voice assistant"
           >
@@ -406,6 +413,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
 
             <TouchableOpacity
               activeOpacity={0.8}
+              disabled={voiceState==='processing'}
               onPressIn={handlePressIn}
               onPressOut={handlePressOut}
               accessibilityRole="button"
@@ -478,7 +486,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
           {/* What LAFINA did about it */}
           {aiReply ? (
             <View style={[styles.replyRow, themed.replyRow]}>
-              <View style={[styles.replyIcon, { backgroundColor: colors.success }]}>
+              <View style={[styles.replyIcon, { backgroundColor: voiceState==='success'?colors.success:colors.blue }]}>
                 <Check size={12} color={colors.white} strokeWidth={3} />
               </View>
               <Text style={[styles.replyText, themed.replyText]}>{aiReply}</Text>
@@ -493,19 +501,26 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
                 placeholder="Or type a command..."
                 placeholderTextColor={colors.textSecondary}
                 value={inputText}
-                onChangeText={(text)=>{commands.cancel();setInputText(text);}}
+                onChangeText={changeDraft}
+                editable={!listening}
+                accessibilityLabel="Command draft"
+                multiline
                 onSubmitEditing={() => handleCommandProcess(inputText)}
               />
               <TouchableOpacity
                 style={[styles.sendButton, { backgroundColor: colors.red }]}
                 onPress={() => handleCommandProcess(inputText)}
                 accessibilityRole="button"
-                accessibilityLabel="Send command"
+                accessibilityLabel="Prepare command"
               >
                 <ArrowRight size={18} color={colors.white} />
               </TouchableOpacity>
             </View>
           )}
+          {onUseInChat && inputText.trim() ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Use draft in Chat" style={styles.inputRow} onPress={()=>{
+            retireCapture();cancelReview();const epoch=lifecycleRef.current.epoch;const draft=inputRef.current;
+            onUseInChat(draft,()=>{if(isCurrent(epoch) && inputRef.current===draft){inputRef.current='';setInputText('');setTranscript('');onClose(savedRef.current);}});
+          }}><Text style={{color:colors.blue}}>Use draft in Chat</Text></TouchableOpacity>:null}
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>

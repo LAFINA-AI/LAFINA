@@ -97,10 +97,10 @@ const send = async (tree: Tree, text: string): Promise<void> => {
   await flush();
 };
 
-const render = async (userId: string): Promise<Tree> => {
+const render = async (userId: string,extras:Partial<React.ComponentProps<typeof ChatScreen>>={}): Promise<Tree> => {
   let tree: Tree;
   act(() => {
-    tree = ReactTestRenderer.create(<ChatScreen userId={userId} refreshTrigger={0} onRefresh={jest.fn()} />);
+    tree = ReactTestRenderer.create(<ChatScreen userId={userId} refreshTrigger={0} onRefresh={jest.fn()} {...extras} />);
   });
   await flush();
   return tree!;
@@ -233,4 +233,55 @@ describe('Chat files and handbook answers on mobile', () => {
     });
     expect(textOf(tree)).toContain('Creating a Word file');
   });
+  it('reviews a Chat command before writing, including online-capable accounts',async()=>{
+    db.executeSync('DELETE FROM active_session');db.executeSync('DELETE FROM notes');
+    db.executeSync('INSERT INTO active_session(user_id,created_at,updated_at) VALUES(?,?,?)',[PRO,new Date().toISOString(),new Date().toISOString()]);
+    serve({'/v1/ai/handbook/status':{enabled:false,functional:false,passages:0}});
+    const tree=await render(PRO);
+    await send(tree,'note: reviewed Chat note');
+    expect(db.executeSync('SELECT * FROM notes').rows).toHaveLength(0);
+    expect(textOf(tree)).toContain('reviewed Chat note');
+    act(()=>byLabel(tree,'Cancel review').props.onPress());
+    const input=tree.root.find(node=>node.props.returnKeyType==='send');
+    expect(input.props.value).toBe('note: reviewed Chat note');
+    await send(tree,'note: corrected Chat note');
+    act(()=>byLabel(tree,'Confirm command').props.onPress());
+    expect(db.executeSync('SELECT body FROM notes').rows[0].body).toBe('corrected Chat note');
+    act(()=>tree.unmount());
+  });
+  it('registers a draft navigation guard and requires an explicit discard',async()=>{
+    let guard:((proceed:()=>void)=>void)|null=null;
+    const register=(next:typeof guard)=>{guard=next;};
+    const tree=await render(FREE,{registerDraftGuard:register});
+    const input=tree.root.find(node=>node.props.returnKeyType==='send');
+    act(()=>input.props.onChangeText('unsent Chat text'));
+    const leave=jest.fn(),alert=jest.spyOn(Alert,'alert');
+    act(()=>guard?.(leave));expect(leave).not.toHaveBeenCalled();
+    const buttons=alert.mock.calls[0][2]!;expect(buttons[0].style).toBe('cancel');
+    act(()=>buttons[1].onPress?.());expect(leave).toHaveBeenCalledTimes(1);
+    expect(tree.root.find(node=>node.props.returnKeyType==='send').props.value).toBe('');
+    act(()=>tree.unmount());expect(guard).toBeNull();
+  });
+  it('hands speech to the composer with keep/replace and never automatically sends',async()=>{
+    const tree=await render(FREE);const handled=jest.fn(),alert=jest.spyOn(Alert,'alert');
+    act(()=>tree.root.find(node=>node.props.returnKeyType==='send').props.onChangeText('typed text'));
+    act(()=>tree.update(<ChatScreen userId={FREE} refreshTrigger={0} onRefresh={jest.fn()} speechDraft={{id:'speech-one',userId:FREE,text:'spoken text',onHandled:handled}}/>));
+    act(()=>alert.mock.calls[0][2]![0].onPress?.());
+    expect(handled).toHaveBeenCalledWith(false);
+    expect(tree.root.find(node=>node.props.returnKeyType==='send').props.value).toBe('typed text');
+    act(()=>tree.update(<ChatScreen userId={FREE} refreshTrigger={0} onRefresh={jest.fn()} speechDraft={{id:'speech-two',userId:FREE,text:'spoken text',onHandled:handled}}/>));
+    act(()=>alert.mock.calls[1][2]![1].onPress?.());
+    expect(tree.root.find(node=>node.props.returnKeyType==='send').props.value).toBe('spoken text');
+    expect(chatStore.getMessages(FREE)).toHaveLength(0);
+    act(()=>tree.unmount());
+  });
+
+  it('keeps an initial speech handoff editable on a newly opened Chat screen',async()=>{
+    const handled=jest.fn();const tree=await render(FREE,{speechDraft:{id:'new-screen',userId:FREE,text:'note: editable handoff',onHandled:handled}});
+    expect(tree.root.find(node=>node.props.returnKeyType==='send').props.value).toBe('note: editable handoff');
+    expect(handled).toHaveBeenCalledWith(true);
+    expect(chatStore.getMessages(FREE)).toHaveLength(0);
+    act(()=>tree.unmount());
+  });
+
 });

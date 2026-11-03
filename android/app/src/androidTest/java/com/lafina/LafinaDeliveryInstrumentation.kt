@@ -20,6 +20,11 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
       val context = object : ContextWrapper(targetContext) {
         override fun getDatabasePath(name: String): File = file
       }
+      check("Aa".hashCode()=="BB".hashCode())
+      val identity=LafinaDeliveryIdentity("qa-${System.nanoTime()}","Aa","qa-occurrence",1)
+      val firstIntent=LafinaDeliveryRuntime.pending(context,identity,"due")
+      val secondIntent=LafinaDeliveryRuntime.pending(context,identity.copy(reminderId="BB"),"due")
+      try { check(firstIntent!=secondIntent) } finally { firstIntent.cancel(); secondIntent.cancel() }
       openFixture(file).use { db ->
         db.rawQuery("PRAGMA journal_mode=DELETE",null).use { check(it.moveToFirst() && it.getString(0)=="delete") }
         db.execSQL("PRAGMA user_version=20")
@@ -39,6 +44,8 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
         val due = Instant.now().minusSeconds(1).toString()
         db.execSQL("INSERT INTO reminders VALUES('qa-rem','qa-user','Synthetic QA',NULL,?,?,'pending',0,NULL,NULL,?,?)", arrayOf(due,due,due,due))
         db.execSQL("INSERT INTO reminder_delivery_jobs(reminder_id,user_id,occurrence_key,generation,state,trigger_at,deadline_at,notified_at,delivery_state,delivery_reason,source_type,source_id,source_snapshot,created_at,updated_at) VALUES('qa-rem','qa-user',?,1,'pending',?,NULL,NULL,'pending',NULL,NULL,NULL,NULL,?,?)", arrayOf(due,due,due,due))
+        db.execSQL("INSERT INTO reminders SELECT 'qa-second',user_id,task,description,scheduled_at,trigger_at,status,snooze_count,precast_audio_path,deleted_at,created_at,updated_at FROM reminders WHERE id='qa-rem'")
+        db.execSQL("INSERT INTO reminder_delivery_jobs SELECT 'qa-second',user_id,occurrence_key,generation,state,trigger_at,deadline_at,notified_at,delivery_state,delivery_reason,source_type,source_id,source_snapshot,created_at,updated_at,registration_attempts,registration_failure_generation FROM reminder_delivery_jobs WHERE reminder_id='qa-rem'")
       }
       val now = Instant.now().toEpochMilli()
       LafinaDeliveryStore(context).use { store ->
@@ -47,6 +54,7 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
         check(store.claim(original.identity, now) != null)
         check(store.claim(original.identity, now) == null) // duplicate broadcast
         check(store.current("qa-rem")?.state == "ringing")
+        check(store.claim(requireNotNull(store.current("qa-second")).identity,now)==null)
         check(store.claim(original.identity.copy(generation=2), now) == null)
         check(store.current("qa-rem")?.notifiedAt == null) // committed claim before notify
         store.markPosted(original.identity, now)
@@ -62,7 +70,7 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
         check(store.registrationAttempts(identity)==0)
       }
       openFixture(file).use { db ->
-        db.execSQL("UPDATE reminder_delivery_jobs SET source_type='task',source_id='qa-source',source_snapshot=?",arrayOf("{\"user_id\":\"qa-user\",\"title\":\"Synthetic QA\",\"due_time\":\"09:00\"}"))
+        db.execSQL("UPDATE reminder_delivery_jobs SET source_type='task',source_id='qa-source',source_snapshot=? WHERE reminder_id='qa-rem'",arrayOf("{\"user_id\":\"qa-user\",\"title\":\"Synthetic QA\",\"due_time\":\"09:00\"}"))
       }
       LafinaDeliveryStore(context).use { store -> check(store.sourceLive(requireNotNull(store.current("qa-rem")))) }
       openFixture(file).use { it.execSQL("UPDATE tasks SET due_time='09:30'") }
@@ -71,6 +79,7 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
         check(!store.sourceLive(job))
         store.retireStale(job.identity)
         check(store.current("qa-rem")?.state=="cancelled")
+        check(store.claim(requireNotNull(store.current("qa-second")).identity,now)!=null)
       }
       openFixture(file).use { db ->
         db.execSQL("UPDATE reminders SET status='pending',deleted_at=NULL")
@@ -82,10 +91,12 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
         check(runCatching { store.claim(job.identity, now) }.isFailure)
       }
       LafinaDeliveryStore(context).use { store -> check(store.current("qa-rem")?.state == "pending") }
+      openFixture(file).use { it.execSQL("PRAGMA user_version=21") }
+      LafinaDeliveryStore(context).use { store -> check(store.current("qa-rem")!=null) }
       openFixture(file).use { it.execSQL("PRAGMA user_version=999") }
       check(runCatching { LafinaDeliveryStore(context).close() }.isFailure)
-      results.putString("stream", "PASS: native SQLite claim, duplicate/stale rejection, posting receipt, reopen recovery, bounded failure counters, source-change retirement, atomic rollback and future-schema refusal.\n")
-      results.putInt("passed", 9)
+      results.putString("stream", "PASS: PendingIntent hash-collision isolation, native SQLite claim, duplicate/stale rejection, concurrent-call serialization/release, posting receipt, reopen recovery, bounded failure counters, source-change retirement, atomic rollback, schema-21 compatibility and future-schema refusal.\n")
+      results.putInt("passed", 12)
       finish(Activity.RESULT_OK, results)
     } catch (error: Throwable) {
       results.putString("stream", "FAIL: ${error.javaClass.simpleName}: ${error.message} at ${error.stackTrace.firstOrNull()}\n")

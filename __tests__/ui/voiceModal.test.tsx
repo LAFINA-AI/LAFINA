@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactTestRenderer, { act } from 'react-test-renderer';
-import { DeviceEventEmitter,NativeModules,PermissionsAndroid,TextInput } from 'react-native';
+import { DeviceEventEmitter,NativeModules,PermissionsAndroid,TextInput,Alert,AppState } from 'react-native';
 import {db} from '../../src/storage/database';
 import {initDatabase} from '../../src/storage/dbInit';
 
@@ -52,10 +52,10 @@ const textOf = (tree: ReactTestRenderer.ReactTestRenderer): string =>
     })
     .join(' | ');
 
-const render = (): ReactTestRenderer.ReactTestRenderer => {
+const render = (onClose=jest.fn()): ReactTestRenderer.ReactTestRenderer => {
   let tree!: ReactTestRenderer.ReactTestRenderer;
   act(() => {
-    tree = ReactTestRenderer.create(<VoiceModal visible userId="voice-user" onClose={jest.fn()} />);
+    tree = ReactTestRenderer.create(<VoiceModal visible userId="voice-user" onClose={onClose} />);
   });
   return tree;
 };
@@ -88,20 +88,14 @@ describe('voice assistant sheet', () => {
     act(() => tree.unmount());
   });
 
-  it('shows the words as they are transcribed', () => {
+  it('ignores unowned speech events rather than overwriting the draft', () => {
     const tree = render();
     act(() => {
       DeviceEventEmitter.emit('onSpeechPartialResult', { transcript: 'add task submit' });
     });
-    expect(tree.root.findByProps({ testID: 'voice-transcript' }).props.children.join('')).toBe(
-      '“add task submit”',
-    );
-
-    act(() => {
-      DeviceEventEmitter.emit('onSpeechFinalResult', { transcript: 'add task submit report by 5pm' });
-    });
-    expect(textOf(tree)).toContain('add task submit report by 5pm');
-    expect(textOf(tree)).not.toContain('Your words will show up here');
+    expect(textOf(tree)).not.toContain('add task submit');
+    act(()=>{DeviceEventEmitter.emit('onSpeechFinalResult',{captureId:'older-capture',transcript:'add task old'});});
+    expect(tree.root.findByType(TextInput).props.value).toBe('');
     act(() => tree.unmount());
   });
 
@@ -122,11 +116,11 @@ describe('voice assistant sheet', () => {
   it('prepares typed text, permits cancellation, and saves only on Confirm',()=>{
     const tree=render();
     act(()=>tree.root.findByType(TextInput).props.onChangeText('note: reviewed text'));
-    act(()=>tree.root.findByProps({accessibilityLabel:'Send command'}).props.onPress());
+    act(()=>tree.root.findByProps({accessibilityLabel:'Prepare command'}).props.onPress());
     expect(db.executeSync('SELECT * FROM notes').rows).toHaveLength(0);
     act(()=>tree.root.findByProps({accessibilityLabel:'Cancel review'}).props.onPress());
     expect(tree.root.findByType(TextInput).props.value).toBe('note: reviewed text');
-    act(()=>tree.root.findByProps({accessibilityLabel:'Send command'}).props.onPress());
+    act(()=>tree.root.findByProps({accessibilityLabel:'Prepare command'}).props.onPress());
     act(()=>tree.root.findByProps({accessibilityLabel:'Confirm command'}).props.onPress());
     expect(db.executeSync('SELECT body FROM notes').rows[0].body).toBe('reviewed text');
     act(()=>tree.unmount());
@@ -140,11 +134,76 @@ describe('voice assistant sheet', () => {
     expect(tree.root.findByType(TextInput).props.value).toBe('note: dictated text');
     expect(db.executeSync('SELECT * FROM notes').rows).toHaveLength(0);
     act(()=>tree.root.findByType(TextInput).props.onChangeText('note: corrected text'));
-    act(()=>tree.root.findByProps({accessibilityLabel:'Send command'}).props.onPress());
+    act(()=>tree.root.findByProps({accessibilityLabel:'Prepare command'}).props.onPress());
     expect(textOf(tree)).toContain('corrected text');
     act(()=>tree.root.findByProps({accessibilityLabel:'Confirm command'}).props.onPress());
     expect(db.executeSync('SELECT body FROM notes').rows[0].body).toBe('corrected text');
     act(()=>tree.unmount());delete NativeModules.LafinaSpeechToText;
+  });
+
+  it('keeps a draft when close is cancelled and discards only explicitly',()=>{
+    const close=jest.fn();const alert=jest.spyOn(Alert,'alert');const tree=render(close);
+    act(()=>tree.root.findByType(TextInput).props.onChangeText('note: keep my work'));
+    act(()=>tree.root.findByProps({accessibilityLabel:'Close voice assistant'}).props.onPress());
+    expect(close).not.toHaveBeenCalled();
+    const buttons=alert.mock.calls.at(-1)?.[2];
+    expect(buttons?.[0].text).toMatch(/Keep/);
+    act(()=>buttons?.[0].onPress?.());
+    expect(tree.root.findByType(TextInput).props.value).toBe('note: keep my work');
+    act(()=>buttons?.find(b=>b.text==='Discard')?.onPress?.());
+    expect(close).toHaveBeenCalledWith(false);
+    act(()=>tree.unmount());
+  });
+  it('asks before a transcript replaces different typed text',async()=>{
+    const alert=jest.spyOn(Alert,'alert');jest.spyOn(PermissionsAndroid,'check').mockResolvedValue(true);
+    NativeModules.LafinaSpeechToText={startListening:jest.fn(({captureId}:{captureId:string})=>Promise.resolve({captureId,transcript:'note: replacement',speechDetected:true,cancelled:false})),stopListening:jest.fn().mockResolvedValue(true),cancelListening:jest.fn().mockResolvedValue(true)};
+    const tree=render();act(()=>tree.root.findByType(TextInput).props.onChangeText('note: original'));
+    await act(async()=>{await tree.root.findByProps({accessibilityLabel:'Hold to talk'}).props.onPressIn();});
+    await act(async()=>{await tree.root.findByProps({accessibilityLabel:'Hold to talk'}).props.onPressOut();});
+    expect(tree.root.findByType(TextInput).props.value).toBe('note: original');
+    const buttons=alert.mock.calls.at(-1)?.[2];expect(buttons?.[0].text).toMatch(/Keep/);
+    act(()=>buttons?.find(b=>b.text==='Replace')?.onPress?.());
+    expect(tree.root.findByType(TextInput).props.value).toBe('note: replacement');
+    expect(db.executeSync('SELECT * FROM notes').rows).toHaveLength(0);
+    act(()=>tree.unmount());delete NativeModules.LafinaSpeechToText;
+  });
+  it('cannot start listening after permission resolves for a dismissed panel',async()=>{
+    let allow!:(value:boolean)=>void;jest.spyOn(PermissionsAndroid,'check').mockReturnValue(new Promise(resolve=>{allow=resolve;}));
+    const start=jest.fn();NativeModules.LafinaSpeechToText={startListening:start};
+    const tree=render();let pending!:Promise<void>;
+    act(()=>{pending=tree.root.findByProps({accessibilityLabel:'Hold to talk'}).props.onPressIn();});
+    act(()=>tree.unmount());
+    await act(async()=>{allow(true);await pending;});
+    expect(start).not.toHaveBeenCalled();delete NativeModules.LafinaSpeechToText;
+  });
+
+  it('cancels a backgrounded recording and ignores its late transcript',async()=>{
+    type Listener=(state:'active'|'background')=>void;
+    const listeners:Listener[]=[];
+    jest.spyOn(AppState,'addEventListener').mockImplementation((_type,listener)=>{listeners.push(listener as Listener);return {remove:jest.fn()};});
+    jest.spyOn(PermissionsAndroid,'check').mockResolvedValue(true);
+    let finish!:(value:unknown)=>void;
+    const cancel=jest.fn().mockResolvedValue(true);
+    NativeModules.LafinaSpeechToText={startListening:jest.fn(()=>new Promise(resolve=>{finish=resolve;})),stopListening:jest.fn().mockResolvedValue(true),cancelListening:cancel};
+    const tree=render();act(()=>tree.root.findByType(TextInput).props.onChangeText('note: keep typed draft'));
+    await act(async()=>{await tree.root.findByProps({accessibilityLabel:'Hold to talk'}).props.onPressIn();});
+    let pending!:Promise<void>;act(()=>{pending=tree.root.findByProps({accessibilityLabel:'Hold to talk'}).props.onPressOut();});
+    await act(async()=>{listeners.forEach(listener=>listener('background'));await pending;});
+    expect(cancel).toHaveBeenCalledTimes(1);
+    await act(async()=>{finish({transcript:'note: late result',speechDetected:true});await Promise.resolve();});
+    expect(tree.root.findByType(TextInput).props.value).toBe('note: keep typed draft');
+    expect(db.executeSync('SELECT * FROM notes').rows).toHaveLength(0);
+    act(()=>tree.unmount());delete NativeModules.LafinaSpeechToText;
+  });
+
+  it('can review and confirm after React StrictMode lifecycle replay',()=>{
+    let tree!:ReactTestRenderer.ReactTestRenderer;
+    act(()=>{tree=ReactTestRenderer.create(<React.StrictMode><VoiceModal visible userId="voice-user" onClose={jest.fn()}/></React.StrictMode>);});
+    act(()=>tree.root.findByType(TextInput).props.onChangeText('note: strict lifecycle'));
+    act(()=>tree.root.findByProps({accessibilityLabel:'Prepare command'}).props.onPress());
+    act(()=>tree.root.findByProps({accessibilityLabel:'Confirm command'}).props.onPress());
+    expect(db.executeSync('SELECT body FROM notes').rows[0].body).toBe('strict lifecycle');
+    act(()=>tree.unmount());
   });
 
 });

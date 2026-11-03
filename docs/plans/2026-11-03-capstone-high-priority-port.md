@@ -1,7 +1,7 @@
 # CAPSTONE high-priority improvements into LAFINA-USTP
 
 Date: 2026-11-03 (Asia/Manila)  
-Status: Proposed implementation plan; implementation has not started  
+Status: Approved and implemented; see `../reports/capstone-port-progress.md` for verification and remaining device QA
 Classification: Sprint 9 offline-core reliability and interaction hardening  
 Target: `LAFINA-AI/LAFINA`, branch `LAFINA-USTP`, baseline `e84a96e2643636124932cba830c19ddd7068df3b`  
 Reference: local `LAFINA-CAPSTONE`, HEAD `a53ea93f76021db1f0589e0e18fe68421815c0e8`, plus its reviewed uncommitted working-tree changes

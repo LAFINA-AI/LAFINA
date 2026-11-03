@@ -75,4 +75,53 @@ Target: original LAFINA repository, `LAFINA-USTP`. Scope: the five items in
   installing the compatible build. Final concurrent-call recovery tweak is compiled;
   final installed-build smoke remains part of the closing device checks.
 
-Stage 5: pending implementation and verification. No new packages or model changes.
+## Stage 5 — editable drafts and loss protection
+
+- Recording ends in an editable draft. Prepare opens the exact review; only Confirm
+  saves. Different transcripts and speech-to-Chat handoffs offer Keep/Replace with
+  Keep first. Handoff only populates the composer and never sends or confirms.
+- Close, Back, tab/tool navigation and clear-history controls protect unsent text.
+  Saved items survive draft discard. Capture ownership is retired on close,
+  background, account change and unmount; late grants/results cannot change a new
+  session. Private reviews also survive React StrictMode setup correctly and retire
+  on background/disposal. Drafts remain transient, with no transcript archive added.
+- TypeScript PASS; 107 suites / 887 tests PASS with normal exit; ESLint no errors
+  (244 warnings). Command session 98.03% lines; speech capture 93.33%; voice pipeline
+  94.02%; Voice sheet 80.97%; Chat 78.75%; review hook 100%; draft guard 95.65%.
+  Executable changed AI/storage/scheduler modules meet the 80% line requirement.
+- Android debug and framework instrumentation builds PASS. Twelve native device
+  checks PASS, now including actual PendingIntent hash-collision isolation,
+  concurrent-call claim/release and schema-21 compatibility. No test package or
+  runtime dependency was added.
+
+## Installed-app emulator evidence and limits
+
+- Existing API 37 x86_64 / 16-KB-page emulator data upgraded in place. Main React
+  OP-SQLite and the private framework-SQLite process use the same database path.
+  No database reset, reinstall-with-data-clear, downgrade or donor DB import occurred.
+- Real keyboard input, the navigation Keep/Discard guard, exact schedule review,
+  explicit Confirm and durable saved feedback were inspected in the installed app.
+- The voice sheet's typed draft opened its review above the sheet. Android Back
+  cancelled review while preserving text. Use draft in Chat populated the composer
+  without Send/Confirm, and navigation prompted before discarding that draft.
+- Synthetic task `CAPSTONE-Port-QA-Alarm` was explicitly reviewed for 2026-11-03
+  07:03 Asia/Manila, with a 15-minute reminder at 06:48 (device clock was GMT).
+  Android registered an exact wakeup at the reviewed time. Its notification was
+  observed by 06:48:06 in airplane mode. The 06:48:45.539 timeout indicates a native
+  claim about 0.54 seconds after the target; this is not an audible-latency measure.
+- After posting, the main process was killed without force-stopping the package.
+  Only `:reminders` remained. It removed the unanswered notification and registered
+  the user's existing ten-minute snooze for 06:58:45.631 with JavaScript still absent.
+- After resuming and cold-booting the emulator, the synthetic task was removed
+  through its manual editor. It disappeared from the calendar and no LAFINA due or
+  timeout alarm remained. Existing student records and chat history were preserved.
+- Installed native debug APK SHA-256:
+  `E6E87346DDAEC80D4D0BABE90834F8C329F863B8E2EB63F85FFF2E3E00F3EEE7`.
+  JavaScript is supplied by the local Metro server; this is not a standalone release APK.
+- All nine selected donor source hashes still match the frozen manifest. CAPSTONE
+  remains unchanged; USTP remains the maintained base.
+
+Implementation is present for all five items. Release qualification remains open:
+no physical phone was connected, and the full reboot/locked-screen/Doze/permission-
+revocation/clock-change/update-interruption matrix has not been certified. The
+emulator evidence does not establish physical-device or production readiness.

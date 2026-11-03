@@ -1,21 +1,25 @@
-import {useCallback,useEffect,useMemo,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {AppState} from 'react-native';
 import {createCommandSession} from '../../ai/nlu/commandSession';
-import type {CommandReview,CommandExecutionResult,CommandProposal} from '../../ai/nlu/commandSession';
+import type {CommandReview,CommandSession,CommandExecutionResult,CommandProposal} from '../../ai/nlu/commandSession';
 
-/** Retires private reviews on background, expiry, account change and unmount. */
+/** Retires private reviews on background, expiry, account change and unmount, including StrictMode replay. */
 export const useCommandReview=(userId:string,active=true):{
   review:CommandReview|null;prepare:(text:string)=>CommandProposal;
   confirm:()=>CommandExecutionResult;cancel:()=>void;
 }=>{
-  const session=useMemo(()=>createCommandSession(userId),[userId]);
+  const current=useRef<{userId:string;session:CommandSession}|null>(null);
+  const activeRef=useRef(active);activeRef.current=active;
   const [review,setReview]=useState<CommandReview|null>(null);
-  const cancel=useCallback(()=>{session.cancel();setReview(null);},[session]);
+  const cancel=useCallback(()=>{if(current.current?.userId===userId) current.current.session.cancel();setReview(null);},[userId]);
   useEffect(()=>{
-    setReview(null);
-    const subscription=AppState.addEventListener('change',state=>{if(state!=='active') cancel();});
-    return ()=>{subscription.remove();session.dispose();};
-  },[session,cancel]);
+    const entry={userId,session:createCommandSession(userId)};
+    current.current=entry;setReview(null);
+    const subscription=AppState.addEventListener('change',state=>{
+      if(state!=='active'){entry.session.cancel();setReview(null);}
+    });
+    return ()=>{subscription.remove();entry.session.dispose();if(current.current===entry) current.current=null;};
+  },[userId]);
   useEffect(()=>{if(!active) cancel();},[active,cancel]);
   useEffect(()=>{
     if(!review) return;
@@ -24,10 +28,15 @@ export const useCommandReview=(userId:string,active=true):{
   },[review,cancel]);
   return {
     review,
-    prepare:(text)=>{const result=session.propose(text);setReview(result.review);return result;},
+    prepare:(text)=>{
+      const entry=current.current;
+      if(!activeRef.current || entry?.userId!==userId) return {review:null,reply:'Open a new command session.'};
+      const result=entry.session.propose(text);setReview(result.review);return result;
+    },
     confirm:()=>{
-      if(!active || !review) return {status:'invalid',reply:'Prepare the command again.'};
-      const result=session.confirm(review.id);if(result.status!=='failed') setReview(null);return result;
+      const entry=current.current;
+      if(!activeRef.current || !review || entry?.userId!==userId) return {status:'invalid',reply:'Prepare the command again.'};
+      const result=entry.session.confirm(review.id);if(result.status!=='failed') setReview(null);return result;
     },
     cancel,
   };

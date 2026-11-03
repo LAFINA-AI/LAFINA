@@ -9,6 +9,8 @@ import {
   Alert,
   Keyboard,
   Switch,
+  AppState,
+  BackHandler,
 } from 'react-native';
 import { Trash2, Plus, BookOpen, FileSpreadsheet, FileText, Presentation } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
@@ -28,6 +30,8 @@ import type { ThemeColors } from '../contexts/ThemeContext';
 import { generateId } from '../../utils';
 import {useCommandReview} from '../hooks/useCommandReview';
 import {CommandReviewPanel} from '../components/CommandReviewPanel';
+import {useDraftProtection} from '../hooks/useDraftProtection';
+import type {DraftLeaveGuard,SpeechDraftRequest} from '../hooks/useDraftProtection';
 
 // Chat sub-components
 import { ChatMessageItem } from '../components/chat/ChatMessageItem';
@@ -57,6 +61,8 @@ interface ChatScreenProps {
   userId: string;
   refreshTrigger: number;
   onRefresh: () => void;
+  registerDraftGuard?: (guard:DraftLeaveGuard|null)=>void;
+  speechDraft?: SpeechDraftRequest|null;
 }
 
 let userExplicitOfflineChoice = false;
@@ -82,6 +88,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   userId,
   refreshTrigger,
   onRefresh,
+  registerDraftGuard,
+  speechDraft,
 }) => {
   const commands=useCommandReview(userId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -101,6 +109,38 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   /** "Handbook p. 32" for replies the server grounded in the Student Handbook. */
   const [handbookNotes, setHandbookNotes] = useState<Record<string, string>>({});
   const flatListRef = useRef<FlatList>(null);
+  const requestEpoch=useRef(0);
+  const scrollTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const draftProtection=useDraftProtection(userId,inputText,!!commands.review,
+    ()=>{commands.cancel();setInputText('');setDocFormat(null);},
+    text=>{commands.cancel();setInputText(text);setDocFormat(null);});
+  const {requestLeave,acceptText,hasDraft}=draftProtection;
+  const handledSpeech=useRef<string|null>(null);
+  useEffect(()=>{
+    registerDraftGuard?.(requestLeave);
+    return ()=>registerDraftGuard?.(null);
+  },[registerDraftGuard,requestLeave]);
+  useEffect(()=>{
+    const subscription=BackHandler.addEventListener('hardwareBackPress',()=>{
+      if(!hasDraft()) return false;
+      requestLeave(()=>BackHandler.exitApp());return true;
+    });
+    return ()=>subscription.remove();
+  },[hasDraft,requestLeave]);
+  useEffect(()=>{
+    requestEpoch.current+=1;setInputText('');setIsSending(false);setPendingLabel(null);
+    const subscription=AppState.addEventListener('change',state=>{
+      if(state!=='active'){requestEpoch.current+=1;setIsSending(false);setPendingLabel(null);}
+    });
+    return ()=>{subscription.remove();requestEpoch.current+=1;if(scrollTimer.current) clearTimeout(scrollTimer.current);};
+  },[userId]);
+  useEffect(()=>{
+    if(speechDraft && speechDraft.userId===userId && speechDraft.id!==handledSpeech.current){
+      handledSpeech.current=speechDraft.id;acceptText(speechDraft.text,speechDraft.onHandled);
+    }
+  },[speechDraft,userId,acceptText]);
+
+
 
   const { colors } = useTheme();
   const themed = useThemedStyles(getChatThemedStyles);
@@ -118,10 +158,13 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
    * Only while online: offline, the handbook plays no part and says nothing.
    */
   const refreshHandbookStatus = useCallback(async (): Promise<void> => {
+    const epoch=requestEpoch.current;
     try {
       const result = await onlineChatSkill.fetchHandbookStatus();
+      if(epoch!==requestEpoch.current) return;
       setHandbookStatus(result.status === 'success' && result.data ? result.data : null);
     } catch (error) {
+      if(epoch!==requestEpoch.current) return;
       console.warn('[Chat] Could not check the Student Handbook status:', error);
       setHandbookStatus(null);
     }
@@ -179,14 +222,15 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const loadChatHistory = () => {
     const history = chatStore.getMessages(userId);
     setMessages(history);
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: false });
-    }, 100);
+    if(scrollTimer.current) clearTimeout(scrollTimer.current);
+    scrollTimer.current=setTimeout(() => {flatListRef.current?.scrollToEnd({animated:false});scrollTimer.current=null;},100);
   };
 
   const handleToggleOnline = async () => {
+    const epoch=requestEpoch.current;
     if (!isOnlineMode) {
       const authorization = await accountLinkService.authorizeOnlineMode(userId);
+      if(epoch!==requestEpoch.current) return;
       if (authorization.status === 'student_pro_required') {
         Alert.alert(
           'Student Pro Required',
@@ -288,6 +332,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const handleSend = async () => {
     if (!inputText.trim() || isSending) return;
 
+    const epoch=requestEpoch.current;
     const userText = inputText.trim();
     // A format picked in the composer always means a file. One only guessed
     // from the wording respects an explicit switch to Offline, since making
@@ -307,7 +352,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     Keyboard.dismiss();
     setIsSending(true);
 
-    const sessionId = chatStore.ensureDefaultSession(userId);
+    let sessionId:string;
+    try {sessionId=chatStore.ensureDefaultSession(userId);} catch {setInputText(userText);setIsSending(false);Alert.alert('Message not sent','Your draft is kept. Local chat storage is unavailable.');return;}
 
     // 1. Insert User Message
     const userMsgId = generateId('msg');
@@ -317,7 +363,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       sender: 'user' as const,
       content: userText,
     };
-    chatStore.insertMessage(userMsg);
+    try {chatStore.insertMessage(userMsg);} catch {setInputText(userText);setIsSending(false);Alert.alert('Message not sent','Your draft is kept. Please try again.');return;}
 
     // Temp state update for immediate user feedback
     const tempMessages = [
@@ -329,7 +375,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       },
     ];
     setMessages(tempMessages);
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    if(scrollTimer.current) clearTimeout(scrollTimer.current);
+    scrollTimer.current=setTimeout(()=>{flatListRef.current?.scrollToEnd({animated:true});scrollTimer.current=null;},100);
 
     let aiReply = '';
     let attachment: ChatAttachment | null = null;
@@ -338,6 +385,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       const isProOrBusiness = hasProEntitlement(userId);
 
       const isDeviceOnline = await cloudClient.isOnline();
+      if(epoch!==requestEpoch.current) return;
       const hasToken = !!cloudClient.getAccessToken();
       const shouldUseOnline = isProOrBusiness && (isOnlineMode || (isDeviceOnline && !userExplicitOfflineChoice)) && hasToken;
       const makeFile = !!fileFormat && studentPro && (!!pickedFormat || !userExplicitOfflineChoice);
@@ -347,6 +395,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         // command, and "create a PDF of my plan" is not a task to add.
         setPendingLabel(`Creating your ${DOCUMENT_FORMATS[fileFormat].label} file…`);
         ({ reply: aiReply, attachment } = await createDocumentReply(fileFormat, tempMessages));
+        if(epoch!==requestEpoch.current){if(attachment) removeAttachmentFiles([attachment.uri]);return;}
       } else if (shouldUseOnline) {
         // FastAPI is authoritative for entitlements and re-checks the live account
         // role on every request, including SQLAdmin upgrades and downgrades.
@@ -355,6 +404,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           content: m.content,
         }));
         const cloudRes = await onlineChatSkill.sendChatMessage(chatPayload, { useHandbook: handbookOn });
+        if(epoch!==requestEpoch.current) return;
         if (cloudRes.status === 'success' && cloudRes.data) {
           aiReply = cloudRes.data.reply;
           handbookNote = handbookSourceLabel(cloudRes.data.sources);
@@ -389,6 +439,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       attachment = null;
     }
 
+    if(epoch!==requestEpoch.current){if(attachment) removeAttachmentFiles([attachment.uri]);return;}
     // 3. Insert AI Response
     const aiMsgId = generateId('msg');
     const aiMsg = {
@@ -413,7 +464,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const handleClearChat = () => {
     Alert.alert(
       'Clear Chat History',
-      'Are you sure you want to clear your conversation history? This cannot be undone.',
+      'Clear your conversation history and unsent draft? Saved schedule items and notes are kept. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -422,6 +473,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           onPress: () => {
             // The generated files go with the history that offered them.
             // Copies already shared elsewhere are untouched.
+            commands.cancel();setInputText('');setDocFormat(null);
             const attachmentUris = chatStore.getAttachmentUris(userId);
             chatStore.clearHistory(userId);
             removeAttachmentFiles(attachmentUris);
@@ -536,8 +588,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       <CommandReviewPanel review={commands.review} onCancel={commands.cancel} onConfirm={()=>{
         const result=commands.confirm();
         if(result.status==='saved') {
-          const sessionId=chatStore.ensureDefaultSession(userId);
           try {
+            const sessionId=chatStore.ensureDefaultSession(userId);
             chatStore.insertMessage({id:generateId('msg'),sessionId,sender:'user',content:inputText.trim()});
             chatStore.insertMessage({id:generateId('msg'),sessionId,sender:'assistant',content:result.reply});
             loadChatHistory();

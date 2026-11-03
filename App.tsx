@@ -1,3 +1,5 @@
+import {generateId} from './src/utils';
+import type {DraftLeaveGuard,SpeechDraftRequest} from './src/ui/hooks/useDraftProtection';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   SafeAreaView,
@@ -137,6 +139,11 @@ function AppContent({
   const [shellMode, setShellMode] = useState<ShellMode>('student');
   const [activeTab, setActiveTab] = useState<TabType>('calendar');
   const [voiceVisible, setVoiceVisible] = useState(false);
+  const draftGuardRef=useRef<DraftLeaveGuard|null>(null);
+  const registerDraftGuard=useCallback((guard:DraftLeaveGuard|null)=>{draftGuardRef.current=guard;},[]);
+  const [speechDraft,setSpeechDraft]=useState<SpeechDraftRequest|null>(null);
+  const activeUserRef=useRef(userId);activeUserRef.current=userId;
+
   /** The walkthrough, over the app shell. */
   const [tourOpen, setTourOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -455,11 +462,14 @@ function AppContent({
     [shellMode, hasPro]
   );
 
+  const navigateTo=useCallback((tab:TabType)=>{
+    if(tab===activeTab) return;
+    const proceed=()=>setActiveTab(tab);
+    if(draftGuardRef.current) draftGuardRef.current(proceed);else proceed();
+  },[activeTab]);
   const openTool = useCallback((tool: ToolTab) => {
-    setActiveTab((previous) => {
-      if (!isToolTab(previous)) returnTabRef.current = previous;
-      return tool;
-    });
+    const proceed=()=>setActiveTab((previous)=>{if(!isToolTab(previous)) returnTabRef.current=previous;return tool;});
+    if(draftGuardRef.current) draftGuardRef.current(proceed);else proceed();
   }, []);
 
   const leaveTool = useCallback(() => {
@@ -685,7 +695,7 @@ function AppContent({
                   borderBottomWidth: 1,
                   borderBottomColor: '#DBEAFE',
                 }}
-                onPress={() => setChatViewMode('company')}
+                onPress={() => {const proceed=()=>setChatViewMode('company');if(draftGuardRef.current) draftGuardRef.current(proceed);else proceed();}}
               >
                 <Text style={{ color: '#2563EB', fontFamily: Fonts.heading, fontSize: 13 }}>
                   ← Back to Company Team Chat
@@ -695,6 +705,8 @@ function AppContent({
                 userId={userId}
                 refreshTrigger={refreshTrigger}
                 onRefresh={triggerRefresh}
+                registerDraftGuard={registerDraftGuard}
+                speechDraft={speechDraft}
               />
             </View>
           );
@@ -704,6 +716,8 @@ function AppContent({
             userId={userId}
             refreshTrigger={refreshTrigger}
             onRefresh={triggerRefresh}
+            registerDraftGuard={registerDraftGuard}
+            speechDraft={speechDraft}
           />
         );
       case 'calendar':
@@ -844,7 +858,7 @@ function AppContent({
         {!isKeyboardVisible && (
           <TimerAwareTabBar
             activeTab={activeTab}
-            onTabPress={setActiveTab}
+            onTabPress={navigateTo}
             onMicPress={() => setVoiceVisible(true)}
             mode={shellMode}
             onMicLongPress={radial.openMenu}
@@ -864,7 +878,14 @@ function AppContent({
 
         {/* Voice Assistant Modal */}
         <ErrorBoundary label="The voice assistant" resetKey={voiceVisible}>
-          <VoiceModal visible={voiceVisible} userId={userId} onClose={handleVoiceClose} />
+          <VoiceModal visible={voiceVisible} userId={userId} onClose={handleVoiceClose} onSaved={triggerRefresh} onUseInChat={(text,onAccepted)=>{
+            const owner=userId,id=generateId('draft');
+            setSpeechDraft({id,userId:owner,text,onHandled:accepted=>{
+              setSpeechDraft(current=>current?.id===id?null:current);
+              if(accepted && activeUserRef.current===owner) onAccepted();
+            }});
+            setChatViewMode('assistant');setActiveTab('chat');
+          }} />
         </ErrorBoundary>
 
         {/* Proactive Incoming Call Screen */}
@@ -907,7 +928,7 @@ function AppContent({
         {tourOpen && shellMode === 'student' && (
           <ProductTour
             steps={buildTourSteps({ isGuest: userStore.isGuest(userId), isPro: hasPro })}
-            onNavigate={setActiveTab}
+            onNavigate={navigateTo}
             onFinish={finishTour}
           />
         )}
