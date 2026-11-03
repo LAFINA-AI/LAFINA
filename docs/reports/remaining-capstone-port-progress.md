@@ -49,3 +49,11 @@ while keeping Whisper/Kokoro defaults. No new package has been installed.
   Guide and conversation coverage meet their required line thresholds.
 
 Stages 3–8 remain in progress. Physical-device acceptance is separate from host tests.
+
+### Chat ordering follow-up
+
+An additional failing regression demonstrated that random message-ID ordering could
+put a reply before its user message when their timestamps match. Chat now uses the
+local SQLite insertion order as the timestamp tie-breaker, with versioned owner-bound
+cursors. No messages or timestamps are rewritten. TypeScript PASS; 111 suites /
+908 tests PASS; ESLint zero errors. Earlier source pagination keeps its ID ordering.

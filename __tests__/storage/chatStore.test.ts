@@ -106,6 +106,13 @@ describe('chatStore', () => {
     expect(chatStore.getMessages('user1')).toEqual([]);
   });
 
+  it('keeps insertion order when a reply shares its timestamp with the user message',()=>{
+    const session=chatStore.ensureDefaultSession('user1'),now=iso();
+    for(const [id,sender] of [['z-user','user'],['a-reply','assistant']])db.executeSync('INSERT INTO messages(id,session_id,sender,content,created_at,updated_at) VALUES(?,?,?,?,?,?)',[id,session,sender,id,now,now]);
+    expect(chatStore.getMessages('user1').map(message=>message.id)).toEqual(['z-user','a-reply']);
+    expect(chatStore.getMessagesPage('user1',{limit:1}).items[0].id).toBe('a-reply');
+  });
+
   it('returns [] when reading messages fails', () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     jest.spyOn(db, 'executeSync').mockImplementation(() => {
