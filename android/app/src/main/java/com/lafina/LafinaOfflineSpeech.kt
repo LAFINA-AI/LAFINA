@@ -178,10 +178,16 @@ class LafinaSpeechToTextModule(private val reactContext: ReactApplicationContext
       promise.reject("CAPTURE_BUSY", "Another offline speech capture is already active.")
       return
     }
+    val microphone = LafinaMicrophoneLease.acquire(reactContext)
+    if (microphone == null) {
+      activeCaptureId.compareAndSet(captureId, null)
+      promise.reject("CAPTURE_BUSY", "The microphone is in use. Stop the other recording first.")
+      return
+    }
 
     stopRequested.set(false)
     discardRequested.set(false)
-    executor.execute {
+    try { executor.execute {
       try {
         val captureStartedAt = System.currentTimeMillis()
         val captured = captureUtterance(captureId, mode, bargeIn, captureContext)
@@ -241,7 +247,11 @@ class LafinaSpeechToTextModule(private val reactContext: ReactApplicationContext
       } finally {
         activeRecorder = null
         activeCaptureId.compareAndSet(captureId, null)
+        microphone.close()
       }
+    } } catch (error: Exception) {
+      microphone.close(); activeCaptureId.compareAndSet(captureId, null)
+      promise.reject("OFFLINE_STT_ERROR", "Offline speech could not start.", error)
     }
   }
 

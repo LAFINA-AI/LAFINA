@@ -1,0 +1,63 @@
+{
+  "date": "2026-11-04",
+  "targetBaseline": "92ff7c4",
+  "source": "Read-only reviewed CAPSTONE working tree",
+  "files": [
+    {
+      "path": "android/app/src/main/java/com/lafina/capstone/voice/MicrophoneLease.kt",
+      "sha256": "fedf38ce7ced114665c72d38069e526ef4baa8820d8605b5e200401b0b744712"
+    },
+    {
+      "path": "src/core/storage/notesRepository.ts",
+      "sha256": "d62d997ae0bbd424e33933ebfde026ad7708e2eaaae54ae933ef11e59b3fec68"
+    },
+    {
+      "path": "src/features/notes/NotesScreen.tsx",
+      "sha256": "784a60f51aa797500b01869aa66f0eafbc354b28dfe21742fc267321c6bc3069"
+    },
+    {
+      "path": "src/features/notes/NoteEditor.tsx",
+      "sha256": "4314b35c5b623abe6665f5bc294f5ad02de3884c2db240f0a2248d6608ff890d"
+    },
+    {
+      "path": "src/core/native/textToSpeech.ts",
+      "sha256": "c7f2f8c7a5231b0f542ab5345d7870bd4da84ff4289d1ea7629cc3c03d9bfd0d"
+    },
+    {
+      "path": "src/features/settings/SpeechSettings.tsx",
+      "sha256": "573af43da01ef14679aacab52180947f2c368a4fec03862d73be214e488241c0"
+    },
+    {
+      "path": "android/app/src/main/java/com/lafina/capstone/voice/SpeechInput.kt",
+      "sha256": "87ec7daddc04d7279ffa529e6e241a0c1b982a82cf89f629d0399ba105bc5787"
+    },
+    {
+      "path": "android/app/src/main/java/com/lafina/capstone/voice/SpeechPolicy.kt",
+      "sha256": "156baded026a20ef48420f0db525543074a949f0f357328f3b9e717da7f29500"
+    },
+    {
+      "path": "src/features/scheduling/plannerFormModel.ts",
+      "sha256": "1b4ae0a5c8bf05cc1780fb4963acb2be7ff74a2ea5d4c41f2a805b85b8601b88"
+    },
+    {
+      "path": "src/core/domain/scheduleTime.ts",
+      "sha256": "173158d03a5e13b88318f90a56275d94a32bd7944547ac12ee434687591faa28"
+    },
+    {
+      "path": "src/core/storage/runPlannerSqlChecks.ts",
+      "sha256": "220f98110d7290927d79f6dc591167d44a8c8f8d534b1e60a64bbf06805ae75d"
+    },
+    {
+      "path": "src/features/settings/PlannerDiagnostics.tsx",
+      "sha256": "d1c9d8b0a68993557e8b0e72fd047e518b904e133fe6d6ee79a392b82698cf7c"
+    },
+    {
+      "path": "scripts/benchmark-intents.cjs",
+      "sha256": "fe5a948a7b958f270bf579fd262b35cf1c4df236d0101a4c6812a67025403645"
+    },
+    {
+      "path": "scripts/benchmark-notes.cjs",
+      "sha256": "7c10c070bc99a3fbbca7788a12b0ad5b18d948010c04ebce2a32dec7612130e1"
+    }
+  ]
+}

@@ -202,6 +202,10 @@ class LafinaMeetingService : Service() {
   }
 
   private fun recordAudioChunks() {
+    var microphone: LafinaMicrophoneLease? = null
+    try {
+    microphone = LafinaMicrophoneLease.acquire(this)
+    if (microphone == null) { Log.w(TAG, "Microphone already owned by another recorder."); return }
     val bufferSize = maxOf(
       AudioRecord.getMinBufferSize(
         SAMPLE_RATE,
@@ -212,7 +216,6 @@ class LafinaMeetingService : Service() {
     )
     val meetingDir = sessionDir ?: meetingDir(this, meetingId).apply { mkdirs() }
 
-    try {
       audioRecord = AudioRecord(
         MediaRecorder.AudioSource.VOICE_RECOGNITION,
         SAMPLE_RATE,
@@ -285,6 +288,7 @@ class LafinaMeetingService : Service() {
         audioRecord?.release()
       } catch (_: Exception) {}
       audioRecord = null
+      microphone?.close()
 
       // Whether the user stopped or the microphone failed, the recording is
       // over: record the final chunk list, then let a waiting stop read it.

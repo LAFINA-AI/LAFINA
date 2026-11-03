@@ -17,6 +17,26 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
     val results = Bundle()
     val file = File(targetContext.cacheDir, "delivery-qa-${System.nanoTime()}.sqlite")
     try {
+      val microphoneFile = File(targetContext.cacheDir, "microphone-qa-${System.nanoTime()}.lock")
+      try {
+        val first = requireNotNull(LafinaMicrophoneLease.acquire(microphoneFile))
+        check(LafinaMicrophoneLease.acquire(microphoneFile) == null)
+        fun probe(): String {
+          val process = ProcessBuilder("/system/bin/app_process", "/", "com.lafina.MicrophoneLeaseProbe", microphoneFile.absolutePath).apply {
+            environment()["CLASSPATH"] = targetContext.applicationInfo.sourceDir + ":" + context.applicationInfo.sourceDir
+            redirectErrorStream(true)
+          }.start()
+          if (!process.waitFor(15, java.util.concurrent.TimeUnit.SECONDS)) { process.destroyForcibly(); error("Microphone probe timeout") }
+          val result = process.inputStream.bufferedReader().readText().trim()
+          check(process.exitValue() == 0) { "Microphone probe failed: ${result.take(300)}" }
+          return result.lineSequence().last()
+        }
+        try { check(probe() == "BUSY") } finally { first.close() }
+        check(probe() == "ACQUIRED")
+        val next = requireNotNull(LafinaMicrophoneLease.acquire(microphoneFile))
+        try { first.close(); check(LafinaMicrophoneLease.acquire(microphoneFile) == null); check(microphoneFile.length() == 0L) } finally { next.close() }
+        check(LafinaMicrophoneLease.acquire(File(microphoneFile, "invalid-child")) == null)
+      } finally { microphoneFile.delete() }
       check(LafinaAndroidSpeechPolicy.installedEnglish("offline-en", "en", false, emptySet()))
       check(!LafinaAndroidSpeechPolicy.installedEnglish("network-en", "en", true, emptySet()))
       check(!LafinaAndroidSpeechPolicy.installedEnglish("missing-en", "en", false, setOf("notInstalled")))

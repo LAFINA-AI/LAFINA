@@ -40,7 +40,7 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
   private var initialization = 0
   private var initTimer: Runnable? = null
   private val waiting = mutableListOf<(TextToSpeech?) -> Unit>()
-  private data class Capture(val id: String, val promise: Promise, val started: Long,
+  private data class Capture(val id: String, val promise: Promise, val started: Long, val microphone: LafinaMicrophoneLease,
     var recognizer: SpeechRecognizer? = null, var timeout: Runnable? = null)
   private data class Speech(val id: String, val promise: Promise, var timeout: Runnable? = null)
   private var capture: Capture? = null
@@ -67,6 +67,7 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
     if (capture !== run) return
     capture = null; run.timeout?.let(handler::removeCallbacks)
     try { run.recognizer?.cancel(); run.recognizer?.destroy() } catch (_: Exception) { }
+    run.microphone.close()
     releaseFocus()
     if (error) run.promise.reject("ANDROID_ENGLISH_RECOGNITION_UNAVAILABLE", "On-device English recognition could not finish. Type your command or check Speech engines in Profile.")
     else run.promise.resolve(Arguments.createMap().apply {
@@ -79,8 +80,11 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
     val id = options.getString("captureId") ?: ""
     check(LafinaAndroidSpeechPolicy.validOwner(id) && foreground() && available())
     check(context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
-    check(capture == null && speech == null && acquireFocus())
-    val run = Capture(id, promise, SystemClock.elapsedRealtime()); capture = run
+    check(capture == null && speech == null)
+    val microphone = LafinaMicrophoneLease.acquire(context)
+    if (microphone == null) { promise.reject("CAPTURE_BUSY", "The microphone is in use. Stop the other recording first."); return@onMain }
+    try { check(acquireFocus()) } catch (error: Exception) { microphone.close(); throw error }
+    val run = Capture(id, promise, SystemClock.elapsedRealtime(), microphone); capture = run
     try {
       if (Build.VERSION.SDK_INT < 31) error("Unsupported")
       val recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context); run.recognizer = recognizer

@@ -50,6 +50,11 @@ class LafinaMeetingRecorderModule(private val reactContext: ReactApplicationCont
         promise.reject("ALREADY_RECORDING", "A meeting is already being recorded.")
         return
       }
+      // Preflight gives immediate feedback; the worker independently acquires the
+      // same OS lease, so another capture winning the startup race remains safe.
+      val microphone = LafinaMicrophoneLease.acquire(reactContext)
+      if (microphone == null) { promise.reject("CAPTURE_BUSY", "The microphone is in use. Stop the other recording first."); return }
+      microphone.close()
       val meetingId = options.getString("meetingId") ?: System.currentTimeMillis().toString()
       val title = options.getString("title") ?: "Meeting"
 
