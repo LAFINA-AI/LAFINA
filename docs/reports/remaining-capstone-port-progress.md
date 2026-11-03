@@ -57,3 +57,16 @@ put a reply before its user message when their timestamps match. Chat now uses t
 local SQLite insertion order as the timestamp tie-breaker, with versioned owner-bound
 cursors. No messages or timestamps are rewritten. TypeScript PASS; 111 suites /
 908 tests PASS; ESLint zero errors. Earlier source pagination keeps its ID ordering.
+
+## Stage 3 — reviewed planner mutations
+
+- Added exact-title, owner/revision-fenced move/delete for tasks, events and blocks;
+  recurring-series changes and ambiguous names require manual editing.
+- Added undated/date-only tasks, actual events, and explicit named ringing-reminder
+  acknowledgement/snooze. Nothing mutates before Confirm. Transactions preserve
+  receipts, linked alarm generation, retries and rollback behavior.
+- Quoted titles remain literal; compound/negative requests and malformed destinations
+  are rejected. The fixed model JSON contract is unchanged. Read-only voice questions
+  use the same local planner answers.
+- TypeScript PASS; 112 suites / 919 tests PASS; ESLint zero errors (244 warnings).
+  Manual undated-task access and guest-history migration follow-ups are tracked next.

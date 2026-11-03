@@ -172,6 +172,9 @@ export const runOfflineVoiceScheduling = async (
       );
     }
 
+    const localReply=getPlannerReply(transcript,userId);
+    if(localReply!==null)return {didUpdate:false,transcript,reply:localReply,createdItemType:null,nluResult:null,errorCode:null};
+
     // Scheduling grammar is deterministic, so prefer it over a generated NLU
     // result. This keeps compact times, dates, and titles stable even when the
     // small local language model would otherwise invent or truncate a field.

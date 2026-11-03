@@ -314,4 +314,18 @@ describe('Chat files and handbook answers on mobile', () => {
     act(()=>tree.unmount());
   });
 
+  it('routes untimed creation and exact deletion through explicit Chat reviews',async()=>{
+    db.executeSync('DELETE FROM active_session');db.executeSync('DELETE FROM tasks');
+    const now=new Date().toISOString();db.executeSync('INSERT INTO active_session(user_id,created_at,updated_at) VALUES(?,?,?)',[FREE,now,now]);
+    const tree=await render(FREE);await send(tree,'Add task Read chapter 5');
+    expect(db.executeSync('SELECT id FROM tasks WHERE user_id=?',[FREE]).rows).toHaveLength(0);
+    act(()=>byLabel(tree,'Confirm command').props.onPress());
+    expect(db.executeSync('SELECT due_date,due_time FROM tasks WHERE user_id=?',[FREE]).rows[0]).toMatchObject({due_date:null,due_time:null});
+    await send(tree,'Delete task "Read chapter 5"');
+    expect(db.executeSync('SELECT deleted_at FROM tasks WHERE user_id=?',[FREE]).rows[0].deleted_at).toBeNull();
+    act(()=>byLabel(tree,'Confirm command').props.onPress());
+    expect(db.executeSync('SELECT deleted_at FROM tasks WHERE user_id=?',[FREE]).rows[0].deleted_at).not.toBeNull();
+    act(()=>tree.unmount());
+  });
+
 });

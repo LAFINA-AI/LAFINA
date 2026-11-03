@@ -353,7 +353,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     let request:string;try{request=normalizePlannerRequest(userText);}catch{Alert.alert('Command needs more detail',PLANNER_INPUT_GUIDANCE);return;}
     const nlu=createFallbackNluResult(normalizeTranscript(request));
     const localReply=fileFormat?null:getPlannerReply(request,userId);
-    if (!fileFormat && localReply===null && (nlu.intent==='schedule' || /^(?:note:?(?:\s|$)|complete(?:\s|$))/i.test(request))) {
+    if (!fileFormat && localReply===null && (nlu.intent==='schedule' || /^(?:note:?(?:\s|$)|complete(?:\s|$)|move\b|reschedule\b|delete\b|remove\b|acknowledge\b|snooze\b)/i.test(request))) {
       const proposal=commands.prepare(userText);
       if (!proposal.review) Alert.alert('Command needs more detail',proposal.reply);
       Keyboard.dismiss();

@@ -11,6 +11,8 @@ export const COMMAND_GUIDE:readonly CommandGuideExample[]=[
   {command:'Show completed tasks',explanation:'Read completed tasks.',readOnly:true},
   {command:'Schedule study tomorrow at 7pm',explanation:'Review a timed task and its reminder before saving.',readOnly:false},
   {command:'Block 2pm-3pm tomorrow for exam review',explanation:'Review a study block before saving.',readOnly:false},
+  {command:'Add task Read chapter 5',explanation:'Review an undated task without inventing a reminder.',readOnly:false},
+  {command:'Add event Study group tomorrow at 3pm for 60 minutes',explanation:'Review an event and its reminder.',readOnly:false},
   {command:'Note: Questions for my adviser',explanation:'Review a literal note before saving.',readOnly:false},
 ];
 const action=/^(?:schedule|set|remind|add|create|block|move|reschedule|complete|delete|remove|snooze|acknowledge|show|list)\b/i;

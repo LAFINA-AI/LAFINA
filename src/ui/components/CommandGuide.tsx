@@ -12,7 +12,7 @@ export const CommandGuide=({visible,onClose,onSelect}:Props):React.JSX.Element=>
     {COMMAND_GUIDE.map(example=><TouchableOpacity key={example.command} accessibilityRole="button" accessibilityLabel={`Use example: ${example.command}`} onPress={()=>onSelect(example.command)} style={[styles.row,{borderColor:colors.border}]}>
       <Text style={[styles.command,{color:colors.textPrimary}]}>{example.command}</Text><Text style={{color:colors.textSecondary}}>{example.explanation}</Text>
     </TouchableOpacity>)}
-    <Text style={{color:colors.textSecondary}}>Read-only questions work offline. Manual Calendar controls remain available. Quoted titles are matched exactly when completing an existing task.</Text>
+    <Text style={{color:colors.textSecondary}}>Read-only questions work offline. Manual Calendar controls remain available. Use exact quoted titles to change saved items: Move task "Study" to tomorrow at 8pm; Delete event "Lab"; Complete task "Study". Recurring series changes stay in Calendar. Named ringing reminders: Acknowledge reminder for task "Study"; Snooze reminder for task "Study" 10 minutes.</Text>
   </ToolSheet>;
 };
 const styles=StyleSheet.create({intro:{fontSize:16,lineHeight:24,marginBottom:16},row:{paddingVertical:14,borderBottomWidth:1,gap:6},command:{fontSize:16,fontWeight:'600'}});

@@ -148,7 +148,7 @@ export const timeBlocksStore = {
   /**
    * Updates an existing time block.
    */
-  update: (block: Partial<TimeBlock> & { id: string }): void => {
+  update: (block: Partial<TimeBlock> & { id: string }, executor?: DatabaseTransaction): void => {
     const now = new Date().toISOString();
     const sets: string[] = [];
     const params: any[] = [];
@@ -179,7 +179,7 @@ export const timeBlocksStore = {
     params.push(block.id);
 
     try {
-      db.transactionSync((tx) => {
+      const apply=(tx:DatabaseTransaction):void=>{
         tx.executeSync(`UPDATE time_blocks SET ${sets.join(', ')} WHERE id = ?`, params);
         refreshLinkedReminders('time_block',block.id,tx);
         const row = tx.executeSync('SELECT * FROM time_blocks WHERE id = ?', [block.id]).rows?.[0] as StoredSyncRow | undefined;
@@ -190,7 +190,8 @@ export const timeBlocksStore = {
             'account', userId, tx,
           );
         }
-      });
+      };
+      if(executor)apply(executor);else db.transactionSync(apply);
     } catch (error) {
       console.error('Error updating time block:', error);
       throw error;
