@@ -33,6 +33,8 @@ import { AppUpdateItem } from '../components/profile/AppUpdateItem';
 import { PreferencesSettingsScreen } from './PreferencesSettingsScreen';
 import {ReminderHealth} from '../components/profile/ReminderHealth';
 import {PersonalMemory} from '../components/profile/PersonalMemory';
+import {QaDiagnostics} from '../components/profile/QaDiagnostics';
+import {isQaDiagnosticsAvailable} from '../../storage/qaSqlChecks';
 import {SpeechEngines} from '../components/profile/SpeechEngines';
 import {profileStatisticsStore} from '../../storage/profileStatisticsStore';
 
@@ -96,6 +98,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [healthVisible,setHealthVisible]=useState(false);
   const [memoryVisible,setMemoryVisible]=useState(false);
   const [speechVisible,setSpeechVisible]=useState(false);
+  const [qaVisible,setQaVisible]=useState(false);
 
   // Privacy Modal state
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
@@ -362,6 +365,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           <SettingItem text="Reminder health" onPress={()=>setHealthVisible(true)}/>
           <SettingItem text="Personal event preferences" onPress={()=>setMemoryVisible(true)}/>
           <SettingItem text="Speech engines" onPress={()=>setSpeechVisible(true)}/>
+          {isQaDiagnosticsAvailable()&&<SettingItem text="QA diagnostics" onPress={()=>setQaVisible(true)}/>}
           <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
             <SettingItem
               text="Scheduling & Reminder Preferences"
@@ -494,6 +498,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       <ReminderHealth key={userId} userId={userId} visible={healthVisible} onClose={()=>setHealthVisible(false)}/>
       <PersonalMemory key={`memory-${userId}`} userId={userId} visible={memoryVisible} onClose={()=>setMemoryVisible(false)}/>
       <SpeechEngines key={`speech-${userId}`} userId={userId} visible={speechVisible} onClose={()=>setSpeechVisible(false)}/>
+      {isQaDiagnosticsAvailable()&&<QaDiagnostics key={`qa-${userId}`} userId={userId} visible={qaVisible} onClose={()=>setQaVisible(false)}/>}
       <PrivacyModal
         visible={privacyModalVisible}
         onClose={() => setPrivacyModalVisible(false)}

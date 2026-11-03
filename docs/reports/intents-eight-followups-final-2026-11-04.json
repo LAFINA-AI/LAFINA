@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "kind": "intents",
+  "recordedAt": "2026-11-03T19:07:34.275Z",
+  "environment": "Host Node v24.19.0, Jest and in-memory better-sqlite3; not Android timing",
+  "fixtureHashes": {
+    "intent-golden-v1.json": "3b33ef089cd927911c27549063b1d9082fec88d4e0b3db67a73f8423eee6b88e",
+    "notes-contract-v1.json": "d44223aa58fd3a60ff6f6cc58b1960006f685a6b13a7c9bfc48e87ad45ac7078",
+    "speech-contract-v1.json": "9172c18ac1241538c27f209aab3b88930ea7f44623c1df53b065844754aaf209"
+  },
+  "sourceHashes": {
+    "src/ai/nlu/commandSession.ts": "a53ec773cbb70baf84ac5e1de7ffc9a1539320ff277e215bb96754b7cd3f0da1",
+    "src/ai/nlu/parser.ts": "86c322266147ad5f16515ab148f140f4414fae3e690afc4dde2af4cf02f6b4d6",
+    "scripts/run-evaluation.cjs": "8fe51403000258caa9285afc6876932bf24c6f32130c9bffb7763c3c5ec3f298"
+  },
+  "sourceTreeSha256": "efeefe012b20c07cd368e7ad75b6155fc70f7846eeb21cc305aced4b0bc3abac",
+  "metrics": {
+    "cases": 80,
+    "matched": 80,
+    "reviewedWrites": 0,
+    "medianHostMs": 1.043600000000879,
+    "p95HostMs": 3.4702999999990425
+  },
+  "limits": "Synthetic regression only. No phone latency, WER, model NIEA, audibility, battery or memory claim."
+}

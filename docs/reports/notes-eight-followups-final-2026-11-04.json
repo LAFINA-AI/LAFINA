@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "kind": "notes",
+  "recordedAt": "2026-11-03T19:07:34.137Z",
+  "environment": "Host Node v24.19.0, Jest and in-memory better-sqlite3; not Android timing",
+  "fixtureHashes": {
+    "intent-golden-v1.json": "3b33ef089cd927911c27549063b1d9082fec88d4e0b3db67a73f8423eee6b88e",
+    "notes-contract-v1.json": "d44223aa58fd3a60ff6f6cc58b1960006f685a6b13a7c9bfc48e87ad45ac7078",
+    "speech-contract-v1.json": "9172c18ac1241538c27f209aab3b88930ea7f44623c1df53b065844754aaf209"
+  },
+  "sourceHashes": {
+    "src/storage/notesQueryStore.ts": "e8c7dbfcccbbca047c301720808a57cbb62db09a80300d70eb652e15045640c8",
+    "src/storage/notesSearchSchema.ts": "c6716e7bc1465e71111b229869cb9a2c317ff38452f7be79bdfa8fc5fa9e0b18",
+    "src/utils/noteMarkdown.ts": "103943e9ddf89411fed9f68aa980d133f5447286988b2a3c275cc968d3d3acf6",
+    "src/utils/richText.ts": "e2fbd998dea88bf28349e500da69c91736acea10b35abd6b983b94f20a160a93",
+    "scripts/run-evaluation.cjs": "8fe51403000258caa9285afc6876932bf24c6f32130c9bffb7763c3c5ec3f298"
+  },
+  "sourceTreeSha256": "efeefe012b20c07cd368e7ad75b6155fc70f7846eeb21cc305aced4b0bc3abac",
+  "metrics": {
+    "fixtureCases": 10,
+    "rows": 5020,
+    "owners": 3,
+    "firstPageRows": 20,
+    "uniquePagedRows": 5020,
+    "normalizationCalls": 101,
+    "maxNormalizedPerCall": 50,
+    "firstPageHostMs": 16.532199999999648,
+    "completeIndexHostMs": 2735.2217
+  },
+  "limits": "Synthetic regression only. No phone latency, WER, model NIEA, audibility, battery or memory claim."
+}

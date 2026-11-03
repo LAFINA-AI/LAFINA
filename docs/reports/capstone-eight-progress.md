@@ -186,3 +186,52 @@ builds PASS after using React Native's concrete context in the isolated idle fix
 Restored the existing headless emulator after its earlier session ended, preserving
 saved data; QA update and native regressions PASS, including redacted idle metadata
 without starting audio. Stage 8 and final two-ABI delivery remain in progress.
+
+
+## 8 — isolated in-app QA checks (owner item 8)
+
+Added a dedicated native QA-build gate and an explicit Profile diagnostics sheet.
+Production builds cannot allocate diagnostic files or display these controls. Native
+code authorizes only owned UUID-named files in the canonical application cache;
+JavaScript opens a separate connection and injects its executor into the real Notes
+queries. The student database handle is never replaced. Checks use synthetic rows,
+production schema helpers, transactional writes, revision/search invalidation,
+owner-bounded paging, stale-edit rejection, foreign keys, overnight UTC metadata and
+integrity checks. Results contain fixed labels and safe status only. Allocation,
+cleanup and SQL work are bounded; late allocations are released, with cleanup
+failure reported explicitly. No network, audio or new dependency is involved.
+
+Installed-screen testing found a hidden-to-open lifecycle issue that mocked success
+cases had missed. Added failing close/reopen and foreground-transition regression
+cases, then corrected epoch invalidation so active controls work while retained
+handlers remain retired. Rebuilt both ABIs and reran all required gates afterward.
+Native fixture authorization, invalid-name rejection, isolation, deletion and double
+release also pass. ADR-007 documents the boundary and practical execution limits.
+
+Final host gates, in required order: TypeScript PASS; 137 suites / 1,084 tests PASS
+with coverage and normal exit; ESLint zero errors (267 warnings). New SQL runner
+exceeds 80% line coverage; QA UI exceeds 60%. Architecture check: 268 source modules,
+zero offline-boundary violations and zero cycles. Pure backend compatibility tests:
+2 PASS; new backend contract/test Ruff clean. No backend deployment was performed.
+
+Final standalone QA and native test builds PASS. Both ARM64 and x86_64 artifacts
+have verified development signatures, expected single ABI, bundled JS, six models
+and ZIP alignment. Sizes/hashes/signature and limitations are recorded in
+capstone-eight-qa-artifacts-2026-11-04.json. The exact x86_64 artifact updated the
+existing app without clearing saved data. Native harness reports 17 legacy groups
+plus the added policies/probes PASS. API37 x86_64 emulator uses 16 KiB pages.
+
+Airplane-mode installed UI acceptance: 14/14 isolated checks PASS, fixture removed;
+close/reopen and a second run: 14/14 PASS, fixture removed again. The read-only speech
+panel reports unknown English readiness, inactive capture/playback and unobserved
+timings without starting audio. Offline Calendar, Notes, Chat and Profile navigation
+passed. No real student data appears in committed acceptance evidence. Final frozen
+host evaluation reruns have separate *-final-2026-11-04.json filenames, preserving
+stage-7 reports. Frozen fixture JSON is exempt from Git newline conversion so the
+original evaluated bytes and unchanged manifest hashes survive Windows checkouts.
+
+All eight planned implementation stages are complete on the USTP base. Actual
+phone audio/WER/model accuracy, battery, vendor interruptions and ARM64 installation
+remain unrun. The existing ONNX Runtime ELF 16 KiB warning remains unresolved; ZIP
+alignment and emulator success do not certify all physical devices. Remote delivery
+is verified separately after the final normal upstream push.

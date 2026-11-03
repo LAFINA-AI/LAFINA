@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.database.sqlite.SQLiteDatabase
 import android.os.Bundle
 import com.facebook.react.bridge.Callback
+import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.PromiseImpl
 import com.facebook.react.bridge.BridgeReactContext
 import com.facebook.react.bridge.ReadableMap
@@ -69,6 +70,22 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
         check(!snapshot.hasKey("transcript")&&!snapshot.hasKey("text")&&!snapshot.hasKey("requestId"))
         val metrics=requireNotNull(snapshot.getMap("metrics"));check(metrics.isNull("ttsInitializationMs")&&metrics.isNull("captureDurationMs")&&metrics.isNull("speechStartMs"))
       } finally { speechModule.invalidate() }
+      check(LafinaQaSqlPolicy.allowed("qa")&&!LafinaQaSqlPolicy.allowed("release")&&!LafinaQaSqlPolicy.allowed("debug"))
+      check(!LafinaQaSqlPolicy.validName("lafina.sqlite")&&!LafinaQaSqlPolicy.validName("../lafina.sqlite"))
+      val qaModule=LafinaQaDiagnosticsModule(speechContext)
+      fun nativeResult(action: (Promise) -> Unit): Any? {
+        val done=CountDownLatch(1);var value: Any?=null
+        action(PromiseImpl(Callback { args -> value=args.firstOrNull();done.countDown() },Callback { done.countDown() }))
+        check(done.await(5,TimeUnit.SECONDS));return value
+      }
+      check(qaModule.getConstants()["isQaBuild"]==true)
+      val allocation=requireNotNull(nativeResult { qaModule.prepareSqlFixture(it) } as? ReadableMap)
+      val qaName=requireNotNull(allocation.getString("name"));val qaFile=File(requireNotNull(allocation.getString("location")),qaName)
+      try {
+        check(LafinaQaSqlPolicy.validName(qaName)&&qaFile.canonicalFile.parentFile==targetContext.cacheDir.canonicalFile&&qaFile.exists())
+        check(nativeResult { qaModule.releaseSqlFixture("lafina.sqlite",it) }==false)
+      } finally { check(nativeResult { qaModule.releaseSqlFixture(qaName,it) }==true) }
+      check(!qaFile.exists());check(nativeResult { qaModule.releaseSqlFixture(qaName,it) }==false)
       val context = object : ContextWrapper(targetContext) {
         override fun getDatabasePath(name: String): File = file
       }
@@ -159,7 +176,7 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
       LafinaDeliveryStore(context).use { store -> check(!store.sourceLive(requireNotNull(store.current("qa-rem")))) }
       openFixture(file).use { it.execSQL("PRAGMA user_version=999") }
       check(runCatching { LafinaDeliveryStore(context).close() }.isFailure)
-      results.putString("stream", "PASS: PendingIntent hash-collision isolation, native SQLite claim, duplicate/stale rejection, concurrent-call serialization/release, posting receipt, reopen recovery, bounded failure counters, source-change retirement, atomic rollback, schema-21/22/23 compatibility, timezone source validation, redacted idle diagnostics and future-schema refusal.\n")
+      results.putString("stream", "PASS: PendingIntent hash-collision isolation, native SQLite claim, duplicate/stale rejection, concurrent-call serialization/release, posting receipt, reopen recovery, bounded failure counters, source-change retirement, atomic rollback, schema-21/22/23 compatibility, timezone source validation, redacted idle diagnostics, QA cache fixture isolation/cleanup and future-schema refusal.\n")
       results.putInt("passed", 17)
       finish(Activity.RESULT_OK, results)
     } catch (error: Throwable) {

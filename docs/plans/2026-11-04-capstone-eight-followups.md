@@ -98,3 +98,14 @@ Freeze donor reference hashes and record tests, artifact hashes, deviations and
 unrun physical cases. Push verified commits normally to the original repository's
 `LAFINA-USTP` branch. Implementation completion does not certify a physical phone or
 resolve the existing vendor ONNX 16 KiB warning without separate evidence.
+
+
+## Implementation status — 2026-11-04
+
+All eight implementation stages and final host/native/offline-emulator checks are
+complete. USTP remains the base; no new package, model or cloud dependency was added.
+See [implementation evidence](../reports/capstone-eight-progress.md),
+[QA artifacts](../reports/capstone-eight-qa-artifacts-2026-11-04.json) and
+[offline acceptance](../reports/capstone-eight-emulator-2026-11-04.json).
+Physical-phone/audio validation, the existing ONNX ELF warning and deployment of
+the backward-compatible backend change remain explicitly separate follow-ups.
