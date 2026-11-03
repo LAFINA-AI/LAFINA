@@ -58,6 +58,10 @@
     {
       "path": "scripts/benchmark-notes.cjs",
       "sha256": "7c10c070bc99a3fbbca7788a12b0ad5b18d948010c04ebce2a32dec7612130e1"
+    },
+    {
+      "path": "android/app/src/main/java/com/lafina/capstone/voice/SystemSpeech.kt",
+      "sha256": "709115729112fa4ff94354c2332a6c07ffd20d527d971e15f0e8d4d9c8069418"
     }
   ]
 }

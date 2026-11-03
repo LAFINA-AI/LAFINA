@@ -11,7 +11,7 @@ describe('optional Android speech engines',()=>{
   beforeEach(()=>{const now=new Date().toISOString();db.executeSync('INSERT OR IGNORE INTO users(id,username,created_at,updated_at) VALUES(?,?,?,?)',['speech-owner','Speech',now,now]);userStore.setCurrentUser('speech-owner');db.executeSync("DELETE FROM local_settings WHERE key='speech_engines_v1'");delete NativeModules.LafinaAndroidSpeech;});
   afterEach(()=>{delete NativeModules.LafinaAndroidSpeech;delete NativeModules.LafinaSpeechToText;});
   it('retains defaults, validates selection and scopes settings to the account',()=>{
-    expect(speechEngineStore.read('speech-owner')).toEqual({stt:'whisper',tts:'kokoro',voiceName:null});
+    expect(speechEngineStore.read('speech-owner')).toMatchObject({stt:'whisper',tts:'kokoro',voiceName:null,version:2,providerPackage:null,rate:1,pitch:1});
     speechEngineStore.save('speech-owner',{stt:'android',tts:'android',voiceName:'English offline'});
     expect(speechEngineStore.read('someone-else').stt).toBe('whisper');
     expect(()=>speechEngineStore.save('someone-else',{stt:'android',tts:'kokoro',voiceName:null})).toThrow();

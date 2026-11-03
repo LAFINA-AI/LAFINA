@@ -58,6 +58,6 @@ export const defaultCallSpeechProvider: CallSpeechProvider = {
 
 /** Selects explicit offline speech choices while preserving Kokoro as the default. */
 export const createOfflineCallSpeechProvider=(userId:string):CallSpeechProvider=>{
-  try{const choice=speechEngineStore.read(userId);return choice.tts==='android'&&choice.voiceName?createAndroidCallSpeechProvider(userId,choice.voiceName):defaultCallSpeechProvider;}
+  try{const choice=speechEngineStore.read(userId);return choice.tts==='android'&&choice.voiceName?createAndroidCallSpeechProvider(userId,choice.voiceName,choice):defaultCallSpeechProvider;}
   catch{return {speakText:async()=>{throw new Error('Speech settings unavailable. Use the reminder buttons or change engines in Profile.');}};}
 };

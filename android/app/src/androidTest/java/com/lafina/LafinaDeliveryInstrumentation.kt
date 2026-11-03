@@ -42,6 +42,10 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
       check(!LafinaAndroidSpeechPolicy.installedEnglish("missing-en", "en", false, setOf("notInstalled")))
       check(!LafinaAndroidSpeechPolicy.installedEnglish("offline-other", "fr", false, emptySet()))
       check(!LafinaAndroidSpeechPolicy.validOwner("bad\nrequest"))
+      check(LafinaAndroidSpeechPolicy.validCustomization("com.example.tts",0.5,2.0))
+      check(!LafinaAndroidSpeechPolicy.validCustomization("bad package",1.0,1.0))
+      check(!LafinaAndroidSpeechPolicy.validCustomization(null,Double.NaN,1.0))
+      check(!LafinaAndroidSpeechPolicy.validCustomization(null,1.0,2.1))
       val context = object : ContextWrapper(targetContext) {
         override fun getDatabasePath(name: String): File = file
       }

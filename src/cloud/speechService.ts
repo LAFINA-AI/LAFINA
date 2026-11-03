@@ -67,7 +67,7 @@ const waitForPreparation = async (
 export const createCallSpeechProvider = (
   userId: string,
 ): CallSpeechProvider => {
-  try{const choice=speechEngineStore.read(userId);if(choice.tts==='android'&&choice.voiceName)return createAndroidCallSpeechProvider(userId,choice.voiceName);}
+  try{const choice=speechEngineStore.read(userId);if(choice.tts==='android'&&choice.voiceName)return createAndroidCallSpeechProvider(userId,choice.voiceName,choice);}
   catch{return {speakText:async()=>{throw new Error('Speech settings unavailable. Change engines in Profile.');}};}
   const preparedAudioPaths = new Map<string, string>();
   const preparations = new Map<string, Promise<string | null>>();

@@ -93,3 +93,26 @@ Standalone QA/native test builds PASS; emulator update preserved app data. Exist
 17 native groups plus microphone and timezone-source regressions PASS, explicitly
 accepting schemas 21/22/23 and refusing 999. Physical-phone behavior remains unrun.
 Stages 5–8 remain in progress.
+
+## 5 — optional speech customization (owner item 7)
+
+Versioned per-account speech JSON now supports an installed provider, exact offline
+English voice, speed and pitch bounded to 0.5–2.0, with neutral reset. Old saved
+choices retain their engines/voice and gain neutral defaults in memory. Provider
+browsing does not silently save another voice. Preview/Stop and online/offline
+reminder adapters carry the saved customization; unavailable options fail safely.
+Whisper/Kokoro defaults, foreground English-only input and shared microphone lease
+remain intact. No package, model, network dependency or schema bump was added.
+
+Native validation checks enabled installed services, installed offline English voice,
+selected live voice and successful rate/pitch setters. ADR-005 distinguishes requested
+provider metadata from actual binder identity: public Android TTS may internally
+fall back, so metadata is not proof of provider binding or physical audibility.
+Added/froze the additional donor SystemSpeech.kt reference used for this adaptation.
+
+TypeScript PASS; 129 suites / 1,058 tests PASS with normal exit; ESLint zero errors
+(265 warnings). Modified speech preference/native adapter/provider modules 100%
+line coverage; speech settings UI exceeds 60%. Standalone QA/native builds PASS;
+data-preserving emulator update and native instrumentation PASS, including added
+invalid-provider/NaN/boundary policy assertions. No actual voice or microphone
+quality result is claimed. Stages 6–8 remain in progress.
