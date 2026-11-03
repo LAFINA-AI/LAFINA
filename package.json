@@ -13,7 +13,9 @@
     "start": "react-native start",
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:architecture": "node scripts/check-architecture.cjs",
+    "benchmark:planner": "node scripts/benchmark-planner.cjs"
   },
   "dependencies": {
     "@op-engineering/op-sqlite": "^16.2.0",

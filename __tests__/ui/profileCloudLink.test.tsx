@@ -39,6 +39,7 @@ describe('profile cloud linking', () => {
     const rendered = JSON.stringify(renderer.toJSON());
     expect(rendered).not.toContain('Create or Link FastAPI');
     expect(rendered).not.toContain('FastAPI cloud password');
+    expect(rendered).toContain('Not tracked');
 
     await ReactTestRenderer.act(async () => renderer.unmount());
   });

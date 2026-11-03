@@ -1,6 +1,6 @@
 import { NativeModules } from 'react-native';
 import RNFS from 'react-native-fs';
-import { remindersStore } from '../../storage';
+import { remindersStore } from '../../storage/remindersStore';
 
 interface LafinaTTSModuleType {
   synthesize: (text: string, outputPath: string) => Promise<boolean>;

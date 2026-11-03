@@ -48,7 +48,7 @@ while keeping Whisper/Kokoro defaults. No new package has been installed.
 - TypeScript PASS; 111 suites / 907 tests PASS; ESLint zero errors (244 warnings).
   Guide and conversation coverage meet their required line thresholds.
 
-Stages 3–8 remain in progress. Physical-device acceptance is separate from host tests.
+Stages 3–8 evidence follows below. Physical-device acceptance is separate from host tests.
 
 ### Chat ordering follow-up
 
@@ -135,3 +135,51 @@ capabilities reported an on-device service and installed English voices; an expl
 system voice preview completed. Original Whisper/Kokoro preferences were restored.
 No physical recognition, audibility, quality or latency qualification is claimed.
 Preference migration follow-up: failing regression reproduced guest settings being stranded. Explicit event/speech preferences now follow the existing guest-to-account ownership transfer, preserving an existing destination choice. A cleared revision fence prevents stale guest Save resurrection; later fresh guests receive no prior facts/engine choice. TypeScript PASS; 119 suites / 940 tests PASS; ESLint zero errors.
+
+
+## Stage 8 — truthful statistics and repeatable evaluation
+
+Removed the fabricated +3 voice total and inference from note flags/text. Profile now
+shows Not tracked for historical voice uses. Real owner-scoped task/note counts use
+aggregate SQL; read failures remain unavailable. Added tested AST checks for direct,
+transitive and dynamic offline cloud/network imports and runtime TypeScript cycles.
+The scan found one existing TTS/storage barrel cycle; a direct reminders-store import
+resolved it. Final scan: 260 source files, zero detected violations/cycles.
+
+Added `npm run check:architecture`, `npm run benchmark:planner`, APK inspection and
+`docs/phone-qa.md`. The isolated real SQLite fixture contains 5,000 old completed tasks
+and 20 visible tasks. Actual source queries returned 20 relevant candidates versus
+5,020 full-read records. Seven host samples measured medians around 6.99 ms full read
+and 1.03 ms window read; these are synthetic Node/Jest timings, not Android/phone speed.
+Detailed values/environment are in planner-query-benchmark.json. Existing guide parity
+checks continue to validate every selectable command example.
+
+Final ordered gates: TypeScript PASS; 122 suites / 946 tests PASS with normal exit;
+ESLint zero errors (261 warnings). New statistics store line coverage 100%; affected
+critical modules exceed 80% and changed UI meets its required coverage. Both final
+standalone QA APKs compile; artifact reports contain final hashes, bytes and assets.
+
+## Final installed-app evidence and limits
+
+- Updated the existing x86_64 emulator installation in place; no uninstall, data clear,
+  database downgrade or donor database import occurred. Schema remains 21.
+- Final non-debuggable QA APK runs from its bundled JavaScript in airplane mode.
+  Seventeen real native checks PASS on the final target. Per-ABI phone/emulator
+  artifacts retain app ID, model assets, network capability and development signing.
+- Inspected Calendar undated-task access, Profile health/preferences/speech controls
+  and the truthful Not tracked statistic. Permissions came from actual Android state.
+- Optional installed English system voice preview completed in airplane mode. Returned
+  the account to its original Whisper/Kokoro defaults. Audibility/quality was not rated.
+- Created synthetic untimed task CAPSTONE-Remaining-QA through review/Confirm. The
+  read-only List tasks reply contained it from local storage. Exact quoted deletion
+  required another review/Confirm. A fresh undated-list read was empty afterward;
+  Android had no LAFINA due/timeout alarm. Existing student records were preserved.
+  Read-only QA query messages remain in Chat history; history was not bulk-cleared.
+- Reviewed expiry and unsent-draft Keep editing protection in the actual app.
+- All fourteen frozen CAPSTONE reference source hashes still match; donor unchanged.
+
+All scoped plan stages are implemented. Physical-phone/release qualification remains
+open: ARM64 installation, microphone quality, audible output, phone latency/battery,
+locked-screen/reboot/Doze/permission/clock-change matrix and the existing ONNX vendor
+16 KiB alignment warning are not certified by these host/emulator checks. No new
+npm/pip dependency or unapproved model/language/automatic learning feature was added.

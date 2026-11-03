@@ -4,9 +4,9 @@ import { Fonts, Layout, Shadows, useThemedStyles } from '../../theme';
 import type { ThemeColors } from '../../contexts/ThemeContext';
 
 interface ProfileStatsProps {
-  completedTasksCount: number;
-  notesCount: number;
-  voiceCommandsCount: number;
+  completedTasksCount: number|null;
+  notesCount: number|null;
+  voiceCommandsCount: number|null;
 }
 
 export const ProfileStats: React.FC<ProfileStatsProps> = ({
@@ -19,15 +19,15 @@ export const ProfileStats: React.FC<ProfileStatsProps> = ({
   return (
     <View style={styles.statsRow}>
       <View style={[styles.statCard, Shadows.card, themed.statCard]}>
-        <Text style={[styles.statVal, themed.statVal]}>{completedTasksCount}</Text>
+        <Text style={[styles.statVal, themed.statVal]}>{completedTasksCount??'Unavailable'}</Text>
         <Text style={[styles.statLabel, themed.statLabel]}>Tasks Done</Text>
       </View>
       <View style={[styles.statCard, Shadows.card, themed.statCard]}>
-        <Text style={[styles.statVal, themed.statVal]}>{notesCount}</Text>
+        <Text style={[styles.statVal, themed.statVal]}>{notesCount??'Unavailable'}</Text>
         <Text style={[styles.statLabel, themed.statLabel]}>Notes Saved</Text>
       </View>
       <View style={[styles.statCard, Shadows.card, themed.statCard]}>
-        <Text style={[styles.statVal, themed.statVal]}>{voiceCommandsCount}</Text>
+        <Text style={[styles.statVal, themed.statVal]}>{voiceCommandsCount??'Not tracked'}</Text>
         <Text style={[styles.statLabel, themed.statLabel]}>Voice Uses</Text>
       </View>
     </View>

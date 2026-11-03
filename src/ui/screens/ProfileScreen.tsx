@@ -34,6 +34,7 @@ import { PreferencesSettingsScreen } from './PreferencesSettingsScreen';
 import {ReminderHealth} from '../components/profile/ReminderHealth';
 import {PersonalMemory} from '../components/profile/PersonalMemory';
 import {SpeechEngines} from '../components/profile/SpeechEngines';
+import {profileStatisticsStore} from '../../storage/profileStatisticsStore';
 
 function getInitials(username: string | null | undefined): string {
   if (!username || username.trim().length === 0) {
@@ -80,9 +81,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // Stats
-  const [completedTasksCount, setCompletedTasksCount] = useState(0);
-  const [notesCount, setNotesCount] = useState(0);
-  const [voiceCommandsCount, setVoiceCommandsCount] = useState(0);
+  const [completedTasksCount, setCompletedTasksCount] = useState<number|null>(null);
+  const [notesCount, setNotesCount] = useState<number|null>(null);
+  const [voiceCommandsCount, setVoiceCommandsCount] = useState<number|null>(null);
 
   // Settings states
   const [timeFormat24h, setTimeFormat24h] = useState(false);
@@ -177,16 +178,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   };
 
   const loadStats = () => {
-    const allTasks = tasksStore.getAllTasks(userId);
-    const completed = allTasks.filter((t) => t.isCompleted).length;
-    setCompletedTasksCount(completed);
-
-    const allNotes = notesStore.getAll(userId);
-    setNotesCount(allNotes.length);
-
-    const voiceNotes = allNotes.filter((n) => n.isVoiceTranscribed).length;
-    const voiceTasks = allTasks.filter((t) => t.notes?.includes('voice') || t.notes?.includes('Voice')).length;
-    setVoiceCommandsCount(voiceNotes + voiceTasks + 3);
+    const evidence=profileStatisticsStore.read(userId);
+    setCompletedTasksCount(evidence.completedTasksCount);
+    setNotesCount(evidence.notesCount);
+    setVoiceCommandsCount(evidence.voiceCommandsCount);
   };
 
   const choosePhoto = async () => {

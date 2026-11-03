@@ -1,0 +1,24 @@
+{
+  "environment": "Host Node/Jest + real in-memory better-sqlite3; not Android or phone timing",
+  "fixture": {
+    "synthetic": true,
+    "history": 5000,
+    "visible": 20,
+    "owners": 1
+  },
+  "fullRead": {
+    "items": 5020,
+    "medianMs": 6.990299999999934,
+    "minMs": 5.64220000000023,
+    "maxMs": 24.30470000000014,
+    "samples": 7
+  },
+  "windowRead": {
+    "items": 20,
+    "medianMs": 1.0268999999998414,
+    "minMs": 1.0150000000003274,
+    "maxMs": 1.5171000000000276,
+    "samples": 7
+  },
+  "conclusion": "Candidate counts verified. Timings describe this synthetic host fixture only; no phone-speed claim."
+}
