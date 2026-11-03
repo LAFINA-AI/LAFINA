@@ -7,6 +7,7 @@ apply plugin: "com.facebook.react"
  * By default you don't need to apply any configuration, just uncomment the lines you need.
  */
 react {
+    extraPackagerArgs = ["--max-workers", "2"]
     /* Folders */
     //   The root of your project, i.e. where "package.json" lives. Default is '../..'
     // root = file("../../")
@@ -71,6 +72,11 @@ def enableProguardInReleaseBuilds = false
  * this variant is about 6MiB larger per architecture than default.
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+def supportedAbis = ["arm64-v8a", "x86_64", "x86"]
+def targetAbis = (project.findProperty("reactNativeArchitectures") ?: supportedAbis.join(',')).split(',').collect { it.trim() }
+if (targetAbis.isEmpty() || targetAbis.any { !supportedAbis.contains(it) }) {
+    throw new GradleException("Use supported reactNativeArchitectures: " + supportedAbis.join(','))
+}
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -82,11 +88,16 @@ android {
         applicationId "com.lafina"
         minSdkVersion 30
         targetSdkVersion 34
-        versionCode 8 // Increment this number for every new release
-        versionName "1.3.3" // human-readable version string
+        versionCode 9
+        versionName "1.3.4"
         testInstrumentationRunner "com.lafina.LafinaDeliveryInstrumentation"
-        ndk {
-            abiFilters "arm64-v8a", "x86_64", "x86"
+    }
+    splits {
+        abi {
+            enable true
+            reset()
+            include(*targetAbis)
+            universalApk false
         }
     }
     aaptOptions {
@@ -118,6 +129,13 @@ android {
             signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+        qa {
+            initWith release
+            signingConfig signingConfigs.debug
+            debuggable false
+            matchingFallbacks = ["release"]
+            manifestPlaceholders = [usesCleartextTraffic: "false"]
         }
     }
     externalNativeBuild {

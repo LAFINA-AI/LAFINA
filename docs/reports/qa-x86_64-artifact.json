@@ -1,0 +1,17 @@
+{
+  "path": "C:\\L3mxr\\Github Repositories\\LAFINA\\LAFINA\\android\\app\\build\\outputs\\apk\\qa\\app-x86_64-qa.apk",
+  "bytes": 574402560,
+  "sha256": "63eccb227ba73b369412a8619b8fac7098b304583ff2d7902e2fdaf0a8b0a9d6",
+  "nativeAbis": [
+    "x86_64"
+  ],
+  "models": [
+    "assets/models/SmolLM2-135M-Instruct.gguf",
+    "assets/models/af_bella.bin",
+    "assets/models/cmudict.txt",
+    "assets/models/ggml-tiny.en-q5_1.bin",
+    "assets/models/kokoro-v0_19.onnx",
+    "assets/models/silero_vad.onnx"
+  ],
+  "bundledJavaScript": true
+}

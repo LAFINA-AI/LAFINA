@@ -94,3 +94,20 @@ payload and UTC creation/update timestamps. No schema bump or native compatibili
 policy widening is necessary. Preferences do not sync or infer facts from history.
 TypeScript PASS; 117 suites / 933 tests PASS; ESLint zero errors (251 warnings).
 Memory store line coverage 100%; manager UI exceeds 60%.
+
+## Stage 6 — architecture-specific packaging
+
+Added per-ABI APK splits and a development-signed, non-debuggable QA variant that
+bundles JavaScript without Metro. Preserved app ID/signing configuration, INTERNET,
+all six model/support assets and database version 21. Version code/name now 9/1.3.4.
+Both x86_64 and ARM64 QA builds PASS, including Android release-style lint. Artifact
+metadata/hashes/bytes are in qa-x86_64-artifact.json and qa-arm64-artifact.json; no
+matched size or phone-speed improvement is claimed. Development certificate SHA-256:
+fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c.
+The x86_64 build updated the existing version-8 emulator installation without clearing
+its data. Airplane-mode launch and undated-list/health/preference-screen smoke checks
+PASS. Twelve existing native delivery checks PASS on the updated target. ARM64 physical
+install and known vendor ONNX 16 KiB alignment qualification remain unverified.
+TypeScript PASS; 117 suites / 933 tests PASS; ESLint zero errors (251 warnings).
+Build output directories replace the prior ABI selection; the final build will request
+both phone and emulator ABIs together so both final artifacts are retained.
