@@ -40,7 +40,7 @@ Never inspect environment files or distribute development signing as production.
    Implementation refinement: additive schema 22 holds a derived normalized rich-text
    search cache, invalidated by SQL triggers on every note update/delete. Normalize
    at most 50 stale notes per UI yield; source content/revisions stay authoritative.
-   Native delivery explicitly accepts 20�22 before bundled schema-22 JS is installed.
+   Native delivery explicitly accepts 20–22 before bundled schema-22 JS is installed.
 
 4. **Overnight events and timezone-safe scheduling (item 5).** Add explicit event end
    dates and named timezone/instant metadata through an additive migration; retain
@@ -51,6 +51,9 @@ Never inspect environment files or distribute development signing as production.
    code with an explicitly reviewed compatible schema range. Test legacy upgrades,
    cross-midnight display/moves/reminders, timezone changes, recurrence, sync fallback
    and future-schema refusal. Do not guess ambiguous local times.
+   The concrete event migration is schema 23 after Notes cache schema 22. A pure
+   backward-compatible backend payload contract is included; backend deployment
+   remains separate from this offline app implementation. ADR-004 records semantics.
 
 5. **Speech customization (item 7).** Extend per-account speech settings with explicit
    installed provider, voice, rate/pitch (bounded 0.5–2.0), preserving existing saved

@@ -14,6 +14,7 @@ from pydantic import (
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.api.event_payload import EventPayload
 from backend.app.database import get_db
 from backend.app.models.account import Account
 from backend.app.models.session import AuthSession
@@ -57,16 +58,6 @@ class TaskPayload(BaseModel):
         if normalized not in priority_map:
             raise ValueError("priority must be High, Medium, or Low")
         return priority_map[normalized]
-
-class EventPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    title: str = Field(..., max_length=256)
-    date: str
-    start_time: str
-    end_time: str
-    location: str | None = None
-    linked_calendar_block: str | None = None
-    recurrence_rule: str | None = None
 
 class TimeBlockPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")

@@ -1,3 +1,5 @@
+import {localToUtc,resolveEventTime} from '../../storage/eventTime';
+import type {EventTimeMetadata} from '../../storage/eventTime';
 import {normalizePlannerRequest,getPlannerReply} from './plannerConversation';
 import {db} from '../../storage/database';
 import type {DatabaseTransaction} from '../../storage/database';
@@ -32,7 +34,7 @@ const sourceTables={task:'tasks',event:'events',time_block:'time_blocks'} as con
 interface Target {id:string;type:SourceType;title:string;revision:number;}
 type Action =
   | {kind:'untimed_task';title:string;date:string|null}
-  | {kind:'source_change';operation:'move'|'delete';target:Target;date?:string;time?:string;endTime?:string;atMs?:number}
+  | {kind:'source_change';operation:'move'|'delete';target:Target;date?:string;time?:string;endTime?:string;atMs?:number;eventTime?:EventTimeMetadata}
   | {kind:'reminder_action';operation:'ack'|'snooze';target:Target;reminderId:string;key:string;minutes:number;maxSnoozes:number}
 
   | {kind:'note'; body:string}
@@ -68,7 +70,7 @@ const parseSchedule=(text:string,now:Date):NluResult=>{
 const destination=(text:string,now:Date):{date:string;time:string;atMs:number}|null=>{
   const parsed=parseSchedule(`schedule Marker ${text}`,now);
   if(!parsed.date||!parsed.time||parsed.task?.toLowerCase()!=='marker')return null;
-  const start=new Date(`${parsed.date}T${parsed.time}:00`);
+  const start=new Date(localToUtc(parsed.date,parsed.time,timezone()));
   if(!Number.isFinite(start.getTime())||start.getTime()<=now.getTime()||localStamp(start)!==`${parsed.date} ${parsed.time}`)return null;
   return {date:parsed.date,time:parsed.time,atMs:start.getTime()};
 };
@@ -98,15 +100,15 @@ const parseSourceAction=(text:string,userId:string,now:Date):{action:Action|null
   }
   if(!match[4]||row.is_completed===1)return {action:null,reply:'Choose an incomplete item and a valid future date/time.'};
   const at=destination(match[4],now);if(!at)return {action:null,reply:'Specify a valid future date and exact time.'};
-  let endTime:string|undefined;
+  let endTime:string|undefined;let eventTime:EventTimeMetadata|undefined;
   if(type!=='task'){
     const minutes=(value:unknown):number=>{const parts=String(value).split(':').map(Number);return parts[0]*60+parts[1];};
-    const duration=((minutes(row.end_time)-minutes(row.start_time)+1440)%1440)||1440;
+    const duration=type==='event'&&row.start_at&&row.end_at?(Date.parse(String(row.end_at))-Date.parse(String(row.start_at)))/60000:((minutes(row.end_time)-minutes(row.start_time)+1440)%1440)||1440;
     if(!Number.isFinite(duration))return {action:null,reply:'This item has an invalid duration. Inspect it in Calendar.'};
     const end=new Date(at.atMs+duration*60000);endTime=localStamp(end).slice(-5);
-    if(type==='event'&&localStamp(end).slice(0,10)!==at.date)return {action:null,reply:'This move crosses midnight. Use separate dated events until multi-day events are supported.'};
+    if(type==='event')eventTime=resolveEventTime({date:at.date,startTime:at.time,endDate:localStamp(end).slice(0,10),endTime,timeZone:timezone()});
   }
-  return {action:{kind:'source_change',operation,target,...at,endTime},reply:`Move ${type.replace('_',' ')} “${target.title}”\nTo ${at.date} ${at.time}${endTime?` → ${endTime}`:''} (${timezone()})\nExisting linked reminders move with the item; no extra reminder is created.`};
+  return {action:{kind:'source_change',operation,target,...at,endTime,eventTime},reply:`Move ${type.replace('_',' ')} “${target.title}”\nTo ${at.date} ${at.time}${endTime?` → ${eventTime?.endDate??at.date} ${endTime}`:''} (${timezone()})\nExisting linked reminders move with the item; no extra reminder is created.`};
 };
 const buildAction=(text:string,userId:string):{action:Action|null;reply:string}=>{
   const now=new Date();
@@ -116,6 +118,7 @@ const buildAction=(text:string,userId:string):{action:Action|null;reply:string}=
     return {action:{kind:'note',body},reply:`Create note “${DEFAULT_NOTE_TITLE}”\n${body}`};
   }
   const outsideQuotes=text.replace(/"[^"\n]*"|“[^”\n]*”/g,'');
+  if(/\byesterday\b/i.test(outsideQuotes))return {action:null,reply:'Choose a future date and time.'};
   if(/\b(?:not|never|don['’]t|cancel)\b/i.test(outsideQuotes)) return {action:null,reply:'Please state one positive scheduling command, or use the manual controls to cancel an item.'};
   if(/\b(?:and|then|also)\s+(?:(?:please|a)\s+)?(?:schedule|add|create|complete|remind|note|block|move|reschedule|delete|remove|acknowledge|snooze)\b/i.test(outsideQuotes)) return {action:null,reply:'Please prepare one action at a time.'};
   const sourceAction=parseSourceAction(text,userId,now);if(sourceAction)return sourceAction;
@@ -146,10 +149,9 @@ const buildAction=(text:string,userId:string):{action:Action|null;reply:string}=
   if(explicitEvent&&nlu.duration_minutes===null)return {action:null,reply:'Give the event a start time and duration, or a start/end range.'};
   if(nlu.intent!=='schedule' || nlu.status!=='success') return {action:null,reply:nlu.reply};
   if(!nlu.task?.trim() || !nlu.date || !/^\d{4}-\d{2}-\d{2}$/.test(nlu.date) || !nlu.time || !/^([01]\d|2[0-3]):[0-5]\d$/.test(nlu.time)) return {action:null,reply:'Please give a title, date and exact time before preparing this schedule.'};
-  const start=new Date(`${nlu.date}T${nlu.time}:00`);
+  const start=new Date(localToUtc(nlu.date,nlu.time,timezone()));
   if(!Number.isFinite(start.getTime()) || localStamp(start)!==`${nlu.date} ${nlu.time}` || start.getTime()<=now.getTime()) return {action:null,reply:'Choose a valid future date and time.'};
   const duration=nlu.duration_minutes;
-  if(explicitEvent&&duration!==null&&localStamp(new Date(start.getTime()+duration*60000)).slice(0,10)!==nlu.date)return {action:null,reply:'This event crosses midnight. Use separate dated events until multi-day events are supported.'};
   if(duration!==null && (!Number.isInteger(duration) || duration<=0 || duration>1440)) return {action:null,reply:'Please use a duration between 1 and 1440 minutes.'};
   const lead=getReminderPreferences(userId).leadTimeMinutes;
   if(!Number.isFinite(lead) || lead<0) throw new Error('Reminder preferences are unavailable.');
@@ -179,7 +181,7 @@ const execute=(action:Action,userId:string,tx:DatabaseTransaction):{itemId:strin
       if(action.operation==='delete'){
         if(target.type==='task')tasksStore.deleteTask(target.id,tx);else if(target.type==='event')tasksStore.deleteEvent(target.id,tx);else timeBlocksStore.delete(target.id,tx);
       }else if(target.type==='task')tasksStore.updateTask({id:target.id,dueDate:action.date,dueTime:action.time},tx);
-      else if(target.type==='event')tasksStore.updateEvent({id:target.id,date:action.date,startTime:action.time,endTime:action.endTime},tx);
+      else if(target.type==='event')tasksStore.updateEvent({id:target.id,date:action.date,startTime:action.time,endTime:action.endTime,...action.eventTime},tx);
       else timeBlocksStore.update({id:target.id,date:action.date,startTime:action.time,endTime:action.endTime},tx);
       return {itemId:target.id};
     }
@@ -208,8 +210,7 @@ const execute=(action:Action,userId:string,tx:DatabaseTransaction):{itemId:strin
   }
   if(action.itemType==='event'){
     const end=new Date(action.scheduledMs+(action.duration??60)*60000);
-    if(localStamp(end).slice(0,10)!==action.date)throw new Error('REVIEW_INVALID');
-    tasksStore.insertEvent({id:itemId,userId,title:action.title,date:action.date,startTime:action.time,endTime:localStamp(end).slice(-5),recurrenceRule:action.recurrence},tx);
+    tasksStore.insertEvent({id:itemId,userId,title:action.title,date:action.date,startTime:action.time,endTime:localStamp(end).slice(-5),endDate:localStamp(end).slice(0,10),timeZone:timezone(),recurrenceRule:action.recurrence},tx);
   }else if(action.duration===null) tasksStore.insertTask({id:itemId,userId,title:action.title,dueDate:action.date,dueTime:action.time,isCompleted:false,priority:DEFAULT_TASK_PRIORITY,category:DEFAULT_TASK_CATEGORY,notes:'Created from reviewed assistant command',recurrenceRule:action.recurrence},tx);
   else {
     const end=new Date(action.scheduledMs+action.duration*60000);

@@ -1233,4 +1233,13 @@ describe('syncWorker account-scoped synchronization', () => {
       ).rows[0]?.count
     ).toBe(0);
   });
+  it('round-trips timezone metadata and preserves it for unchanged legacy pulls',async()=>{
+    const id='timezone-sync-owner';createActiveUser(id);
+    const payload={title:'Night sync',date:'2026-11-04',start_time:'23:00',end_time:'01:00',end_date:'2026-11-05',time_zone:'Asia/Manila',start_at:'2026-11-04T15:00:00.000Z',end_at:'2026-11-04T17:00:00.000Z'};
+    const request=jest.spyOn(cloudClient,'request').mockResolvedValue({status:'success',data:makeResponse({changes:[{changeId:1,entityType:'event',entityId:'synced-night',operation:'create',version:1,payload,updatedAt:SERVER_TIME}],nextCursor:1})});
+    await syncWorker.performSync();expect(db.executeSync('SELECT end_date,start_at FROM events WHERE id=?',['synced-night']).rows[0]).toMatchObject({end_date:payload.end_date,start_at:payload.start_at});
+    request.mockResolvedValue({status:'success',data:makeResponse({changes:[{changeId:2,entityType:'event',entityId:'synced-night',operation:'update',version:2,payload:{title:'Old client title edit',date:payload.date,start_time:payload.start_time,end_time:payload.end_time},updatedAt:'2026-08-26T01:00:00.000Z'}],nextCursor:2})});
+    await syncWorker.performSync();expect(db.executeSync('SELECT start_at,title FROM events WHERE id=?',['synced-night']).rows[0]).toMatchObject({start_at:payload.start_at,title:'Old client title edit'});
+  });
+
 });

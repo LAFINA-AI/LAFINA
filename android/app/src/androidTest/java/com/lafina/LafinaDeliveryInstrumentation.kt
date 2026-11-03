@@ -120,9 +120,19 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
       LafinaDeliveryStore(context).use { store -> check(store.current("qa-rem")!=null) }
       openFixture(file).use { it.execSQL("PRAGMA user_version=22") }
       LafinaDeliveryStore(context).use { store -> check(store.current("qa-rem")!=null) }
+      openFixture(file).use { it.execSQL("PRAGMA user_version=23") }
+      LafinaDeliveryStore(context).use { store -> check(store.current("qa-rem")!=null) }
+      openFixture(file).use { db ->
+        db.execSQL("CREATE TABLE events(id TEXT PRIMARY KEY,user_id TEXT,deleted_at TEXT,end_date TEXT,time_zone TEXT,start_at TEXT,end_at TEXT,start_fold TEXT,end_fold TEXT)")
+        db.execSQL("INSERT INTO events VALUES('qa-night','qa-user',NULL,'2026-11-05','Asia/Manila','2026-11-04T15:00:00.000Z','2026-11-04T17:00:00.000Z',NULL,NULL)")
+        db.execSQL("UPDATE reminder_delivery_jobs SET source_type='event',source_id='qa-night',source_snapshot=? WHERE reminder_id='qa-rem'",arrayOf("{\"user_id\":\"qa-user\",\"end_date\":\"2026-11-05\",\"time_zone\":\"Asia/Manila\",\"start_at\":\"2026-11-04T15:00:00.000Z\",\"end_at\":\"2026-11-04T17:00:00.000Z\"}"))
+      }
+      LafinaDeliveryStore(context).use { store -> check(store.sourceLive(requireNotNull(store.current("qa-rem")))) }
+      openFixture(file).use { it.execSQL("UPDATE events SET end_at='2026-11-04T18:00:00.000Z'") }
+      LafinaDeliveryStore(context).use { store -> check(!store.sourceLive(requireNotNull(store.current("qa-rem")))) }
       openFixture(file).use { it.execSQL("PRAGMA user_version=999") }
       check(runCatching { LafinaDeliveryStore(context).close() }.isFailure)
-      results.putString("stream", "PASS: PendingIntent hash-collision isolation, native SQLite claim, duplicate/stale rejection, concurrent-call serialization/release, posting receipt, reopen recovery, bounded failure counters, source-change retirement, atomic rollback, schema-21/22 compatibility and future-schema refusal.\n")
+      results.putString("stream", "PASS: PendingIntent hash-collision isolation, native SQLite claim, duplicate/stale rejection, concurrent-call serialization/release, posting receipt, reopen recovery, bounded failure counters, source-change retirement, atomic rollback, schema-21/22/23 compatibility, timezone source validation and future-schema refusal.\n")
       results.putInt("passed", 17)
       finish(Activity.RESULT_OK, results)
     } catch (error: Throwable) {

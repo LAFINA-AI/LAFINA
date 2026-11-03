@@ -43,7 +43,7 @@ TypeScript PASS; 124 suites / 954 tests PASS; ESLint zero errors (261 warnings).
 Checked Notes store 100% line coverage; Notes hook 60.2%, meeting the general gate.
 Stages 3–8 remain in progress; this stage has host evidence, not a physical UI claim.
 
-## 3 � paged Notes and normalized SQL search (owner item 4)
+## 3 – paged Notes and normalized SQL search (owner item 4)
 
 Added schema-22 derived search cache with SQL invalidation and owner/revision joins.
 Each call normalizes at most 50 stale rich bodies; the UI yields between batches
@@ -58,4 +58,38 @@ TypeScript PASS; 126 suites / 960 tests PASS with normal exit; ESLint zero error
 Standalone QA/native test builds PASS; data-preserving emulator installation PASS.
 Existing 17 native groups plus cross-process microphone probes PASS, including
 explicit schema 21/22 acceptance and schema-999 refusal. No student data cleared.
-Stages 4�8 remain in progress; physical phone/audio validation remains pending.
+Stages 4–8 remain in progress; physical phone/audio validation remains pending.
+
+## 4 — overnight events and timezone safety (owner item 5)
+
+Added nullable schema-23 event end-date, IANA timezone, UTC instants and repeated-time
+choices. Legacy rows remain floating; migration tests preserve original wall values
+and timestamps. New event forms, reviewed overnight creation/moves, linked reminder
+refresh, bounded Calendar span queries, recurrence day spans and timeline labels
+use the metadata. Invalid/repeated DST occurrences get visible repair feedback;
+no implicit wall-time roll forward. The fixed model JSON/prompt remain unchanged.
+
+ICS preserves dated ranges, timezone and fold choices. Invalid datetime imports no
+longer invent today. Sync validates metadata and preserves it on unchanged legacy
+client pulls. Added a pure backend EventPayload contract with standalone tests that
+do not import application settings or environment files. Deploy the backend contract
+before syncing metadata-enabled events to an older server; local changes remain
+durable if an older server rejects optional fields. No backend deployment occurred.
+ADR-004 records the detailed compatibility and recurrence semantics.
+
+The frozen 80-command reviewed-pipeline corpus initially caught an existing
+'yesterday' -> future scheduling bug (79/80 command expectations). Fixed it without
+altering the corpus; all 80 now pass. This is a deterministic command regression,
+not an on-device SmolLM2 accuracy/NIEA or recorded-speech measurement. Added the
+required test:golden runner. Also normalized four new stage-3 text files to UTF-8.
+
+TypeScript PASS; 128 suites / 1,053 tests PASS with normal exit; ESLint zero errors
+(263 warnings). New event-time and migration helpers 100% line coverage; modified
+linked reminder/store/query modules exceed 80%; Calendar hooks exceed 60%.
+Architecture: 265 modules, zero offline boundary violations/cycles. Pure backend
+contract unittest PASS and Ruff clean for the new contract/test; the existing sync
+route has unrelated pre-existing Ruff findings and was not claimed wholly clean.
+Standalone QA/native test builds PASS; emulator update preserved app data. Existing
+17 native groups plus microphone and timezone-source regressions PASS, explicitly
+accepting schemas 21/22/23 and refusing 999. Physical-phone behavior remains unrun.
+Stages 5–8 remain in progress.

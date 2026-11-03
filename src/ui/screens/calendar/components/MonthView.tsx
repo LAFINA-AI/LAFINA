@@ -97,7 +97,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
 
     const cellBlocks = blocks.filter((b) => b.date === cellDateStr);
     const cellTasks = allTasks.filter((t) => t.dueDate === cellDateStr);
-    const cellEvents = allEvents.filter((e) => e.date === cellDateStr);
+    const cellEvents = allEvents.filter((e) => e.date<=cellDateStr&&(e.endDate??e.date)>=cellDateStr);
 
     const combined: { title: string; time: string; color: string }[] = [];
 

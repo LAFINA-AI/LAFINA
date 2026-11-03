@@ -20,6 +20,6 @@ revision and the exact live owner-scoped ID set in one transaction before writes
 Partial pages cannot be treated as the entire collection. Refresh recovers changed
 collections; retained page callbacks are fenced by account and query lifetime.
 
-The native delivery reader explicitly accepts schemas 20–22. The standalone QA
+The native delivery reader explicitly accepts schemas 20â€“22. The standalone QA
 APK carries this reader and bundled schema-22 JS together, so no older native reader
 runs the migration. Future schemas remain rejected.

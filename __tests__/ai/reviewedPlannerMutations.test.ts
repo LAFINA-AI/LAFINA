@@ -79,7 +79,7 @@ describe('extended reviewed planner actions',()=>{
     expect(tasksStore.getAllTasks('mutation-user')[0]).toMatchObject({title:'Read tomorrow at 9pm',dueDate:null,dueTime:null});
     expect(confirm('Add task Report on 2026-11-05').status).toBe('saved');
     expect(tasksStore.getAllTasks('mutation-user').find(t=>t.title==='Report')?.dueDate).toBe('2026-11-05');
-    expect(createCommandSession('mutation-user').propose('Add event Night lab tomorrow at 11pm for 120 minutes').review).toBeNull();
+    expect(createCommandSession('mutation-user').propose('Add event Night lab tomorrow at 11pm for 120 minutes').review?.summary).toMatch(/2026-11-05 01:00/);
   });
   it('persists a reviewed snooze and moves/deletes one block or event',()=>{
     linked();remindersStore.updateReminderStatus('source-rem','triggered');db.executeSync('UPDATE reminder_delivery_jobs SET deadline_at=? WHERE reminder_id=?',[new Date(Date.now()+45000).toISOString(),'source-rem']);

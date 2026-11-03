@@ -55,5 +55,12 @@ describe('manual task deadline editing',()=>{
     act(()=>state.openNew('event'));const stale=state.applyMemory;memory.forget('untimed-owner','all');const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});act(()=>stale?.());expect(state.form.time).toBe('12:00');expect(alert).toHaveBeenCalled();alert.mockRestore();
     act(()=>state.openNew('task'));expect(state.memoryOffer).toBeNull();
   });
+  it('saves an explicit overnight range and rejects nonexistent or ambiguous zone times',()=>{
+    const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});
+    act(()=>state.openNew('event'));act(()=>{state.updateField('title','Night event');state.updateField('time','23:00');state.updateField('endTime','01:00');state.updateField('endDate','2026-11-04');state.updateField('timeZone','Asia/Manila');});act(()=>state.save());
+    const event=tasksStore.getAllEvents('untimed-owner').find(item=>item.title==='Night event')!;expect(event.endDate).toBe('2026-11-04');expect(event.startAt).toBe('2026-11-03T15:00:00.000Z');
+    act(()=>state.openNew('event'));act(()=>{state.updateField('title','Gap');state.updateField('startDate','2026-03-08');state.updateField('time','02:30');state.updateField('endDate','2026-03-08');state.updateField('endTime','04:00');state.updateField('timeZone','America/New_York');});act(()=>state.save());expect(state.visible).toBe(true);expect(alert).toHaveBeenLastCalledWith('Check event time',expect.stringMatching(/does not exist/));alert.mockRestore();
+  });
+
 });
 

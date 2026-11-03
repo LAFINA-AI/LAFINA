@@ -1,3 +1,5 @@
+import {resolveEventTime} from './eventTime';
+import type {EventTimeMetadata} from './eventTime';
 import {refreshLinkedReminders} from './linkedReminders';
 import { db, DatabaseTransaction } from './database';
 import { syncOutboxStore } from './syncOutboxStore';
@@ -18,7 +20,7 @@ export interface Task {
   deletedAt?: string | null;
 }
 
-export interface Event {
+export interface Event extends Partial<EventTimeMetadata> {
   id: string;
   userId: string;
   title: string;
@@ -56,6 +58,7 @@ const mapRowToEvent = (row: any): Event => ({
   date: row.date,
   startTime: row.start_time,
   endTime: row.end_time,
+  endDate:row.end_date??null,timeZone:row.time_zone??null,startAt:row.start_at??null,endAt:row.end_at??null,startFold:row.start_fold??null,endFold:row.end_fold??null,
   location: row.location,
   linkedCalendarBlock: row.linked_calendar_block,
   recurrenceRule: row.recurrence_rule,
@@ -117,6 +120,7 @@ const eventPayload = (row: StoredSyncRow): Record<string, unknown> => ({
   date: row.date,
   start_time: row.start_time,
   end_time: row.end_time,
+  ...(row.time_zone?{end_date:row.end_date??null,time_zone:row.time_zone,start_at:row.start_at??null,end_at:row.end_at??null,start_fold:row.start_fold??null,end_fold:row.end_fold??null}:{}),
   location: row.location,
   linked_calendar_block: row.linked_calendar_block,
   recurrence_rule: row.recurrence_rule,
@@ -185,7 +189,7 @@ export const tasksStore = {
   updateTask: (task: Partial<Task> & { id: string }, executor?: DatabaseTransaction): void => {
     const now = new Date().toISOString();
     const sets: string[] = [];
-    const params: any[] = [];
+    const params: unknown[] = [];
 
     const fields: { key: keyof Task; col: string; type?: string }[] = [
       { key: 'title', col: 'title' },
@@ -305,10 +309,11 @@ export const tasksStore = {
     executor?: DatabaseTransaction,
   ): void => {
     const now = new Date().toISOString();
+    const metadata=resolveEventTime(event);
     const applyInsert = (tx: DatabaseTransaction): void => {
       tx.executeSync(
-        `INSERT INTO events (id, user_id, title, date, start_time, end_time, location, linked_calendar_block, recurrence_rule, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO events (id, user_id, title, date, start_time, end_time, location, linked_calendar_block, recurrence_rule, created_at, updated_at,end_date,time_zone,start_at,end_at,start_fold,end_fold)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?)`,
         [
           event.id,
           event.userId,
@@ -320,7 +325,7 @@ export const tasksStore = {
           event.linkedCalendarBlock || null,
           event.recurrenceRule || null,
           now,
-          now,
+          now,metadata.endDate,metadata.timeZone,metadata.startAt,metadata.endAt,metadata.startFold,metadata.endFold,
         ],
       );
       syncOutboxStore.enqueueMutation(event.userId, 'event', event.id, 'create', {
@@ -331,6 +336,7 @@ export const tasksStore = {
         location: event.location || null,
         linked_calendar_block: event.linkedCalendarBlock || null,
         recurrence_rule: event.recurrenceRule || null,
+        ...(metadata.timeZone?{end_date:metadata.endDate,time_zone:metadata.timeZone,start_at:metadata.startAt,end_at:metadata.endAt,start_fold:metadata.startFold,end_fold:metadata.endFold}:{}),
       }, 'account', event.userId, tx);
     };
     try {
@@ -345,13 +351,14 @@ export const tasksStore = {
   updateEvent: (event: Partial<Event> & { id: string }, executor?: DatabaseTransaction): void => {
     const now = new Date().toISOString();
     const sets: string[] = [];
-    const params: any[] = [];
+    const params: unknown[] = [];
 
     const fields: { key: keyof Event; col: string }[] = [
       { key: 'title', col: 'title' },
       { key: 'date', col: 'date' },
       { key: 'startTime', col: 'start_time' },
       { key: 'endTime', col: 'end_time' },
+      {key:'endDate',col:'end_date'},{key:'timeZone',col:'time_zone'},{key:'startAt',col:'start_at'},{key:'endAt',col:'end_at'},{key:'startFold',col:'start_fold'},{key:'endFold',col:'end_fold'},
       { key: 'location', col: 'location' },
       { key: 'linkedCalendarBlock', col: 'linked_calendar_block' },
       { key: 'recurrenceRule', col: 'recurrence_rule' },
@@ -373,6 +380,14 @@ export const tasksStore = {
 
     try {
       const apply = (tx: DatabaseTransaction): void => {
+        if(['date','startTime','endTime','endDate','timeZone','startAt','endAt','startFold','endFold'].some(key=>Object.prototype.hasOwnProperty.call(event,key))){
+          const prior=tx.executeSync('SELECT * FROM events WHERE id=?',[event.id]).rows[0];
+          if(!prior)throw new Error('Event unavailable.');
+          const metadata=resolveEventTime({...mapRowToEvent(prior),startAt:null,endAt:null,...event});
+          for(const [key,col] of [['endDate','end_date'],['timeZone','time_zone'],['startAt','start_at'],['endAt','end_at'],['startFold','start_fold'],['endFold','end_fold']] as const){
+            const index=sets.indexOf(`${col} = ?`);if(index>=0)params[index]=metadata[key];else{sets.splice(sets.length-1,0,`${col} = ?`);params.splice(params.length-2,0,metadata[key]);}
+          }
+        }
         tx.executeSync(`UPDATE events SET ${sets.join(', ')} WHERE id = ?`, params);
         refreshLinkedReminders('event',event.id,tx);
         const row = tx.executeSync('SELECT * FROM events WHERE id = ?', [event.id]).rows?.[0] as StoredSyncRow | undefined;

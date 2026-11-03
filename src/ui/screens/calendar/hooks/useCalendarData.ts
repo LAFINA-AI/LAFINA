@@ -1,3 +1,4 @@
+import {eventOccurrence} from '../../../../storage/eventTime';
 import {plannerQueries} from '../../../../storage/plannerQueries';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ViewMode, CalendarData } from '../types';
@@ -40,6 +41,7 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
   const [weekDays, setWeekDays] = useState<Date[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
+  const [eventTimeWarning,setEventTimeWarning]=useState(false);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [allEvents, setAllEvents] = useState<Event[]>([]);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -210,7 +212,7 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
 
     // Expand recurrence
     const expandedTasks: Task[] = [];
-    const expandedEvents: Event[] = [];
+    const expandedEvents: Event[] = [];let skippedEventTime=false;
     const { start: rangeStart, end: rangeEnd } = getViewRange();
 
     rawTasks.forEach((t) => {
@@ -231,14 +233,15 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
 
     rawEvents.forEach((e) => {
       if (e.recurrenceRule && e.date) {
-        const dates = getOccurrences(e.date, e.recurrenceRule, rangeStart, rangeEnd);
+        const eventRangeStart=new Date(rangeStart.getTime()-31*86400000);
+        const dates = getOccurrences(e.date, e.recurrenceRule, eventRangeStart, rangeEnd);
         dates.forEach((dateStr) => {
           const isBase = dateStr === e.date;
-          expandedEvents.push({
-            ...e,
+          try{expandedEvents.push({
+            ...eventOccurrence(e,dateStr),
             id: isBase ? e.id : `${e.id}_occur_${dateStr}`,
             date: dateStr,
-          });
+          });}catch{skippedEventTime=true;/* Never roll a nonexistent occurrence forward. */}
         });
       } else {
         expandedEvents.push(e);
@@ -246,7 +249,7 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
     });
 
     setAllTasks(expandedTasks);
-    setAllEvents(expandedEvents);
+    setAllEvents(expandedEvents);setEventTimeWarning(skippedEventTime);
 
     const formatLocalDate = (d: Date): string => {
       const year = d.getFullYear();
@@ -257,7 +260,7 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
 
     const dateStr = formatLocalDate(selectedDate);
     const dayTasks = expandedTasks.filter((t) => t.dueDate === dateStr);
-    const dayEvents = expandedEvents.filter((e) => e.date === dateStr);
+    const dayEvents = expandedEvents.filter((e) => e.date<=dateStr&&(e.endDate??e.date)>=dateStr);
 
     setTasks(dayTasks);
     setEvents(dayEvents);
@@ -499,7 +502,7 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
   }, [allTasks]);
 
   return {
-    currentDate,
+    eventTimeWarning,currentDate,
     selectedDate,
     viewMode,
     blocks,

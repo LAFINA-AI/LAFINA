@@ -1,3 +1,5 @@
+import {resolveEventTime} from '../storage/eventTime';
+import type {FoldChoice} from '../storage/eventTime';
 import {refreshLinkedReminders} from '../storage/linkedReminders';
 import { accountLinkService } from '../cloud/accountLinkService';
 import { cloudClient } from '../cloud/cloudClient';
@@ -438,14 +440,20 @@ const applyEvent = (
 ): void => {
   assertEntityOwnership(tx, 'events', change.entityId, localUserId);
   const payload = change.payload;
+  const previous=tx.executeSync('SELECT * FROM events WHERE id=? AND user_id=?',[change.entityId,localUserId]).rows[0] as Record<string,unknown>|undefined;
+  const old=previous&&previous.date===payload.date&&previous.start_time===payload.start_time&&previous.end_time===payload.end_time&&!Object.prototype.hasOwnProperty.call(payload,'time_zone')?previous:null;
+  const field=(key:string)=>old?(typeof old[key]==='string'?String(old[key]):null):nullableString(payload,key);
+  const fold=(key:string):FoldChoice|null=>{const value=field(key);if(value!==null&&value!=='earlier'&&value!=='later')throw new Error('Invalid event fold.');return value;};
+  const metadata=resolveEventTime({date:requireString(payload,'date'),startTime:requireString(payload,'start_time'),endTime:requireString(payload,'end_time'),endDate:field('end_date'),timeZone:field('time_zone'),startAt:field('start_at'),endAt:field('end_at'),startFold:fold('start_fold'),endFold:fold('end_fold')});
   tx.executeSync(
     `INSERT INTO events (
        id, user_id, title, date, start_time, end_time, location,
-       linked_calendar_block, recurrence_rule, created_at, updated_at, deleted_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+       linked_calendar_block, recurrence_rule, created_at, updated_at, deleted_at,end_date,time_zone,start_at,end_at,start_fold,end_fold
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL,?,?,?,?,?,?)
      ON CONFLICT(id) DO UPDATE SET
        title = excluded.title, date = excluded.date,
        start_time = excluded.start_time, end_time = excluded.end_time,
+       end_date=excluded.end_date,time_zone=excluded.time_zone,start_at=excluded.start_at,end_at=excluded.end_at,start_fold=excluded.start_fold,end_fold=excluded.end_fold,
        location = excluded.location,
        linked_calendar_block = excluded.linked_calendar_block,
        recurrence_rule = excluded.recurrence_rule,
@@ -462,6 +470,7 @@ const applyEvent = (
       nullableString(payload, 'recurrence_rule'),
       change.updatedAt,
       change.updatedAt,
+      metadata.endDate,metadata.timeZone,metadata.startAt,metadata.endAt,metadata.startFold,metadata.endFold,
     ]
   );
 };

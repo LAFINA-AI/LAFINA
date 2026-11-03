@@ -15,7 +15,8 @@
     "test:coverage": "jest --coverage",
     "typecheck": "tsc --noEmit",
     "check:architecture": "node scripts/check-architecture.cjs",
-    "benchmark:planner": "node scripts/benchmark-planner.cjs"
+    "benchmark:planner": "node scripts/benchmark-planner.cjs",
+    "test:golden": "jest --runInBand --runTestsByPath __tests__/evaluation/intentGolden.test.ts"
   },
   "dependencies": {
     "@op-engineering/op-sqlite": "^16.2.0",

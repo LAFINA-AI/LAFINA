@@ -26,6 +26,7 @@ export interface TimeBlockForm {
 }
 
 export interface ScheduleItemForm {
+  startDate?:string;endDate?:string;timeZone?:string;startFold?:'earlier'|'later'|null;endFold?:'earlier'|'later'|null;
   hasDueDate?: boolean;
   hasDueTime?: boolean;
   title: string;
@@ -40,6 +41,7 @@ export interface ScheduleItemForm {
 
 // ── Hook Return Types ──
 export interface CalendarData {
+  eventTimeWarning?:boolean;
   currentDate: Date;
   selectedDate: Date;
   viewMode: ViewMode;

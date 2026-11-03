@@ -1,3 +1,5 @@
+import {resolveEventTime} from './eventTime';
+import type {FoldChoice} from './eventTime';
 import { Task, Event } from './tasksStore';
 import { TimeBlock } from './timeBlocksStore';
 import ICalParser from 'ical-js-parser';
@@ -143,8 +145,9 @@ export const generateIcsString = (
     lines.push('BEGIN:VEVENT');
     lines.push(`UID:${event.id}`);
     lines.push(`DTSTAMP:${nowFormatted}`);
-    lines.push(`DTSTART:${formatIcsDateTime(event.date, event.startTime)}`);
-    lines.push(`DTEND:${formatIcsDateTime(event.date, event.endTime)}`);
+    lines.push(`DTSTART${event.timeZone?`;TZID=${event.timeZone}`:''}:${formatIcsDateTime(event.date, event.startTime)}`);
+    lines.push(`DTEND${event.timeZone?`;TZID=${event.timeZone}`:''}:${formatIcsDateTime(event.endDate??event.date, event.endTime)}`);
+    if(event.startFold)lines.push(`X-LAFINA-START-FOLD:${event.startFold}`);if(event.endFold)lines.push(`X-LAFINA-END-FOLD:${event.endFold}`);
     lines.push(foldLine(`SUMMARY:${escapeText(event.title)}`));
     if (event.location) {
       lines.push(foldLine(`LOCATION:${escapeText(event.location)}`));
@@ -421,13 +424,13 @@ export const getRruleFrequency = (
 const buildSingleOccurrence = (
   dtstart: Date,
   durationMs: number,
-): { date: string; startTime: string; endTime: string }[] => {
+): { date: string; endDate:string; startTime: string; endTime: string }[] => {
   const occurrenceEnd = new Date(dtstart.getTime() + durationMs);
   return [
     {
       date: formatUtcDate(dtstart),
       startTime: formatUtcTime(dtstart),
-      endTime: formatUtcTime(occurrenceEnd),
+      endTime: formatUtcTime(occurrenceEnd),endDate:formatUtcDate(occurrenceEnd),
     },
   ];
 };
@@ -437,7 +440,7 @@ const expandRecurringEvent = (
   dtstart: Date,
   dtend: Date,
   rdates: string[],
-): { date: string; startTime: string; endTime: string }[] => {
+): { date: string; endDate:string; startTime: string; endTime: string }[] => {
   const duration = dtend.getTime() - dtstart.getTime();
 
   const frequency = getRruleFrequency(vevent.rrule);
@@ -492,7 +495,7 @@ const expandRecurringEvent = (
       return {
         date: formatUtcDate(occurrenceStart),
         startTime: formatUtcTime(occurrenceStart),
-        endTime: formatUtcTime(occurrenceEnd),
+        endTime: formatUtcTime(occurrenceEnd),endDate:formatUtcDate(occurrenceEnd),
       };
     });
   } catch (error) {
@@ -520,7 +523,6 @@ const sanitizeIcsContent = (icsContent: string): string => {
     }
   }
 
-  const todayFormatted = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 
   const sanitizedLines = unfoldedLines.map(line => {
     const colonIndex = line.indexOf(':');
@@ -534,7 +536,7 @@ const sanitizeIcsContent = (icsContent: string): string => {
       const parts = cleanValue.split('T');
       const datePart = parts[0];
       if (!/^\d{8}$/.test(datePart)) {
-        return `${fullKey}:${todayFormatted}`;
+        throw new Error('Calendar contains an invalid date-time; no dates were invented.');
       }
     }
     return line;
@@ -579,6 +581,9 @@ const parseIcsStringInternal = (icsContent: string): ParsedIcsResult => {
 
   const sanitized = sanitizeIcsContent(icsContent);
   const unfoldedLines = sanitized.split('\n');
+  const utcStarts=new Set<string>();let eventUid='',utcStart=false;
+  for(const line of unfoldedLines){if(line==='BEGIN:VEVENT'){eventUid='';utcStart=false;}if(line.startsWith('UID:'))eventUid=line.slice(4);if(line.startsWith('DTSTART:')&&line.endsWith('Z'))utcStart=true;if(line==='END:VEVENT'&&eventUid&&utcStart)utcStarts.add(eventUid);}
+
 
   // Step 2: Scan unfolded lines to collect all RDATEs by UID (needed because ical-js-parser only keeps last RDATE)
   const rdatesByUid: { [uid: string]: string[] } = {};
@@ -677,6 +682,7 @@ const parseIcsStringInternal = (icsContent: string): ParsedIcsResult => {
           date: parsedStart.date,
           startTime: parsedStart.time || '12:00',
           endTime: parsedEnd?.time || '13:00',
+          ...resolveEventTime({date:parsedStart.date,startTime:parsedStart.time||'12:00',endTime:parsedEnd?.time||'13:00',endDate:vevent.dtstart.timezone||utcStarts.has(uid)||(parsedEnd&&parsedEnd.date!==parsedStart.date)?parsedEnd?.date??formatUtcDate(dtend):undefined,timeZone:vevent.dtstart.timezone??(utcStarts.has(uid)?'UTC':parsedEnd&&parsedEnd.date!==parsedStart.date?Intl.DateTimeFormat().resolvedOptions().timeZone:null),startFold:vevent.xLafinaStartFold as FoldChoice|undefined,endFold:vevent.xLafinaEndFold as FoldChoice|undefined}),
           location,
           recurrenceRule: null,
         });
@@ -707,6 +713,7 @@ const parseIcsStringInternal = (icsContent: string): ParsedIcsResult => {
             date: occurrence.date,
             startTime: occurrence.startTime,
             endTime: occurrence.endTime,
+            ...resolveEventTime({date:occurrence.date,startTime:occurrence.startTime,endTime:occurrence.endTime,endDate:vevent.dtstart.timezone||utcStarts.has(uid)||occurrence.endDate!==occurrence.date?occurrence.endDate:undefined,timeZone:vevent.dtstart.timezone??(utcStarts.has(uid)?'UTC':occurrence.endDate!==occurrence.date?Intl.DateTimeFormat().resolvedOptions().timeZone:null),startFold:vevent.xLafinaStartFold as FoldChoice|undefined,endFold:vevent.xLafinaEndFold as FoldChoice|undefined}),
             location,
             recurrenceRule: null,
           });

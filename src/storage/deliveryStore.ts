@@ -45,7 +45,7 @@ export const deliveryStore = {
   linkSource: (reminderId: string, type: ReminderSourceType, sourceId: string, executor: DatabaseTransaction = db): void => {
     const table = sourceTables[type];
     if (!table) throw new Error('Unsupported reminder source.');
-    const fields = type === 'task' ? ['user_id','title','due_date','due_time','is_completed','recurrence_rule'] : ['user_id','title','date','start_time','end_time','recurrence_rule'];
+    const fields = type === 'task' ? ['user_id','title','due_date','due_time','is_completed','recurrence_rule'] : ['user_id','title','date','start_time','end_time','recurrence_rule',...(type==='event'?['end_date','time_zone','start_at','end_at','start_fold','end_fold']:[])];
     const source = executor.executeSync(`SELECT ${fields.join(',')} FROM ${table} WHERE id=? AND deleted_at IS NULL`, [sourceId]).rows?.[0] as Record<string, unknown> | undefined;
     const job = deliveryStore.get(reminderId, executor);
     if (!job || source?.user_id !== job.userId) throw new Error('Reminder source ownership changed.');

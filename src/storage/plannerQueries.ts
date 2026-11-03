@@ -10,7 +10,7 @@ const map=<K extends keyof PlannerRecords>(kind:K,row:Row):PlannerRecords[K]=>{
   const base={id:String(row.id),userId:String(row.user_id),title:String(row.title),createdAt:String(row.created_at),updatedAt:String(row.updated_at),deletedAt:row.deleted_at==null?null:String(row.deleted_at),recurrenceRule:row.recurrence_rule==null?null:String(row.recurrence_rule)};
   if(kind==='task')return {...base,dueDate:row.due_date==null?null:String(row.due_date),dueTime:row.due_time==null?null:String(row.due_time),isCompleted:row.is_completed===1,priority:row.priority as Task['priority'],category:String(row.category),notes:row.notes==null?null:String(row.notes)} as PlannerRecords[K];
   const timed={...base,date:String(row.date),startTime:String(row.start_time),endTime:String(row.end_time)};
-  return (kind==='event'?{...timed,location:row.location==null?null:String(row.location),linkedCalendarBlock:row.linked_calendar_block==null?null:String(row.linked_calendar_block)}:{...timed,color:String(row.color),category:String(row.category),notes:row.notes==null?undefined:String(row.notes)}) as PlannerRecords[K];
+  return (kind==='event'?{...timed,endDate:row.end_date??null,timeZone:row.time_zone??null,startAt:row.start_at??null,endAt:row.end_at??null,startFold:row.start_fold??null,endFold:row.end_fold??null,location:row.location==null?null:String(row.location),linkedCalendarBlock:row.linked_calendar_block==null?null:String(row.linked_calendar_block)}:{...timed,color:String(row.color),category:String(row.category),notes:row.notes==null?undefined:String(row.notes)}) as PlannerRecords[K];
 };
 /** Validates a calendar date without allowing JavaScript to roll invalid days into another month. */
 export const validatePlannerDate=(value:string):void=>{
@@ -46,8 +46,9 @@ export const plannerQueries={
       const {table,date}=definitions[kind];let after='';const items:PlannerRecords[K][]=[];
       const backlog=kind==='task'&&includeBacklog?` OR (${date} IS NULL OR (${date}<? AND is_completed=0 AND recurrence_rule IS NULL))`:'';
       while(true){
-        const args:unknown[]=[userId,fromDate,toDate,toDate];if(backlog)args.push(fromDate);args.push(after);
-        const rows=db.executeSync(`SELECT * FROM ${table} WHERE user_id=? AND deleted_at IS NULL AND ((${date} BETWEEN ? AND ?) OR (recurrence_rule IS NOT NULL AND ${date}<=?)${backlog}) AND id>? ORDER BY id LIMIT 50`,args).rows as Row[];
+        const args:unknown[]=kind==='event'?[userId,toDate,fromDate,toDate]:[userId,fromDate,toDate,toDate];if(backlog)args.push(fromDate);args.push(after);
+        const window=kind==='event'?"(date<=? AND COALESCE(end_date,CASE WHEN end_time<=start_time THEN date(date,'+1 day') ELSE date END)>=?)":`(${date} BETWEEN ? AND ?)`;
+        const rows=db.executeSync(`SELECT * FROM ${table} WHERE user_id=? AND deleted_at IS NULL AND (${window} OR (recurrence_rule IS NOT NULL AND ${date}<=?)${backlog}) AND id>? ORDER BY id LIMIT 50`,args).rows as Row[];
         items.push(...rows.map(row=>map(kind,row)));if(rows.length<50)break;after=String(rows[rows.length-1].id);
       }
       return items;

@@ -68,6 +68,10 @@ describe('day view scale', () => {
     expect(entriesFor({ blocks: tonight }).map((e) => [e.start, e.end])).toEqual([[1380, 1440]]);
   });
 
+  it('shows every part of an explicitly dated multi-day event with its saved timezone',()=>{
+    const night={...event('multi','2026-09-21','23:00','01:30'),endDate:'2026-09-24',timeZone:'Asia/Manila'};
+    const entries=entriesFor({events:[night]});expect(entries.map(entry=>[entry.start,entry.end])).toEqual([[0,1440]]);expect(entries[0].time).toContain('ends 2026-09-24');expect(entries[0].time).toContain('Asia/Manila');
+  });
   it('ignores items on other days and unreadable times', () => {
     expect(
       entriesFor({

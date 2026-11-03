@@ -1,6 +1,7 @@
 import { db, DatabaseTransaction } from './database';
 import {initializeDeliverySchema} from './deliverySchema';
 import {initializeCommandSchema} from './commandSchema';
+import {initializeEventTimeSchema} from './eventTimeSchema';
 import {initializeNotesSearchSchema} from './notesSearchSchema';
 import { seedLocalDemoAccounts } from './demoSeed';
 import { buildProfileSyncPayload } from './profileSyncPayload';
@@ -17,7 +18,7 @@ import { generateId } from '../utils';
  * entity-type negotiation for sync.
  * 18: scheduling-only AI guardrail preference on `user_preferences`.
  */
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 
 type LegacySyncRow = Record<string, unknown>;
 
@@ -198,6 +199,7 @@ const backfillLegacyPersonalOutbox = (
       start_time: asString(row.start_time),
       end_time: asString(row.end_time),
       location: asNullableString(row.location),
+      ...(row.time_zone?{end_date:asNullableString(row.end_date),time_zone:asNullableString(row.time_zone),start_at:asNullableString(row.start_at),end_at:asNullableString(row.end_at),start_fold:asNullableString(row.start_fold),end_fold:asNullableString(row.end_fold)}:{}),
       linked_calendar_block: asNullableString(row.linked_calendar_block),
       recurrence_rule: asNullableString(row.recurrence_rule),
     }, row.updated_at, row.deleted_at, migrationTime);
@@ -1072,6 +1074,7 @@ export const initDatabase = async (): Promise<void> => {
         initializeDeliverySchema(tx);
         initializeCommandSchema(tx);
         initializeNotesSearchSchema(tx);
+        initializeEventTimeSchema(tx);
         // Versioned schema migrations
         const versionResult = tx.executeSync('PRAGMA user_version');
         const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;

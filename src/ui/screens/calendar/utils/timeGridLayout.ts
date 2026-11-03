@@ -110,12 +110,13 @@ export const buildDayEntries = ({
     `${formatTimeForDisplay(start, timeFormat24h)} – ${formatTimeForDisplay(end, timeFormat24h)}`;
 
   const entries: DayEntry[] = [];
-  const add = (entry: Omit<DayEntry, 'start' | 'end'>, itemDate: string, startTime: string, endTime: string): void => {
+  const add = (entry: Omit<DayEntry, 'start' | 'end'>, itemDate: string, startTime: string, endTime: string, endDate?:string|null): void => {
     const start = timeToMinutes(startTime);
     let end = timeToMinutes(endTime);
     if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-    if (end <= start) end += MINUTES_PER_DAY;
-    const offset = itemDate === day ? 0 : itemDate === previousDay ? -MINUTES_PER_DAY : null;
+    if(endDate)end+=(Date.parse(endDate)-Date.parse(itemDate))/86400000*MINUTES_PER_DAY;
+    else if (end <= start) end += MINUTES_PER_DAY;
+    const offset = endDate?(Date.parse(itemDate)-Date.parse(day))/86400000*MINUTES_PER_DAY:itemDate === day ? 0 : itemDate === previousDay ? -MINUTES_PER_DAY : null;
     if (offset === null) return;
     const from = Math.max(0, start + offset);
     const to = Math.min(MINUTES_PER_DAY, end + offset);
@@ -129,13 +130,13 @@ export const buildDayEntries = ({
         kind: 'event',
         title: event.title,
         color: eventColor,
-        time: range(event.startTime, event.endTime),
+        time: `${event.endDate&&event.endDate!==event.date?event.date+' ':''}${range(event.startTime, event.endTime)}${event.endDate&&event.endDate!==event.date?` (ends ${event.endDate})`:''}${event.timeZone?` (${event.timeZone})`:''}`,
         location: event.location,
         event,
       },
       event.date,
       event.startTime,
-      event.endTime,
+      event.endTime,event.endDate,
     ),
   );
   blocks.forEach((block) =>

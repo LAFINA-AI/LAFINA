@@ -1,0 +1,527 @@
+{
+  "version": 1,
+  "clock": "2026-07-06T12:00:00 device-local",
+  "scope": "Deterministic reviewed-command regression, not model NIEA or recorded speech accuracy",
+  "cases": [
+    {
+      "id": "timed-00",
+      "command": "schedule \"Study 0\" tomorrow at 00:30",
+      "review": true,
+      "title": "Study 0",
+      "stamp": "2026-07-07 00:30"
+    },
+    {
+      "id": "timed-01",
+      "command": "schedule \"Study 1\" tomorrow at 01:30",
+      "review": true,
+      "title": "Study 1",
+      "stamp": "2026-07-07 01:30"
+    },
+    {
+      "id": "timed-02",
+      "command": "schedule \"Study 2\" tomorrow at 02:30",
+      "review": true,
+      "title": "Study 2",
+      "stamp": "2026-07-07 02:30"
+    },
+    {
+      "id": "timed-03",
+      "command": "schedule \"Study 3\" tomorrow at 03:30",
+      "review": true,
+      "title": "Study 3",
+      "stamp": "2026-07-07 03:30"
+    },
+    {
+      "id": "timed-04",
+      "command": "schedule \"Study 4\" tomorrow at 04:30",
+      "review": true,
+      "title": "Study 4",
+      "stamp": "2026-07-07 04:30"
+    },
+    {
+      "id": "timed-05",
+      "command": "schedule \"Study 5\" tomorrow at 05:30",
+      "review": true,
+      "title": "Study 5",
+      "stamp": "2026-07-07 05:30"
+    },
+    {
+      "id": "timed-06",
+      "command": "schedule \"Study 6\" tomorrow at 06:30",
+      "review": true,
+      "title": "Study 6",
+      "stamp": "2026-07-07 06:30"
+    },
+    {
+      "id": "timed-07",
+      "command": "schedule \"Study 7\" tomorrow at 07:30",
+      "review": true,
+      "title": "Study 7",
+      "stamp": "2026-07-07 07:30"
+    },
+    {
+      "id": "timed-08",
+      "command": "schedule \"Study 8\" tomorrow at 08:30",
+      "review": true,
+      "title": "Study 8",
+      "stamp": "2026-07-07 08:30"
+    },
+    {
+      "id": "timed-09",
+      "command": "schedule \"Study 9\" tomorrow at 09:30",
+      "review": true,
+      "title": "Study 9",
+      "stamp": "2026-07-07 09:30"
+    },
+    {
+      "id": "timed-10",
+      "command": "schedule \"Study 10\" tomorrow at 10:30",
+      "review": true,
+      "title": "Study 10",
+      "stamp": "2026-07-07 10:30"
+    },
+    {
+      "id": "timed-11",
+      "command": "schedule \"Study 11\" tomorrow at 11:30",
+      "review": true,
+      "title": "Study 11",
+      "stamp": "2026-07-07 11:30"
+    },
+    {
+      "id": "timed-12",
+      "command": "schedule \"Study 12\" tomorrow at 12:30",
+      "review": true,
+      "title": "Study 12",
+      "stamp": "2026-07-07 12:30"
+    },
+    {
+      "id": "timed-13",
+      "command": "schedule \"Study 13\" tomorrow at 13:30",
+      "review": true,
+      "title": "Study 13",
+      "stamp": "2026-07-07 13:30"
+    },
+    {
+      "id": "timed-14",
+      "command": "schedule \"Study 14\" tomorrow at 14:30",
+      "review": true,
+      "title": "Study 14",
+      "stamp": "2026-07-07 14:30"
+    },
+    {
+      "id": "timed-15",
+      "command": "schedule \"Study 15\" tomorrow at 15:30",
+      "review": true,
+      "title": "Study 15",
+      "stamp": "2026-07-07 15:30"
+    },
+    {
+      "id": "timed-16",
+      "command": "schedule \"Study 16\" tomorrow at 16:30",
+      "review": true,
+      "title": "Study 16",
+      "stamp": "2026-07-07 16:30"
+    },
+    {
+      "id": "timed-17",
+      "command": "schedule \"Study 17\" tomorrow at 17:30",
+      "review": true,
+      "title": "Study 17",
+      "stamp": "2026-07-07 17:30"
+    },
+    {
+      "id": "timed-18",
+      "command": "schedule \"Study 18\" tomorrow at 18:30",
+      "review": true,
+      "title": "Study 18",
+      "stamp": "2026-07-07 18:30"
+    },
+    {
+      "id": "timed-19",
+      "command": "schedule \"Study 19\" tomorrow at 19:30",
+      "review": true,
+      "title": "Study 19",
+      "stamp": "2026-07-07 19:30"
+    },
+    {
+      "id": "timed-20",
+      "command": "schedule \"Study 20\" tomorrow at 20:30",
+      "review": true,
+      "title": "Study 20",
+      "stamp": "2026-07-07 20:30"
+    },
+    {
+      "id": "timed-21",
+      "command": "schedule \"Study 21\" tomorrow at 21:30",
+      "review": true,
+      "title": "Study 21",
+      "stamp": "2026-07-07 21:30"
+    },
+    {
+      "id": "timed-22",
+      "command": "schedule \"Study 22\" tomorrow at 22:30",
+      "review": true,
+      "title": "Study 22",
+      "stamp": "2026-07-07 22:30"
+    },
+    {
+      "id": "timed-23",
+      "command": "schedule \"Study 23\" tomorrow at 23:30",
+      "review": true,
+      "title": "Study 23",
+      "stamp": "2026-07-07 23:30"
+    },
+    {
+      "id": "event-00",
+      "command": "create event \"Lab 0\" tomorrow at 06:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 0",
+      "stamp": "2026-07-07 06:00"
+    },
+    {
+      "id": "event-01",
+      "command": "create event \"Lab 1\" tomorrow at 07:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 1",
+      "stamp": "2026-07-07 07:00"
+    },
+    {
+      "id": "event-02",
+      "command": "create event \"Lab 2\" tomorrow at 08:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 2",
+      "stamp": "2026-07-07 08:00"
+    },
+    {
+      "id": "event-03",
+      "command": "create event \"Lab 3\" tomorrow at 09:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 3",
+      "stamp": "2026-07-07 09:00"
+    },
+    {
+      "id": "event-04",
+      "command": "create event \"Lab 4\" tomorrow at 10:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 4",
+      "stamp": "2026-07-07 10:00"
+    },
+    {
+      "id": "event-05",
+      "command": "create event \"Lab 5\" tomorrow at 11:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 5",
+      "stamp": "2026-07-07 11:00"
+    },
+    {
+      "id": "event-06",
+      "command": "create event \"Lab 6\" tomorrow at 12:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 6",
+      "stamp": "2026-07-07 12:00"
+    },
+    {
+      "id": "event-07",
+      "command": "create event \"Lab 7\" tomorrow at 13:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 7",
+      "stamp": "2026-07-07 13:00"
+    },
+    {
+      "id": "event-08",
+      "command": "create event \"Lab 8\" tomorrow at 14:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 8",
+      "stamp": "2026-07-07 14:00"
+    },
+    {
+      "id": "event-09",
+      "command": "create event \"Lab 9\" tomorrow at 15:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 9",
+      "stamp": "2026-07-07 15:00"
+    },
+    {
+      "id": "event-10",
+      "command": "create event \"Lab 10\" tomorrow at 16:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 10",
+      "stamp": "2026-07-07 16:00"
+    },
+    {
+      "id": "event-11",
+      "command": "create event \"Lab 11\" tomorrow at 17:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 11",
+      "stamp": "2026-07-07 17:00"
+    },
+    {
+      "id": "event-12",
+      "command": "create event \"Lab 12\" tomorrow at 18:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 12",
+      "stamp": "2026-07-07 18:00"
+    },
+    {
+      "id": "event-13",
+      "command": "create event \"Lab 13\" tomorrow at 19:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 13",
+      "stamp": "2026-07-07 19:00"
+    },
+    {
+      "id": "event-14",
+      "command": "create event \"Lab 14\" tomorrow at 20:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 14",
+      "stamp": "2026-07-07 20:00"
+    },
+    {
+      "id": "event-15",
+      "command": "create event \"Lab 15\" tomorrow at 21:00 for 60 minutes",
+      "review": true,
+      "title": "Lab 15",
+      "stamp": "2026-07-07 21:00"
+    },
+    {
+      "id": "untimed-00",
+      "command": "add task \"Reading 0\"",
+      "review": true,
+      "title": "Reading 0",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-01",
+      "command": "add task \"Reading 1\"",
+      "review": true,
+      "title": "Reading 1",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-02",
+      "command": "add task \"Reading 2\"",
+      "review": true,
+      "title": "Reading 2",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-03",
+      "command": "add task \"Reading 3\"",
+      "review": true,
+      "title": "Reading 3",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-04",
+      "command": "add task \"Reading 4\"",
+      "review": true,
+      "title": "Reading 4",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-05",
+      "command": "add task \"Reading 5\"",
+      "review": true,
+      "title": "Reading 5",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-06",
+      "command": "add task \"Reading 6\"",
+      "review": true,
+      "title": "Reading 6",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-07",
+      "command": "add task \"Reading 7\"",
+      "review": true,
+      "title": "Reading 7",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-08",
+      "command": "add task \"Reading 8\"",
+      "review": true,
+      "title": "Reading 8",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-09",
+      "command": "add task \"Reading 9\"",
+      "review": true,
+      "title": "Reading 9",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-10",
+      "command": "add task \"Reading 10\"",
+      "review": true,
+      "title": "Reading 10",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-11",
+      "command": "add task \"Reading 11\"",
+      "review": true,
+      "title": "Reading 11",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-12",
+      "command": "add task \"Reading 12\"",
+      "review": true,
+      "title": "Reading 12",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-13",
+      "command": "add task \"Reading 13\"",
+      "review": true,
+      "title": "Reading 13",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-14",
+      "command": "add task \"Reading 14\"",
+      "review": true,
+      "title": "Reading 14",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-15",
+      "command": "add task \"Reading 15\"",
+      "review": true,
+      "title": "Reading 15",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-16",
+      "command": "add task \"Reading 16\"",
+      "review": true,
+      "title": "Reading 16",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-17",
+      "command": "add task \"Reading 17\"",
+      "review": true,
+      "title": "Reading 17",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-18",
+      "command": "add task \"Reading 18\"",
+      "review": true,
+      "title": "Reading 18",
+      "stamp": "No due date"
+    },
+    {
+      "id": "untimed-19",
+      "command": "add task \"Reading 19\"",
+      "review": true,
+      "title": "Reading 19",
+      "stamp": "No due date"
+    },
+    {
+      "id": "reject-00",
+      "command": "",
+      "review": false
+    },
+    {
+      "id": "reject-01",
+      "command": "schedule study tomorrow",
+      "review": false
+    },
+    {
+      "id": "reject-02",
+      "command": "do not schedule study tomorrow at 3pm",
+      "review": false
+    },
+    {
+      "id": "reject-03",
+      "command": "schedule study tomorrow at 3pm and add task lab at 4pm",
+      "review": false
+    },
+    {
+      "id": "reject-04",
+      "command": "note:",
+      "review": false
+    },
+    {
+      "id": "reject-05",
+      "command": "complete",
+      "review": false
+    },
+    {
+      "id": "reject-06",
+      "command": "move task \"Unknown\" to tomorrow at 3pm",
+      "review": false
+    },
+    {
+      "id": "reject-07",
+      "command": "delete event \"Unknown\"",
+      "review": false
+    },
+    {
+      "id": "reject-08",
+      "command": "snooze reminder for task \"Unknown\" 5 minutes",
+      "review": false
+    },
+    {
+      "id": "reject-09",
+      "command": "schedule study on 2026-02-30 at 3pm",
+      "review": false
+    },
+    {
+      "id": "reject-10",
+      "command": "create event \"Missing duration\" tomorrow at 3pm",
+      "review": false
+    },
+    {
+      "id": "reject-11",
+      "command": "schedule \"A\" \"B\" tomorrow at 3pm",
+      "review": false
+    },
+    {
+      "id": "reject-12",
+      "command": "schedule study yesterday at 3pm",
+      "review": false
+    },
+    {
+      "id": "reject-13",
+      "command": "schedule study on 2020-01-01 at 3pm",
+      "review": false
+    },
+    {
+      "id": "reject-14",
+      "command": "remind me tomorrow",
+      "review": false
+    },
+    {
+      "id": "reject-15",
+      "command": "never schedule study tomorrow at 3pm",
+      "review": false
+    },
+    {
+      "id": "reject-16",
+      "command": "add task \"Reading\" then add task \"Math\"",
+      "review": false
+    },
+    {
+      "id": "reject-17",
+      "command": "move task \"Unknown\"",
+      "review": false
+    },
+    {
+      "id": "reject-18",
+      "command": "cancel task \"Unknown\"",
+      "review": false
+    },
+    {
+      "id": "reject-19",
+      "command": "what is the meaning of life?",
+      "review": false
+    }
+  ]
+}

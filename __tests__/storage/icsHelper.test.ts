@@ -207,7 +207,7 @@ describe('icsHelper', () => {
     expect(parsed.tasks).toHaveLength(0);
   });
 
-  test('should parse default fallback for unrecognized datetime', () => {
+  test('rejects unrecognized datetime without inventing today', () => {
     const badIcs = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
@@ -222,10 +222,7 @@ describe('icsHelper', () => {
     ].join('\r\n');
 
     const parsed = parseIcsString(badIcs);
-    expect(parsed.events).toHaveLength(1);
-    // Should fall back to today's date
-    const todayStr = new Date().toISOString().split('T')[0];
-    expect(parsed.events[0].date).toBe(todayStr);
+    expect(parsed.events).toHaveLength(0);
   });
 
   test('should generate and parse RRULE correctly', () => {

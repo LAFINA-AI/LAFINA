@@ -14,14 +14,14 @@ export const refreshLinkedReminders=(type:ReminderSourceType,id:string,tx:Databa
     const userId=String(reminder.user_id),reminderId=String(reminder.id),now=new Date().toISOString();
     const date=source?.[type==='task'?'due_date':'date'];
     const time=source?.[type==='task'?'due_time':'start_time'];
-    const scheduled=new Date(`${date}T${time}:00`);
+    const scheduled=new Date(type==='event'&&typeof source?.start_at==='string'?source.start_at:`${date}T${time}:00`);
     const retired=!source || source.deleted_at!=null || source.user_id!==userId || source.is_completed===1 || !date || !time || !Number.isFinite(scheduled.getTime());
     if(retired){
       tx.executeSync('UPDATE reminders SET deleted_at=?,updated_at=? WHERE id=?',[now,now,reminderId]);
       syncOutboxStore.enqueueMutation(userId,'reminder',reminderId,'delete',{},'account',userId,tx);
       changed=true;continue;
     }
-    const fields=type==='task'?['user_id','title','due_date','due_time','is_completed','recurrence_rule']:['user_id','title','date','start_time','end_time','recurrence_rule'];
+    const fields=type==='task'?['user_id','title','due_date','due_time','is_completed','recurrence_rule']:['user_id','title','date','start_time','end_time','recurrence_rule',...(type==='event'?['end_date','time_zone','start_at','end_at','start_fold','end_fold']:[])];
     const snapshot=JSON.stringify(Object.fromEntries(fields.map(field=>[field,source[field]==null?null:String(source[field])])));
     if(snapshot===reminder.source_snapshot) continue;
     const oldStart=Date.parse(String(reminder.scheduled_at)),oldTrigger=Date.parse(String(reminder.trigger_at));

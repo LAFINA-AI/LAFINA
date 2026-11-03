@@ -153,6 +153,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {calendar.eventTimeWarning&&<Text accessibilityRole="alert" style={{color:colors.red}}>Some recurring event times do not exist or occur twice in their timezone. Edit the series time or repeated-time choice.</Text>}
       {/* Shared date header for the month and week views. */}
         <View style={styles.topHeaderRow}>
           <TouchableOpacity

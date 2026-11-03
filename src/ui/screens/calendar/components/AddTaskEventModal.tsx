@@ -106,6 +106,13 @@ export const AddTaskEventModal: React.FC<AddTaskEventModalProps> = ({ state, tim
           />
           {state.modalType==='event' && !state.editingItem && state.memoryOffer && <TouchableOpacity accessibilityRole="button" onPress={state.applyMemory}><Text style={{color:colors.textPrimary}}>Apply saved event preferences: {state.memoryOffer.value.startTime??'current start'}, {state.memoryOffer.value.durationMinutes??60} min</Text></TouchableOpacity>}
 
+          {state.modalType==='event'&&<>
+            <Text style={{color:colors.textSecondary}}>Event dates (YYYY-MM-DD) and timezone</Text>
+            <TextInput accessibilityLabel="Event start date" style={[styles.modalInput,{color:colors.textPrimary}]} value={state.form.startDate} onChangeText={value=>state.updateField('startDate',value)} placeholder="YYYY-MM-DD"/>
+            <TextInput accessibilityLabel="Event end date" style={[styles.modalInput,{color:colors.textPrimary}]} value={state.form.endDate} onChangeText={value=>state.updateField('endDate',value)} placeholder="YYYY-MM-DD"/>
+            <TextInput accessibilityLabel="Event timezone" autoCapitalize="none" style={[styles.modalInput,{color:colors.textPrimary}]} value={state.form.timeZone} onChangeText={value=>state.updateField('timeZone',value)} placeholder="Asia/Manila"/>
+            {(['startFold','endFold'] as const).map(field=><View key={field}><Text style={{color:colors.textSecondary}}>{field==='startFold'?'Start':'End'} repeated-time choice (only needed for daylight saving)</Text><View style={styles.modalRow}>{([null,'earlier','later'] as const).map(choice=><TouchableOpacity accessibilityRole="radio" accessibilityState={{selected:(state.form[field]??null)===choice}} key={choice??'ask'} onPress={()=>state.updateField(field,choice)}><Text style={{color:colors.textPrimary,padding:8}}>{choice??'Ask'}</Text></TouchableOpacity>)}</View></View>)}
+          </>}
           {state.modalType==='task' && <>
             <View style={styles.modalRow}><Text style={{color:colors.textPrimary}}>Use due date (selected Calendar date for a new deadline)</Text><Switch accessibilityLabel="Use due date" value={state.form.hasDueDate!==false} onValueChange={v=>state.updateField('hasDueDate',v)}/></View>
             {state.form.hasDueDate!==false && <View style={styles.modalRow}><Text style={{color:colors.textPrimary}}>Use due time and reminder</Text><Switch accessibilityLabel="Use due time" value={state.form.hasDueTime!==false} onValueChange={v=>state.updateField('hasDueTime',v)}/></View>}

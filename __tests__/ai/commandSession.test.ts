@@ -123,4 +123,12 @@ describe('private reviewed command execution',()=>{
     jest.setSystemTime(Date.now()-1000);
     expect(session.confirm(next.id).status).toBe('invalid');
   });
+  it('reviews and moves an overnight event with explicit dates and UTC metadata',()=>{
+    const session=createCommandSession('review-user');const review=session.propose('create event "Night lab" tomorrow at 11pm for 2 hours').review!;
+    expect(review.summary).toMatch(/2026-07-08 01:00/);const result=session.confirm(review.id);expect(result.status).toBe('saved');
+    let event=tasksStore.getAllEvents('review-user').find(item=>item.id===result.itemId)!;expect(event.endDate).toBe('2026-07-08');expect(Date.parse(event.endAt!)-Date.parse(event.startAt!)).toBe(7200000);
+    const move=session.propose('move event "Night lab" to 2026-07-10 at 11pm').review!;expect(move.summary).toContain('2026-07-11');expect(session.confirm(move.id).status).toBe('saved');
+    event=tasksStore.getAllEvents('review-user').find(item=>item.id===result.itemId)!;expect(event.endDate).toBe('2026-07-11');expect(db.executeSync('SELECT scheduled_at FROM reminders WHERE id=?',[result.reminderId]).rows[0].scheduled_at).toBe(event.startAt);
+  });
+
 });

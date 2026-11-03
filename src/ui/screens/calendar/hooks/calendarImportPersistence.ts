@@ -56,7 +56,7 @@ export const persistImportedCalendarItems = (
         title: item.title,
         date: item.date,
         startTime: item.startTime,
-        endTime: item.endTime,
+        endTime: item.endTime,endDate:item.endDate,timeZone:item.timeZone,startAt:item.startAt,endAt:item.endAt,startFold:item.startFold,endFold:item.endFold,
         location: item.location || null,
         linkedCalendarBlock: null,
         recurrenceRule: item.recurrenceRule || null,

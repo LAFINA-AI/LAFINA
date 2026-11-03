@@ -45,6 +45,14 @@ describe('calendar window reads and retained import/export controls',()=>{
     await act(async()=>calendar.handleToggleVisibility('main',false));expect(calendar.tasks).toEqual([]);
     await act(async()=>calendar.handleToggleVisibility('main',true));expect(calendar.tasks.length).toBeGreaterThan(0);
   });
+  it('expands overnight recurrence in its saved timezone and retains the prior-day tail',async()=>{
+    tasksStore.insertEvent({id:'overnight-series',userId:'window-user',title:'Night series',date:'2026-10-26',startTime:'23:00',endTime:'01:00',endDate:'2026-10-27',timeZone:'Asia/Manila',recurrenceRule:'FREQ=WEEKLY'});
+    await render();expect(calendar.events.some(event=>event.title==='Night series'&&event.date==='2026-11-02'&&event.endDate==='2026-11-03')).toBe(true);
+  });
+  it('flags DST-invalid recurring times instead of rolling them into another time',async()=>{
+    tasksStore.insertEvent({id:'gap-series',userId:'window-user',title:'Gap series',date:'2026-03-01',startTime:'02:30',endTime:'04:00',endDate:'2026-03-01',timeZone:'America/New_York',recurrenceRule:'FREQ=WEEKLY'});
+    await render();act(()=>calendar.setSelectedDate(new Date(2026,2,8)));expect(calendar.eventTimeWarning).toBe(true);expect(calendar.allEvents.some(event=>event.title==='Gap series'&&event.date==='2026-03-08')).toBe(false);
+  });
   it('retains explicit full-calendar export without making routine screen reads unbounded',async()=>{
     await render();await act(async()=>calendar.handleExportCalendar());expect(Alert.alert).toHaveBeenCalledWith('Export Calendar',expect.stringContaining('empty'));
     tasksStore.insertTask({id:'future-export',userId:'window-user',title:'Future',dueDate:'2099-01-01',dueTime:'09:00',isCompleted:false,priority:'Medium',category:'Work'});
