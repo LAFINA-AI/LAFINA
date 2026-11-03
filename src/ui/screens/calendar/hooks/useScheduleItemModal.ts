@@ -113,7 +113,7 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
     }
     const dateStr = modalType==='event'&&form.startDate?form.startDate:`${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}`;
     let eventTime:EventTimeMetadata|undefined;
-    try{if(modalType==='event')eventTime=resolveEventTime({date:dateStr,startTime:form.time,endTime:form.endTime,endDate:form.timeZone?(form.endDate||dateStr):null,timeZone:form.timeZone,startFold:form.startFold,endFold:form.endFold});}catch(error){Alert.alert('Check event time',error instanceof Error?error.message:'Choose a valid event time.');return;}
+    try{if(modalType==='event'&&!form.timeZone&&(!editingItem||(editingItem as Event).timeZone))throw new Error('Choose a timezone for this event.');if(modalType==='event')eventTime=resolveEventTime({date:dateStr,startTime:form.time,endTime:form.endTime,endDate:form.timeZone?(form.endDate||dateStr):null,timeZone:form.timeZone,startFold:form.startFold,endFold:form.endFold});}catch(error){Alert.alert('Check event time',error instanceof Error?error.message:'Choose a valid event time.');return;}
     const rule = recurrenceRule !== undefined ? recurrenceRule : (form.recurrenceRule || null);
     const taskDate=form.hasDueDate===false?null:((editingItem as Task|null)?.dueDate||dateStr);
     const taskTime=taskDate && form.hasDueTime!==false?form.time:null;
@@ -190,7 +190,7 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
           title: form.title,
           date: dateStr,
           startTime: form.time,
-          endTime: form.endTime,...eventTime,
+          endTime: form.endTime,...(form.timeZone?eventTime:{}),
           location: form.location,
           recurrenceRule: rule,
         },tx);
@@ -203,7 +203,7 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
           title: form.title,
           date: dateStr,
           startTime: form.time,
-          endTime: form.endTime,...eventTime,
+          endTime: form.endTime,...(form.timeZone?eventTime:{}),
           location: form.location,
           recurrenceRule: rule,
         },tx);

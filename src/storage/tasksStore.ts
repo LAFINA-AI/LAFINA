@@ -115,12 +115,12 @@ const taskPayload = (row: StoredSyncRow): Record<string, unknown> => ({
   recurrence_rule: row.recurrence_rule,
 });
 
-const eventPayload = (row: StoredSyncRow): Record<string, unknown> => ({
+const eventPayload = (row: StoredSyncRow,includeMetadata=false): Record<string, unknown> => ({
   title: row.title,
   date: row.date,
   start_time: row.start_time,
   end_time: row.end_time,
-  ...(row.time_zone?{end_date:row.end_date??null,time_zone:row.time_zone,start_at:row.start_at??null,end_at:row.end_at??null,start_fold:row.start_fold??null,end_fold:row.end_fold??null}:{}),
+  ...(row.time_zone||includeMetadata?{end_date:row.end_date??null,time_zone:row.time_zone,start_at:row.start_at??null,end_at:row.end_at??null,start_fold:row.start_fold??null,end_fold:row.end_fold??null}:{}),
   location: row.location,
   linked_calendar_block: row.linked_calendar_block,
   recurrence_rule: row.recurrence_rule,
@@ -393,7 +393,7 @@ export const tasksStore = {
         const row = tx.executeSync('SELECT * FROM events WHERE id = ?', [event.id]).rows?.[0] as StoredSyncRow | undefined;
         if (row) {
           syncOutboxStore.enqueueMutation(
-            String(row.user_id), 'event', event.id, 'update', eventPayload(row),
+            String(row.user_id), 'event', event.id, 'update', eventPayload(row,event.timeZone!==undefined),
             'account', String(row.user_id), tx,
           );
         }

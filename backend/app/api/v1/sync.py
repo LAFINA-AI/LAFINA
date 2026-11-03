@@ -14,7 +14,7 @@ from pydantic import (
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.event_payload import EventPayload
+from backend.app.api.event_payload import EventPayload, normalize_event_sync_payload
 from backend.app.database import get_db
 from backend.app.models.account import Account
 from backend.app.models.session import AuthSession
@@ -837,7 +837,11 @@ async def sync_batch(
         validator_cls = PAYLOAD_VALIDATOR_MAP.get(mut.entityType)
         if mut.operation != "delete" and validator_cls:
             try:
-                validated_payload = validator_cls(**mut.payload).model_dump()
+                validated_payload = (
+                    normalize_event_sync_payload(mut.payload)
+                    if validator_cls is EventPayload
+                    else validator_cls(**mut.payload).model_dump()
+                )
             except Exception as e:
                 validation_result = MutationResult(
                     mutationId=mut.mutationId,
@@ -886,6 +890,24 @@ async def sync_batch(
             await _record_terminal_result(db, owner_id, mut, conflict_result)
             rejected_results.append(conflict_result)
             continue
+
+        if mut.entityType == "event" and mut.operation != "delete":
+            try:
+                validated_payload = normalize_event_sync_payload(
+                    validated_payload,
+                    existing_entity.payload if existing_entity and existing_entity.deleted_at is None else None,
+                )
+            except ValueError:
+                validation_result = MutationResult(
+                    mutationId=mut.mutationId,
+                    entityType=mut.entityType,
+                    entityId=mut.entityId,
+                    status="rejected",
+                    reason="Event time metadata could not be preserved. Reload the event.",
+                )
+                await _record_terminal_result(db, owner_id, mut, validation_result)
+                rejected_results.append(validation_result)
+                continue
 
         new_version = server_version + 1
         change_payload = {} if mut.operation == "delete" else validated_payload

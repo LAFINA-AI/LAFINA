@@ -141,3 +141,19 @@ React microtasks/opacity animation from application watchdogs and assert zero ti
 after cancellation settles. Final delivery will rebundle the completed UI feedback
 and defaults reset with both ABIs. Physical audio/permission/interruption matrix is
 still unrun. Stages 7–8 remain in progress.
+
+## Event sync compatibility audit follow-up
+
+Found a server normalization edge case after stage 6: default model dumping could
+turn omitted old-client metadata into explicit null, then replace the server JSON
+and lose timezone data for a fresh device. Added pure omission-aware normalization
+and prior-metadata preservation under the existing owner/version lock, before both
+stored-content and change-feed writes. Explicit new-client clears send null keys;
+legacy Calendar title edits omit them. New event forms require a timezone, while
+unchanged legacy editors keep their original floating meaning. No cloud deployment.
+
+Reproduced missing explicit-clear payload and absent server normalizer in regression
+tests before implementation. Pure backend contract: 2 tests PASS, new module/test
+Ruff clean, without importing settings/environment files. TypeScript PASS; 131
+suites / 1,068 tests PASS; ESLint zero errors (264 warnings). This is a separate
+corrective commit; stages 7–8 remain in progress.

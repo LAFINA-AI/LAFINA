@@ -1,5 +1,6 @@
 """Pure event wire contract; importing it does not load credentials or settings."""
 
+from collections.abc import Mapping
 from datetime import date, datetime
 from typing import Literal
 
@@ -50,3 +51,19 @@ class EventPayload(BaseModel):
         if end <= start or (end - start).total_seconds() > 31 * 86400:
             raise ValueError("event UTC range must be positive and at most 31 days")
         return self
+
+
+def normalize_event_sync_payload(
+    payload: Mapping[str, object], previous: Mapping[str, object] | None = None
+) -> dict[str, object]:
+    """Preserve omitted legacy metadata only when the existing wall range is unchanged."""
+    metadata = ("end_date", "time_zone", "start_at", "end_at", "start_fold", "end_fold")
+    merged = dict(payload)
+    if (
+        previous
+        and previous.get("time_zone")
+        and not any(key in payload for key in metadata)
+        and all(previous.get(key) == payload.get(key) for key in ("date", "start_time", "end_time"))
+    ):
+        merged.update({key: previous[key] for key in metadata if key in previous})
+    return EventPayload(**merged).model_dump(exclude_unset=True)

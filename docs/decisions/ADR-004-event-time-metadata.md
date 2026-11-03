@@ -36,7 +36,11 @@ changed to today. Foreign unlabelled VEVENT-to-time-block behavior stays unchang
 Sync carries optional metadata in full event payloads. Legacy records omit new
 wire keys. A title-only pull from an older client preserves metadata if all wall
 times match; changed old-client times clear metadata and retain floating semantics.
-New metadata is validated before SQL writes. The backend's pure EventPayload
+New metadata is validated before SQL writes. The backend preserves omission versus
+explicit null, and merges prior metadata into both stored content and change-feed
+payloads for unchanged old-client wall ranges. An explicit new-client clear carries
+null metadata keys. Legacy Calendar title edits omit new keys; new events require
+a timezone instead of silently dropping their chosen end date. The backend's pure EventPayload
 contract accepts old payloads and validates complete positive UTC ranges. Deploy
 this backend contract before syncing metadata-enabled events to an older server;
 its extra-field rejection will otherwise leave local changes pending, not lose them.

@@ -42,4 +42,10 @@ describe('named-zone overnight event metadata',()=>{
   try{executeSync('CREATE TABLE events(id TEXT PRIMARY KEY,user_id TEXT,date TEXT,start_time TEXT,end_time TEXT,created_at TEXT,updated_at TEXT)');executeSync("INSERT INTO events VALUES('legacy','owner','2026-11-04','23:00','01:00','created','updated')");initializeEventTimeSchema({executeSync});initializeEventTimeSchema({executeSync});expect(executeSync('SELECT * FROM events').rows[0]).toMatchObject({date:'2026-11-04',start_time:'23:00',end_time:'01:00',time_zone:null,start_at:null,end_date:null,created_at:'created',updated_at:'updated'});}finally{fixture.close();}
  });
 
+ it('sends explicit metadata removal as null instead of an absent old-client field',()=>{
+  tasksStore.insertEvent({id:'explicit-clear',userId:'zone-owner',title:'Clear',date:'2026-11-04',startTime:'23:00',endDate:'2026-11-05',endTime:'01:00',timeZone:'Asia/Manila'});
+  tasksStore.updateEvent({id:'explicit-clear',timeZone:null,endDate:null,startAt:null,endAt:null});
+  const payload=JSON.parse(String(db.executeSync("SELECT payload FROM sync_outbox WHERE entity_id='explicit-clear' ORDER BY rowid DESC LIMIT 1").rows[0].payload));expect(payload).toHaveProperty('time_zone',null);
+ });
+
 });

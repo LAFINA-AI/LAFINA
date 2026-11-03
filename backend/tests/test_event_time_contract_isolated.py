@@ -2,7 +2,7 @@
 
 import unittest
 
-from backend.app.api.event_payload import EventPayload
+from backend.app.api.event_payload import EventPayload, normalize_event_sync_payload
 from pydantic import ValidationError
 
 
@@ -36,6 +36,32 @@ class EventTimeContractTest(unittest.TestCase):
         ]:
             with self.assertRaises(ValidationError):
                 model(**dict(current, **patch))
+
+    def test_legacy_edits_preserve_metadata_and_explicit_clear_remains_distinct(self) -> None:
+        """Normalize the exact stored/change-feed payload without erasing old-client metadata."""
+        old = {
+            "title": "New title",
+            "date": "2026-11-04",
+            "start_time": "23:00",
+            "end_time": "01:00",
+        }
+        current = {
+            **old,
+            "time_zone": "Asia/Manila",
+            "end_date": "2026-11-05",
+            "start_at": "2026-11-04T15:00:00.000Z",
+            "end_at": "2026-11-04T17:00:00.000Z",
+        }
+        self.assertNotIn("time_zone", normalize_event_sync_payload(old))
+        self.assertEqual(
+            normalize_event_sync_payload(old, current)["start_at"], current["start_at"]
+        )
+        self.assertNotIn(
+            "time_zone", normalize_event_sync_payload({**old, "start_time": "22:00"}, current)
+        )
+        cleared = normalize_event_sync_payload({**old, "time_zone": None}, current)
+        self.assertIn("time_zone", cleared)
+        self.assertIsNone(cleared["time_zone"])
 
 
 if __name__ == "__main__":

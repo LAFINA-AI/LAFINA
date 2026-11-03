@@ -62,5 +62,12 @@ describe('manual task deadline editing',()=>{
     act(()=>state.openNew('event'));act(()=>{state.updateField('title','Gap');state.updateField('startDate','2026-03-08');state.updateField('time','02:30');state.updateField('endDate','2026-03-08');state.updateField('endTime','04:00');state.updateField('timeZone','America/New_York');});act(()=>state.save());expect(state.visible).toBe(true);expect(alert).toHaveBeenLastCalledWith('Check event time',expect.stringMatching(/does not exist/));alert.mockRestore();
   });
 
+  it('retains legacy wire payloads for title edits and requires a timezone for new events',()=>{
+    tasksStore.insertEvent({id:'legacy-wire-editor',userId:'untimed-owner',title:'Legacy wire',date:'2026-11-03',startTime:'10:00',endTime:'11:00'});
+    act(()=>state.openEdit(tasksStore.getAllEvents('untimed-owner').find(event=>event.id==='legacy-wire-editor')!,'event'));act(()=>state.updateField('title','Legacy renamed'));act(()=>state.save());
+    const payload=JSON.parse(String(db.executeSync("SELECT payload FROM sync_outbox WHERE entity_id='legacy-wire-editor' ORDER BY rowid DESC LIMIT 1").rows[0].payload));expect(payload).not.toHaveProperty('time_zone');
+    const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});act(()=>state.openNew('event'));act(()=>{state.updateField('title','No zone');state.updateField('timeZone','');});act(()=>state.save());expect(alert).toHaveBeenLastCalledWith('Check event time',expect.stringMatching(/Choose a timezone/));expect(state.visible).toBe(true);alert.mockRestore();
+  });
+
 });
 
