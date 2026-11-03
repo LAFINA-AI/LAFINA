@@ -118,9 +118,11 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
       LafinaDeliveryStore(context).use { store -> check(store.current("qa-rem")?.state == "pending") }
       openFixture(file).use { it.execSQL("PRAGMA user_version=21") }
       LafinaDeliveryStore(context).use { store -> check(store.current("qa-rem")!=null) }
+      openFixture(file).use { it.execSQL("PRAGMA user_version=22") }
+      LafinaDeliveryStore(context).use { store -> check(store.current("qa-rem")!=null) }
       openFixture(file).use { it.execSQL("PRAGMA user_version=999") }
       check(runCatching { LafinaDeliveryStore(context).close() }.isFailure)
-      results.putString("stream", "PASS: PendingIntent hash-collision isolation, native SQLite claim, duplicate/stale rejection, concurrent-call serialization/release, posting receipt, reopen recovery, bounded failure counters, source-change retirement, atomic rollback, schema-21 compatibility and future-schema refusal.\n")
+      results.putString("stream", "PASS: PendingIntent hash-collision isolation, native SQLite claim, duplicate/stale rejection, concurrent-call serialization/release, posting receipt, reopen recovery, bounded failure counters, source-change retirement, atomic rollback, schema-21/22 compatibility and future-schema refusal.\n")
       results.putInt("passed", 17)
       finish(Activity.RESULT_OK, results)
     } catch (error: Throwable) {

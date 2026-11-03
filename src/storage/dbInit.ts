@@ -1,6 +1,7 @@
 import { db, DatabaseTransaction } from './database';
 import {initializeDeliverySchema} from './deliverySchema';
 import {initializeCommandSchema} from './commandSchema';
+import {initializeNotesSearchSchema} from './notesSearchSchema';
 import { seedLocalDemoAccounts } from './demoSeed';
 import { buildProfileSyncPayload } from './profileSyncPayload';
 import type {
@@ -16,7 +17,7 @@ import { generateId } from '../utils';
  * entity-type negotiation for sync.
  * 18: scheduling-only AI guardrail preference on `user_preferences`.
  */
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 type LegacySyncRow = Record<string, unknown>;
 
@@ -1070,6 +1071,7 @@ export const initDatabase = async (): Promise<void> => {
       if (!db.isFallback()) {
         initializeDeliverySchema(tx);
         initializeCommandSchema(tx);
+        initializeNotesSearchSchema(tx);
         // Versioned schema migrations
         const versionResult = tx.executeSync('PRAGMA user_version');
         const currentVersion = versionResult.rows?.[0]?.user_version ?? 0;

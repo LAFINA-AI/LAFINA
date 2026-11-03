@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Alert, Animated, LayoutAnimation, UIManager } from 'react-native';
 import type { Note } from '../../../../storage';
 import { localSettingsStore, notesStore, tasksStore } from '../../../../storage';
+import {notesQueryStore} from '../../../../storage/notesQueryStore';
 import {notesEditStore} from '../../../../storage/notesEditStore';
 import type {NoteEditSnapshot} from '../../../../storage/notesEditStore';
 import { FilterType } from '../types';
@@ -70,7 +71,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
   const isCurrent=useCallback((generation?:number)=>lifecycle.current.mounted&&lifecycle.current.userId===userId&&(generation===undefined||generation===lifecycle.current.editor)&&notesEditStore.isActiveAccount(userId),[userId]);
   useEffect(()=>{lifecycle.current.mounted=true;return retire;},[retire]);
 
-  const [notes, setNotes] = useState<Note[]>([]);
+  const [notes, setNotes] = useState<NoteEditSnapshot[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchActive, setSearchActive] = useState(false);
   // Switching tabs unmounts this screen, so the chosen filter is remembered on
@@ -100,7 +101,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
   const dragXRef = useRef(new Animated.Value(0));
   const dragYRef = useRef(new Animated.Value(0));
   const [renderGen, setRenderGen] = useState(0);
-  const notesRef = useRef<Note[]>(notes);
+  const notesRef = useRef<NoteEditSnapshot[]>(notes);
   const activeDragIdRef = useRef<string | null>(null);
   const cardLayoutsRef = useRef<{ [id: string]: { x: number; y: number; width: number; height: number } }>({});
   const dragStartLayoutRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -119,21 +120,35 @@ export const useNotesData = (options: UseNotesDataOptions) => {
     [userId]
   );
 
-  const loadNotes = useCallback(() => {
-    const data = notesStore.getAll(userId);
-    setNotes(data);
-    const cats = notesStore.getCustomCategories(userId);
-    cats.forEach((c) => {
-      registerCustomCategoryColor(c.name, c.color);
-    });
-    const names = cats.map((c) => c.name);
-    setCustomCategories(names);
-    // A remembered filter whose category has since been deleted would leave the
-    // screen empty with no chip lit to explain why, so fall back to All.
-    setSelectedFilterState((current) =>
-      BUILT_IN_FILTERS.includes(current) || names.includes(current) ? current : DEFAULT_FILTER
-    );
-  }, [userId]);
+  const [nextCursor,setNextCursor]=useState<string|null>(null);
+  const [indexing,setIndexing]=useState(false);
+  const [loadError,setLoadError]=useState(false);
+  const [loadedScope,setLoadedScope]=useState('');
+  const scope=JSON.stringify([userId,selectedFilter,searchQuery.trim().toLowerCase()]);
+  const queryScope=useRef(scope);queryScope.current=scope;
+  const indexTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const cancelIndex=useCallback(()=>{if(indexTimer.current)clearTimeout(indexTimer.current);indexTimer.current=null;},[]);
+  const loadNotes = useCallback(function refreshNotes(indexOnly=false){
+    cancelIndex();if(queryScope.current!==scope||!isCurrent())return;
+    try{
+      const page=notesQueryStore.page({userId,filter:selectedFilter,search:searchQuery});
+      setNotes(page.items);setNextCursor(page.nextCursor);setIndexing(page.indexing);setLoadError(false);setLoadedScope(scope);
+      if(!indexOnly){
+        const cats=notesStore.getCustomCategories(userId);cats.forEach(c=>registerCustomCategoryColor(c.name,c.color));
+        const names=cats.map(c=>c.name);setCustomCategories(names);
+        setSelectedFilterState(current=>BUILT_IN_FILTERS.includes(current)||names.includes(current)?current:DEFAULT_FILTER);
+      }
+      if(page.indexing)indexTimer.current=setTimeout(()=>refreshNotes(true),0);
+    }catch{setLoadError(true);setIndexing(false);setNextCursor(null);setNotes([]);setLoadedScope(scope);}
+  },[userId,selectedFilter,searchQuery,scope,isCurrent,cancelIndex]);
+  const loadMore=useCallback(()=>{
+    if(!nextCursor||indexing||loadError||queryScope.current!==scope||!isCurrent())return;
+    try{const page=notesQueryStore.page({userId,filter:selectedFilter,search:searchQuery,after:nextCursor});
+      if(page.indexing){loadNotes();return;}
+      setNotes(previous=>[...previous,...page.items.filter(item=>!previous.some(existing=>existing.id===item.id))]);setNextCursor(page.nextCursor);
+    }catch{setLoadError(true);}
+  },[nextCursor,indexing,loadError,scope,isCurrent,userId,selectedFilter,searchQuery,loadNotes]);
+  const canReorder=loadedScope===scope&&!nextCursor&&!indexing&&!loadError&&selectedFilter==='All'&&!searchQuery.trim();
 
   const addCategory = useCallback((name: string, color: string) => {
     if (!name.trim()) return;
@@ -149,8 +164,8 @@ export const useNotesData = (options: UseNotesDataOptions) => {
   }, [userId, customCategories, loadNotes]);
 
   useEffect(() => {
-    loadNotes();
-  }, [userId, refreshTrigger, loadNotes]);
+    loadNotes();return cancelIndex;
+  }, [refreshTrigger, loadNotes,cancelIndex]);
 
   // ── Drag lifecycle ──
 
@@ -159,13 +174,14 @@ export const useNotesData = (options: UseNotesDataOptions) => {
   }, []);
 
   const handleDragStart = useCallback((noteId: string, _index: number) => {
+    if(!canReorder||!isCurrent()||!notesRef.current.some(note=>note.id===noteId&&!note.isPinned))return;
     activeDragIdRef.current = noteId;
     dragOffsetRef.current = { x: 0, y: 0 };
     const layout = cardLayoutsRef.current[noteId];
     dragStartLayoutRef.current = layout ? { ...layout } : null;
     setActiveDragId(noteId);
     setIsDragging(true);
-  }, []);
+  }, [canReorder,isCurrent]);
 
   const handleDragMove = useCallback((dx: number, dy: number) => {
     const draggedId = activeDragIdRef.current;
@@ -245,10 +261,10 @@ export const useNotesData = (options: UseNotesDataOptions) => {
   }, []);
 
   const handleDragEnd = useCallback(() => {
-    const latestNotes = notesRef.current;
-    const unpinnedNotes = latestNotes.filter(n => !n.isPinned);
-    const orderUpdates = unpinnedNotes.map((note, idx) => ({ id: note.id, sortOrder: idx }));
-    notesStore.updateOrder(orderUpdates);
+    if(activeDragIdRef.current&&canReorder&&isCurrent()){
+      try{notesQueryStore.reorder(userId,notesRef.current);}catch{Alert.alert('Notes changed','Refresh the complete collection before reordering.');}
+      loadNotes();
+    }
 
     activeDragIdRef.current = null;
     setActiveDragId(null);
@@ -257,7 +273,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
     dragStartLayoutRef.current = null;
     setRenderGen(g => g + 1);
     onRefresh();
-  }, [onRefresh]);
+  }, [onRefresh,canReorder,isCurrent,userId,loadNotes]);
 
   const handleDragRelease = useCallback(() => {
     handleDragEnd();
@@ -425,18 +441,6 @@ export const useNotesData = (options: UseNotesDataOptions) => {
     ]);
   }, [loadNotes, onRefresh,isCurrent,editorGeneration,editingNote,userId]);
 
-  const getFilteredNotes = useCallback(() => {
-    return notes.filter((n) => {
-      const matchesSearch = n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        noteBodyToMarkdown(n.body).toLowerCase().includes(searchQuery.toLowerCase());
-      if (!matchesSearch) return false;
-      if (selectedFilter === 'All') return true;
-      if (selectedFilter === 'Pinned') return n.isPinned;
-      if (selectedFilter === 'AI Transcribed') return n.isVoiceTranscribed;
-      return n.category === selectedFilter;
-    });
-  }, [notes, searchQuery, selectedFilter]);
-
   const triggerAiAction = useCallback((action: 'summarize' | 'clean' | 'tasks') => {
     if(!isCurrent(editorGeneration))return;
     if (isBodyEmpty(noteBody)) {
@@ -545,11 +549,11 @@ export const useNotesData = (options: UseNotesDataOptions) => {
     }
   }, [userId, customCategories, noteCategory, loadNotes]);
 
-  const filtered = useMemo(() => getFilteredNotes(), [getFilteredNotes]);
+  const filtered = loadedScope===scope?notes:[];
 
   return {
     // Data
-    notes, filtered, searchQuery, searchActive, selectedFilter, isGridView,
+    nextCursor,indexing,loadError,canReorder,loadMore,notes, filtered, searchQuery, searchActive, selectedFilter, isGridView,
     // Editor
     editorVisible, editingNote, noteTitle, noteBody, noteCategory, noteTags,
     isPinned, isVoice, imageUri, selection, customCategories,

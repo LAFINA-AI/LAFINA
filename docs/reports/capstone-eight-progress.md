@@ -42,3 +42,20 @@ and safe retry, ordinary editing/deletion, rich body preservation and delayed wo
 TypeScript PASS; 124 suites / 954 tests PASS; ESLint zero errors (261 warnings).
 Checked Notes store 100% line coverage; Notes hook 60.2%, meeting the general gate.
 Stages 3â€“8 remain in progress; this stage has host evidence, not a physical UI claim.
+
+## 3 — paged Notes and normalized SQL search (owner item 4)
+
+Added schema-22 derived search cache with SQL invalidation and owner/revision joins.
+Each call normalizes at most 50 stale rich bodies; the UI yields between batches
+and labels incomplete results. Literal LIKE wildcards, categories, voice/pinned
+filters and stable owner/query-bound keyset pages retain USTP Notes behavior.
+Load more and Refresh are explicit. Full collection/revision checks protect drag
+ordering; incomplete/filtered pages cannot rewrite global order. No source body is
+rewritten. ADR-003 records the schema refinement and compatibility protocol.
+
+TypeScript PASS; 126 suites / 960 tests PASS with normal exit; ESLint zero errors
+(262 warnings). Notes query store 100% line coverage, schema 100%, UI hook 61.58%.
+Standalone QA/native test builds PASS; data-preserving emulator installation PASS.
+Existing 17 native groups plus cross-process microphone probes PASS, including
+explicit schema 21/22 acceptance and schema-999 refusal. No student data cleared.
+Stages 4–8 remain in progress; physical phone/audio validation remains pending.

@@ -31,7 +31,7 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
 
   const renderItem = useCallback(({ item, index }: { item: Note; index: number }) => {
     const isItemPinned = item.isPinned;
-    const canDrag = !isItemPinned && data.selectedFilter === 'All' && !data.searchQuery.trim();
+    const canDrag = !isItemPinned && data.canReorder;
     const isActive = item.id === data.activeDragId;
 
     return (
@@ -111,11 +111,17 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
         customCategories={data.customCategories}
       />
 
+      <View>
+        {data.indexing&&<Text accessibilityLiveRegion="polite">Updating search results…</Text>}
+        {data.loadError&&<Text accessibilityLiveRegion="polite">Notes could not be loaded. Try refreshing.</Text>}
+        <TouchableOpacity accessibilityRole="button" onPress={()=>data.loadNotes()}><Text style={{color:colors.textPrimary}}>Refresh notes</Text></TouchableOpacity>
+        {!!data.nextCursor&&!data.indexing&&!data.loadError&&<TouchableOpacity accessibilityRole="button" onPress={data.loadMore}><Text style={{color:colors.textPrimary}}>Load more notes</Text></TouchableOpacity>}
+      </View>
       {/* Content */}
       {data.filtered.length === 0 ? (
         <View style={styles.emptyState}>
           <FileText size={48} color={colors.red} style={{ marginBottom: 16 }} />
-          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No notes found</Text>
+          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>{data.indexing?'Searching notes…':data.loadError?'Notes unavailable':'No notes found'}</Text>
           <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
             Tap the + button below to write a new note, or use the voice assistant.
           </Text>

@@ -37,6 +37,10 @@ Never inspect environment files or distribute development signing as production.
    Drag ordering must only operate with a complete unfiltered ordering context;
    never persist a partial page as the entire collection. Types: `NotesQuery/Page`.
    Test >one page, ties, account/filter changes, edits/deletes and paged drag safety.
+   Implementation refinement: additive schema 22 holds a derived normalized rich-text
+   search cache, invalidated by SQL triggers on every note update/delete. Normalize
+   at most 50 stale notes per UI yield; source content/revisions stay authoritative.
+   Native delivery explicitly accepts 20–22 before bundled schema-22 JS is installed.
 
 4. **Overnight events and timezone-safe scheduling (item 5).** Add explicit event end
    dates and named timezone/instant metadata through an additive migration; retain
