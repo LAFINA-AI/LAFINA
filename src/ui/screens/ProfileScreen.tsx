@@ -31,6 +31,7 @@ import { PrivacyModal } from '../components/profile/PrivacyModal';
 import { StudentProTag } from '../components/profile/StudentProTag';
 import { AppUpdateItem } from '../components/profile/AppUpdateItem';
 import { PreferencesSettingsScreen } from './PreferencesSettingsScreen';
+import {ReminderHealth} from '../components/profile/ReminderHealth';
 
 function getInitials(username: string | null | undefined): string {
   if (!username || username.trim().length === 0) {
@@ -89,6 +90,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [dailyBriefingEnabled, setDailyBriefingEnabled] = useState(true);
   const [preferenceSummary, setPreferenceSummary] = useState('15 min, Snooze once');
   const [preferencesVisible, setPreferencesVisible] = useState(false);
+  const [healthVisible,setHealthVisible]=useState(false);
 
   // Privacy Modal state
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
@@ -358,6 +360,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         <View style={styles.settingsContainer}>
           {/* Preferences Group */}
           <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Preferences</Text>
+          <SettingItem text="Reminder health" onPress={()=>setHealthVisible(true)}/>
           <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
             <SettingItem
               text="Scheduling & Reminder Preferences"
@@ -487,6 +490,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       <View style={{ height: 120 }} />
 
       {/* Privacy Policy Modal [Fix #1] */}
+      <ReminderHealth key={userId} userId={userId} visible={healthVisible} onClose={()=>setHealthVisible(false)}/>
       <PrivacyModal
         visible={privacyModalVisible}
         onClose={() => setPrivacyModalVisible(false)}

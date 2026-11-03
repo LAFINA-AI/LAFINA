@@ -72,3 +72,13 @@ cursors. No messages or timestamps are rewritten. TypeScript PASS; 111 suites /
   Manual undated-task access and guest-history migration follow-ups are tracked next.
 Guest sign-in follow-up: a failing regression reproduced hidden transferred history. Default-session consolidation now accepts only sessions explicitly recorded as owned by the signed-in account. TypeScript PASS; 112 suites / 920 tests PASS; ESLint zero errors.
 Manual untimed follow-up: a failing real-hook test reproduced accidental noon deadlines on title edits. Explicit deadline/time switches now preserve absent values and an existing different due date. Calendar offers owner-scoped pages of 20 undated tasks for manual editing/deletion. TypeScript PASS; 113 suites / 924 tests PASS; ESLint zero errors; editor line coverage 96.47%.
+
+## Stage 4 — reminder health
+
+Profile now shows native notification/exact/full-screen permissions separately from
+owner-scoped queued, blocked, ringing and inexact delivery evidence. At most twenty
+redacted jobs are shown; titles and arbitrary native errors are excluded. Settings
+return refreshes health; stale account/view results are ignored. Recovery is bounded,
+active-account checked and described as a registration request, not proof of delivery.
+TypeScript PASS; 115 suites / 928 tests PASS; ESLint zero errors (250 warnings).
+Storage/scheduler health line coverage exceeds 80%; UI exceeds 60%.
