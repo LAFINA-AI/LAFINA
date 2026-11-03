@@ -1,8 +1,10 @@
 import { NativeModules } from 'react-native';
+import {speechEngineStore} from '../../storage/speechEngineStore';
 
 export type OfflineSpeechCaptureMode = 'manual' | 'automatic';
 
 export interface OfflineSpeechCaptureOptions {
+  userId?:string;
   mode: OfflineSpeechCaptureMode;
   bargeIn: boolean;
   context: 'main_mic' | 'reminder_call';
@@ -33,6 +35,7 @@ interface OfflineSpeechNativeModule {
 let captureSequence = 0;
 let activeCaptureId: string | null = null;
 let activeCancellation: {captureId: string; settle: () => void} | null = null;
+let activeNativeCapture:{captureId:string;module:OfflineSpeechNativeModule}|null=null;
 
 /**
  * Hard ceiling on how long one capture may own the shared microphone slot.
@@ -44,8 +47,9 @@ let activeCancellation: {captureId: string; settle: () => void} | null = null;
  */
 const MAX_CAPTURE_DURATION_MS = 90_000;
 
-const getNativeModule = (): OfflineSpeechNativeModule | null => {
-  const module = NativeModules.LafinaSpeechToText as
+const getNativeModule = (userId?:string): OfflineSpeechNativeModule | null => {
+  let engine:'whisper'|'android';try{engine=speechEngineStore.read(userId).stt;}catch{return null;}
+  const module = (engine==='android'?NativeModules.LafinaAndroidSpeech:NativeModules.LafinaSpeechToText) as
     | OfflineSpeechNativeModule
     | undefined;
   return module?.startListening ? module : null;
@@ -73,8 +77,8 @@ const releaseTimedOutCapture = (
 /**
  * Returns whether the shared on-device Silero VAD and Whisper.cpp bridge is linked.
  */
-export const hasOfflineSpeechCapture = (): boolean =>
-  getNativeModule() !== null;
+export const hasOfflineSpeechCapture = (userId?:string): boolean =>
+  getNativeModule(userId) !== null;
 
 /**
  * Atomically starts the single shared offline speech capture.
@@ -84,7 +88,7 @@ export const hasOfflineSpeechCapture = (): boolean =>
 export const startOfflineSpeechCapture = (
   options: OfflineSpeechCaptureOptions,
 ): OfflineSpeechCaptureHandle => {
-  const module = getNativeModule();
+  const module = getNativeModule(options.userId);
   if (!module) {
     throw new Error('Offline speech recognition is unavailable.');
   }
@@ -95,12 +99,14 @@ export const startOfflineSpeechCapture = (
   captureSequence += 1;
   const captureId = `${options.context}-${Date.now()}-${captureSequence}`;
   activeCaptureId = captureId;
+  activeNativeCapture={captureId,module};
 
   let nativeResult: Promise<OfflineSpeechResult>;
   try {
     nativeResult = module.startListening({ ...options, captureId });
   } catch (error) {
     activeCaptureId = null;
+    activeNativeCapture=null;
     throw error;
   }
 
@@ -128,10 +134,13 @@ export const startOfflineSpeechCapture = (
 
   const result = Promise.race([
     nativeResult.then(value => {
-      if (value.captureId !== captureId) {
+      if (!value || value.captureId !== captureId) {
         throw new Error(
           'Offline speech result did not match the active capture owner.',
         );
+      }
+      if(typeof value.transcript!=='string'||value.transcript.length>2000||typeof value.speechDetected!=='boolean'||typeof value.cancelled!=='boolean'||![value.captureDurationMs,value.inferenceDurationMs].every(ms=>Number.isFinite(ms)&&ms>=0)){
+        releaseTimedOutCapture(module,captureId);throw new Error('Offline speech returned an invalid result.');
       }
       return value;
     }),
@@ -141,7 +150,11 @@ export const startOfflineSpeechCapture = (
     if (watchdog) clearTimeout(watchdog);
     if (activeCaptureId === captureId) activeCaptureId = null;
     if (activeCancellation?.captureId === captureId) activeCancellation = null;
+    if (activeNativeCapture?.captureId === captureId) activeNativeCapture=null;
   });
+  // A manual hold can fail before release attaches its consumer. Retain rejection
+  // for that consumer while preventing an unhandled-promise warning meanwhile.
+  void result.catch(()=>undefined);
   return { captureId, result };
 };
 
@@ -151,7 +164,7 @@ export const startOfflineSpeechCapture = (
 export const stopOfflineSpeechCapture = async (
   captureId: string,
 ): Promise<boolean> => {
-  const module = getNativeModule();
+  const module = activeNativeCapture?.captureId===captureId?activeNativeCapture.module:getNativeModule();
   if (!module) return false;
   return module.stopListening(captureId);
 };
@@ -167,7 +180,7 @@ export const cancelOfflineSpeechCapture = async (
     activeCancellation = null;
     activeCaptureId = null;
   }
-  const module = getNativeModule();
+  const module = activeNativeCapture?.captureId===captureId?activeNativeCapture.module:getNativeModule();
   if (!module) {
     if (activeCaptureId === captureId) activeCaptureId = null;
     return false;

@@ -111,3 +111,26 @@ install and known vendor ONNX 16 KiB alignment qualification remain unverified.
 TypeScript PASS; 117 suites / 933 tests PASS; ESLint zero errors (251 warnings).
 Build output directories replace the prior ABI selection; the final build will request
 both phone and emulator ABIs together so both final artifacts are retained.
+
+## Stage 7 — optional Android speech
+
+Owner-approved, per-account choices retain Whisper/Kokoro defaults. Added only Android
+platform APIs: `createOnDeviceSpeechRecognizer` on API 31+, English en-US input, and
+explicit installed offline English system TTS voices. No generic recognizer,
+setLanguage/model download, npm/pip package, or silent fallback was added. Capture
+ownership retains its original module across setting changes. Native and JS watchdogs,
+owned Stop/Cancel, foreground/audio-focus cleanup and stale-account checks bound work.
+Missing/malformed capabilities/results retain text and clear settings feedback.
+
+References: Android SpeechRecognizer API
+https://developer.android.com/reference/android/speech/SpeechRecognizer and TextToSpeech
+https://developer.android.com/reference/android/speech/tts/TextToSpeech / Engine API.
+Voice eligibility is metadata, not a claim about any arbitrary engine's audibility.
+
+TypeScript PASS; 119 suites / 939 tests PASS with normal exit; ESLint zero errors
+(261 warnings). All added critical modules exceed 80% lines; settings UI exceeds 60%.
+Both ABI QA builds and Android compilation PASS. Emulator update/native checks PASS
+(17 checks including English installed/offline voice policy). Airplane-mode native
+capabilities reported an on-device service and installed English voices; an explicit
+system voice preview completed. Original Whisper/Kokoro preferences were restored.
+No physical recognition, audibility, quality or latency qualification is claimed.

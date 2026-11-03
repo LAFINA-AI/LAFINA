@@ -267,16 +267,17 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
 
     try {
       speechCaptureRef.current = startOfflineSpeechCapture({
+        userId,
         mode: 'manual',
         bargeIn: false,
         context: 'main_mic',
       });
     } catch (error) {
       console.error('Failed to start offline Whisper capture:', error);
-      setNotice('Speech recognition could not start. Please try again.');
+      setNotice('The selected speech engine could not start. Type your command or check Speech engines in Profile.');
       triggerErrorShake('idle');
     }
-  }, [ensureMicrophonePermission, triggerErrorShake,cancelReview]);
+  }, [ensureMicrophonePermission, triggerErrorShake,cancelReview,userId]);
 
   // Release the mic button to stop recording and process the shared Whisper result.
   const handlePressOut = async () => {

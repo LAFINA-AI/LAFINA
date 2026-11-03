@@ -132,7 +132,7 @@ export const runOfflineVoiceScheduling = async (
 ): Promise<VoicePipelineResult> => {
   const modules = getNativeVoiceModules();
 
-  if (!hasOfflineSpeechCapture() || !modules.LafinaIntentExtractor) {
+  if (!hasOfflineSpeechCapture(userId) || !modules.LafinaIntentExtractor) {
     return unavailableResult(
       'Offline voice is not available in this build yet. You can type the command below for now.',
       'native_runtime_unavailable',
@@ -149,6 +149,7 @@ export const runOfflineVoiceScheduling = async (
 
   try {
     const capture = startOfflineSpeechCapture({
+      userId,
       mode: 'automatic',
       bargeIn: false,
       context: 'main_mic',

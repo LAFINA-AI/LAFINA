@@ -17,6 +17,11 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
     val results = Bundle()
     val file = File(targetContext.cacheDir, "delivery-qa-${System.nanoTime()}.sqlite")
     try {
+      check(LafinaAndroidSpeechPolicy.installedEnglish("offline-en", "en", false, emptySet()))
+      check(!LafinaAndroidSpeechPolicy.installedEnglish("network-en", "en", true, emptySet()))
+      check(!LafinaAndroidSpeechPolicy.installedEnglish("missing-en", "en", false, setOf("notInstalled")))
+      check(!LafinaAndroidSpeechPolicy.installedEnglish("offline-other", "fr", false, emptySet()))
+      check(!LafinaAndroidSpeechPolicy.validOwner("bad\nrequest"))
       val context = object : ContextWrapper(targetContext) {
         override fun getDatabasePath(name: String): File = file
       }
@@ -96,7 +101,7 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
       openFixture(file).use { it.execSQL("PRAGMA user_version=999") }
       check(runCatching { LafinaDeliveryStore(context).close() }.isFailure)
       results.putString("stream", "PASS: PendingIntent hash-collision isolation, native SQLite claim, duplicate/stale rejection, concurrent-call serialization/release, posting receipt, reopen recovery, bounded failure counters, source-change retirement, atomic rollback, schema-21 compatibility and future-schema refusal.\n")
-      results.putInt("passed", 12)
+      results.putInt("passed", 17)
       finish(Activity.RESULT_OK, results)
     } catch (error: Throwable) {
       results.putString("stream", "FAIL: ${error.javaClass.simpleName}: ${error.message} at ${error.stackTrace.firstOrNull()}\n")

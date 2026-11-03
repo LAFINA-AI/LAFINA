@@ -127,7 +127,7 @@ describe('voice assistant sheet', () => {
   });
   it('turns a finished recording into an editable draft without saving',async()=>{
     jest.spyOn(PermissionsAndroid,'check').mockResolvedValue(true);
-    NativeModules.LafinaSpeechToText={startListening:jest.fn(({captureId}:{captureId:string})=>Promise.resolve({captureId,transcript:'note: dictated text',speechDetected:true,cancelled:false})),stopListening:jest.fn().mockResolvedValue(true),cancelListening:jest.fn().mockResolvedValue(true)};
+    NativeModules.LafinaSpeechToText={startListening:jest.fn(({captureId}:{captureId:string})=>Promise.resolve({captureId,transcript:'note: dictated text',speechDetected:true,cancelled:false,captureDurationMs:1000,inferenceDurationMs:100})),stopListening:jest.fn().mockResolvedValue(true),cancelListening:jest.fn().mockResolvedValue(true)};
     const tree=render();
     await act(async()=>{await tree.root.findByProps({accessibilityLabel:'Hold to talk'}).props.onPressIn();});
     await act(async()=>{await tree.root.findByProps({accessibilityLabel:'Hold to talk'}).props.onPressOut();});
@@ -156,7 +156,7 @@ describe('voice assistant sheet', () => {
   });
   it('asks before a transcript replaces different typed text',async()=>{
     const alert=jest.spyOn(Alert,'alert');jest.spyOn(PermissionsAndroid,'check').mockResolvedValue(true);
-    NativeModules.LafinaSpeechToText={startListening:jest.fn(({captureId}:{captureId:string})=>Promise.resolve({captureId,transcript:'note: replacement',speechDetected:true,cancelled:false})),stopListening:jest.fn().mockResolvedValue(true),cancelListening:jest.fn().mockResolvedValue(true)};
+    NativeModules.LafinaSpeechToText={startListening:jest.fn(({captureId}:{captureId:string})=>Promise.resolve({captureId,transcript:'note: replacement',speechDetected:true,cancelled:false,captureDurationMs:1000,inferenceDurationMs:100})),stopListening:jest.fn().mockResolvedValue(true),cancelListening:jest.fn().mockResolvedValue(true)};
     const tree=render();act(()=>tree.root.findByType(TextInput).props.onChangeText('note: original'));
     await act(async()=>{await tree.root.findByProps({accessibilityLabel:'Hold to talk'}).props.onPressIn();});
     await act(async()=>{await tree.root.findByProps({accessibilityLabel:'Hold to talk'}).props.onPressOut();});
@@ -207,3 +207,4 @@ describe('voice assistant sheet', () => {
   });
 
 });
+

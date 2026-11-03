@@ -11,6 +11,7 @@ jest.mock('../../src/cloud/accountLinkService');
 jest.mock('../../src/storage/userStore');
 jest.mock('../../src/storage/businessStore');
 jest.mock('../../src/ai/tts/ttsService');
+jest.mock('../../src/storage/speechEngineStore',()=>({speechEngineStore:{read:jest.fn(()=>({stt:'whisper',tts:'kokoro',voiceName:null}))}}));
 jest.mock('react-native-fs', () => ({
   CachesDirectoryPath: '/mock/cache/path',
   mkdir: jest.fn().mockResolvedValue(true),

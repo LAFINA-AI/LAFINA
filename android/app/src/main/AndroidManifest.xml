@@ -16,6 +16,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <!-- Installing its own updates (a new APK); Android asks the person to allow it once. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <queries>
+      <intent><action android:name="android.speech.RecognitionService" /></intent>
+      <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
+    </queries>
 
     <application
       android:name=".MainApplication"

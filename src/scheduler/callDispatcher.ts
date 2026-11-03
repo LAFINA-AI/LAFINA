@@ -31,6 +31,7 @@ import {
 import {
   CallSpeechProvider,
   defaultCallSpeechProvider,
+  createOfflineCallSpeechProvider,
 } from './speechProvider';
 
 export type CallState =
@@ -474,7 +475,7 @@ async function startAutomaticAttempt(
   cachedPath?: string | null,
 ): Promise<void> {
   if (!isCurrentSession(session) || !session.voiceEnabled) return;
-  if (!hasOfflineSpeechCapture()) {
+  if (!hasOfflineSpeechCapture(session.userId)) {
     session.voiceEnabled = false;
     void stopActiveCallSession();
     publishCallState(
@@ -492,6 +493,7 @@ async function startAutomaticAttempt(
         mode: 'automatic',
         bargeIn: true,
         context: 'reminder_call',
+        userId: session.userId,
       });
     } catch (error) {
       session.voiceEnabled = false;
@@ -578,6 +580,7 @@ async function startAutomaticAttempt(
       mode: 'automatic',
       bargeIn: false,
       context: 'reminder_call',
+        userId: session.userId,
     });
   } catch (error) {
     session.voiceEnabled = false;
@@ -691,7 +694,7 @@ export const answerCall = async (
     state: 'connected',
     retryCount: 0,
     voiceEnabled,
-    speechProvider: speechProvider || defaultCallSpeechProvider,
+    speechProvider: speechProvider || createOfflineCallSpeechProvider(userId),
     isResolving: false,
   };
   activeSession = session;
@@ -765,7 +768,7 @@ export const autoSnoozeCall = async (): Promise<void> => {
 export const declineCall = async (
   reminderId: string,
   userId: string,
-  speechProvider: CallSpeechProvider = defaultCallSpeechProvider,
+  speechProvider?: CallSpeechProvider,
   expectedDeliveryKey?: string,
 ): Promise<void> => {
   const reminder = remindersStore.getReminderById(reminderId);
@@ -783,7 +786,7 @@ export const declineCall = async (
     state: 'ringing',
     retryCount: 0,
     voiceEnabled: false,
-    speechProvider,
+    speechProvider: speechProvider || createOfflineCallSpeechProvider(userId),
     isResolving: false,
   };
   await autoSnoozeCall();
@@ -859,3 +862,4 @@ export const disconnectCall = (resolution?: CallResolution, retiredDeliveryKey?:
   if (resolution) event.resolution = resolution;
   if (!retiredDeliveryKey) DeviceEventEmitter.emit('LAFINA_CALL_STATE_CHANGE', event);
 };
+

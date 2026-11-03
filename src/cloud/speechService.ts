@@ -3,6 +3,8 @@ import { cloudClient } from './cloudClient';
 import { accountLinkService } from './accountLinkService';
 import { userStore } from '../storage/userStore';
 import { businessStore } from '../storage/businessStore';
+import {speechEngineStore} from '../storage/speechEngineStore';
+import {createAndroidCallSpeechProvider} from '../scheduler/androidSpeechProvider';
 import {
   playSpeechFile,
   speakTextWithTts,
@@ -65,6 +67,8 @@ const waitForPreparation = async (
 export const createCallSpeechProvider = (
   userId: string,
 ): CallSpeechProvider => {
+  try{const choice=speechEngineStore.read(userId);if(choice.tts==='android'&&choice.voiceName)return createAndroidCallSpeechProvider(userId,choice.voiceName);}
+  catch{return {speakText:async()=>{throw new Error('Speech settings unavailable. Change engines in Profile.');}};}
   const preparedAudioPaths = new Map<string, string>();
   const preparations = new Map<string, Promise<string | null>>();
   const preparationControllers = new Set<AbortController>();

@@ -1,7 +1,9 @@
 import { playSpeechFile, speakTextWithTts } from '../ai/tts/ttsService';
+import {speechEngineStore} from '../storage/speechEngineStore';
+import {createAndroidCallSpeechProvider} from './androidSpeechProvider';
 
 export interface CallSpeechResult {
-  source: 'gemini' | 'kokoro';
+  source: 'gemini' | 'kokoro' | 'android';
 }
 
 export interface CallSpeechProvider {
@@ -52,4 +54,10 @@ export const defaultCallSpeechProvider: CallSpeechProvider = {
     await speakTextWithTts(text);
     return { source: 'kokoro' };
   },
+};
+
+/** Selects explicit offline speech choices while preserving Kokoro as the default. */
+export const createOfflineCallSpeechProvider=(userId:string):CallSpeechProvider=>{
+  try{const choice=speechEngineStore.read(userId);return choice.tts==='android'&&choice.voiceName?createAndroidCallSpeechProvider(userId,choice.voiceName):defaultCallSpeechProvider;}
+  catch{return {speakText:async()=>{throw new Error('Speech settings unavailable. Use the reminder buttons or change engines in Profile.');}};}
 };

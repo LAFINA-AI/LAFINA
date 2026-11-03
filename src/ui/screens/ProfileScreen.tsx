@@ -33,6 +33,7 @@ import { AppUpdateItem } from '../components/profile/AppUpdateItem';
 import { PreferencesSettingsScreen } from './PreferencesSettingsScreen';
 import {ReminderHealth} from '../components/profile/ReminderHealth';
 import {PersonalMemory} from '../components/profile/PersonalMemory';
+import {SpeechEngines} from '../components/profile/SpeechEngines';
 
 function getInitials(username: string | null | undefined): string {
   if (!username || username.trim().length === 0) {
@@ -93,6 +94,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [preferencesVisible, setPreferencesVisible] = useState(false);
   const [healthVisible,setHealthVisible]=useState(false);
   const [memoryVisible,setMemoryVisible]=useState(false);
+  const [speechVisible,setSpeechVisible]=useState(false);
 
   // Privacy Modal state
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
@@ -161,8 +163,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         );
       } else {
         Alert.alert(
-          'TTS Test (Kokoro Fallback)',
-          'Playback finished using Kokoro-82M (Offline Fallback).'
+          result.source==='android'?'TTS Test (Android offline)':'TTS Test (Kokoro Fallback)',
+          result.source==='android'?'Playback completed using the selected installed Android voice.':'Playback finished using Kokoro-82M (Offline Fallback).'
         );
       }
     } catch (e: unknown) {
@@ -364,6 +366,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Preferences</Text>
           <SettingItem text="Reminder health" onPress={()=>setHealthVisible(true)}/>
           <SettingItem text="Personal event preferences" onPress={()=>setMemoryVisible(true)}/>
+          <SettingItem text="Speech engines" onPress={()=>setSpeechVisible(true)}/>
           <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
             <SettingItem
               text="Scheduling & Reminder Preferences"
@@ -495,6 +498,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       {/* Privacy Policy Modal [Fix #1] */}
       <ReminderHealth key={userId} userId={userId} visible={healthVisible} onClose={()=>setHealthVisible(false)}/>
       <PersonalMemory key={`memory-${userId}`} userId={userId} visible={memoryVisible} onClose={()=>setMemoryVisible(false)}/>
+      <SpeechEngines key={`speech-${userId}`} userId={userId} visible={speechVisible} onClose={()=>setSpeechVisible(false)}/>
       <PrivacyModal
         visible={privacyModalVisible}
         onClose={() => setPrivacyModalVisible(false)}
