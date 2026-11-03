@@ -71,6 +71,18 @@ export const guestMigration = {
       // 2b. Study tools. The Pomodoro log moves with the guest; one-row-per-user
       // tables keep the account's own row when it already has one here.
       if (cloudUserId !== GUEST_USER_ID) {
+        for(const key of ['event_memory_v1','speech_engines_v1']){
+          const preference=tx.executeSync('SELECT value FROM local_settings WHERE user_id=? AND key=?',[GUEST_USER_ID,key]).rows[0]?.value;
+          if(preference==null)continue;
+          tx.executeSync('INSERT OR IGNORE INTO local_settings(user_id,key,value,updated_at) VALUES(?,?,?,?)',[cloudUserId,key,String(preference),now]);
+          if(key==='event_memory_v1'){
+            let revision=0;try{const parsed=JSON.parse(String(preference)) as {revision?:unknown};if(Number.isSafeInteger(parsed?.revision))revision=Number(parsed.revision);}catch{/* Preserve the malformed original only for its transferred owner. */}
+            // Retain only a fence, so an old guest review cannot resurrect facts
+            // if another person later starts a fresh guest account on this device.
+            const tombstone={version:1,revision:revision+1,enabled:false,value:null,createdAt:now,updatedAt:now};
+            tx.executeSync('UPDATE local_settings SET value=?,updated_at=? WHERE user_id=? AND key=?',[JSON.stringify(tombstone),now,GUEST_USER_ID,key]);
+          }else tx.executeSync('DELETE FROM local_settings WHERE user_id=? AND key=?',[GUEST_USER_ID,key]);
+        }
         tx.executeSync(`UPDATE pomodoro_sessions SET user_id = ? WHERE user_id = ?`, [cloudUserId, GUEST_USER_ID]);
         ['pomodoro_settings', 'pomodoro_state'].forEach((table) => {
           tx.executeSync(`UPDATE OR IGNORE ${table} SET user_id = ? WHERE user_id = ?`, [cloudUserId, GUEST_USER_ID]);

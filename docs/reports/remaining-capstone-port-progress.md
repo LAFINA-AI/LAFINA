@@ -134,3 +134,4 @@ Both ABI QA builds and Android compilation PASS. Emulator update/native checks P
 capabilities reported an on-device service and installed English voices; an explicit
 system voice preview completed. Original Whisper/Kokoro preferences were restored.
 No physical recognition, audibility, quality or latency qualification is claimed.
+Preference migration follow-up: failing regression reproduced guest settings being stranded. Explicit event/speech preferences now follow the existing guest-to-account ownership transfer, preserving an existing destination choice. A cleared revision fence prevents stale guest Save resurrection; later fresh guests receive no prior facts/engine choice. TypeScript PASS; 119 suites / 940 tests PASS; ESLint zero errors.

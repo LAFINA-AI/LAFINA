@@ -4,6 +4,8 @@ import { initDatabase } from '../../src/storage/dbInit';
 import { userStore } from '../../src/storage/userStore';
 import { GUEST_USER_ID } from '../../src/constants';
 import { syncOutboxStore } from '../../src/storage/syncOutboxStore';
+import {personalMemoryStore as memory} from '../../src/storage/personalMemoryStore';
+import {speechEngineStore} from '../../src/storage/speechEngineStore';
 
 describe('guestMigration', () => {
   beforeAll(async () => {
@@ -28,6 +30,16 @@ describe('guestMigration', () => {
 
     const summary = guestMigration.getGuestDataSummary();
     expect(summary.taskCount).toBeGreaterThanOrEqual(1);
+  });
+  it('transfers explicit local preferences without exposing them to a future fresh guest',async()=>{
+    const target='local-preference-account',now=new Date().toISOString();db.executeSync('INSERT OR IGNORE INTO users(id,username,created_at,updated_at) VALUES(?,?,?,?)',[target,'Preferences',now,now]);
+    db.executeSync("DELETE FROM local_settings WHERE user_id IN (?,?)",[target,GUEST_USER_ID]);
+    userStore.setCurrentUser(target);speechEngineStore.save(target,{stt:'whisper',tts:'kokoro',voiceName:null});
+    userStore.setCurrentUser(GUEST_USER_ID);memory.confirm(memory.prepare(GUEST_USER_ID,{startTime:'09:00',durationMinutes:60,expiresDays:0}).token,GUEST_USER_ID);
+    const stale=memory.prepare(GUEST_USER_ID,{startTime:'10:00',durationMinutes:90,expiresDays:0});speechEngineStore.save(GUEST_USER_ID,{stt:'android',tts:'kokoro',voiceName:null});
+    await guestMigration.linkGuestToCloudAccount(target,'preferences@example.com');
+    expect(memory.read(target).value?.startTime).toBe('09:00');expect(speechEngineStore.read(target).stt).toBe('whisper');
+    userStore.createGuestUser();userStore.setCurrentUser(GUEST_USER_ID);expect(memory.offer(GUEST_USER_ID)).toBeNull();expect(speechEngineStore.read(GUEST_USER_ID).stt).toBe('whisper');expect(()=>memory.confirm(stale.token,GUEST_USER_ID)).toThrow();
   });
 
   it('re-keys guest data to cloud account UUID on confirmation', async () => {
