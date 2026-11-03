@@ -284,4 +284,16 @@ describe('Chat files and handbook answers on mobile', () => {
     act(()=>tree.unmount());
   });
 
+  it('loads the newest history page and earlier messages only on request',async()=>{
+    const sessionId=chatStore.ensureDefaultSession(FREE),now=new Date().toISOString();
+    for(let i=0;i<65;i++)db.executeSync('INSERT INTO messages(id,session_id,sender,content,created_at,updated_at) VALUES(?,?,?,?,?,?)',[`page-${String(i).padStart(3,'0')}`,sessionId,'user',`Synthetic ${i}`,now,now]);
+    const full=jest.spyOn(chatStore,'getMessages');const tree=await render(FREE);
+    const list=tree.root.find(node=>Array.isArray(node.props.data)&&typeof node.props.renderItem==='function');
+    expect(list.props.data).toHaveLength(50);expect(full).not.toHaveBeenCalled();
+    act(()=>byLabel(tree,'Load earlier messages').props.onPress());
+    const loaded=tree.root.find(node=>Array.isArray(node.props.data)&&typeof node.props.renderItem==='function').props.data as Array<{id:string}>;
+    expect(loaded).toHaveLength(65);expect(new Set(loaded.map(message=>message.id)).size).toBe(65);
+    act(()=>tree.unmount());
+  });
+
 });

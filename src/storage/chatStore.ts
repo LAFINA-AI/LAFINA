@@ -55,7 +55,24 @@ const parseAttachment = (raw: unknown): ChatAttachment | null => {
   }
 };
 
+export interface ChatPage {items:ChatMessage[];nextCursor:string|null;}
+const mapMessage=(row:Record<string,unknown>):ChatMessage=>({id:String(row.id),sessionId:String(row.session_id),sender:row.sender as ChatMessage['sender'],content:String(row.content),attachment:parseAttachment(row.attachment_json),createdAt:String(row.created_at),updatedAt:String(row.updated_at)});
+
 export const chatStore = {
+  /** Loads the newest page, or the page before an owner-bound timestamp/ID cursor. */
+  getMessagesPage:(userId:string,query:{limit?:number;before?:string|null}={}):ChatPage=>{
+    const limit=query.limit??50;if(!Number.isInteger(limit)||limit<1||limit>50)throw new Error('Chat page limit must be 1–50.');
+    const sessionId=chatStore.ensureDefaultSession(userId);
+    let where='m.session_id=? AND s.user_id=?';const args:unknown[]=[sessionId,userId];
+    if(query.before){
+      let cursor:unknown;try{cursor=JSON.parse(query.before);}catch{throw new Error('Invalid Chat cursor.');}
+      if(!Array.isArray(cursor)||cursor.length!==4||cursor[0]!==1||cursor[1]!==userId||typeof cursor[2]!=='string'||typeof cursor[3]!=='string')throw new Error('Invalid Chat cursor.');
+      where+=' AND (m.created_at,m.id)<(?,?)';args.push(cursor[2],cursor[3]);
+    }
+    const rows=db.executeSync(`SELECT m.* FROM messages m JOIN chat_sessions s ON s.id=m.session_id WHERE ${where} ORDER BY m.created_at DESC,m.id DESC LIMIT ?`,[...args,limit+1]).rows as Array<Record<string,unknown>>;
+    const kept=rows.slice(0,limit),last=kept[kept.length-1];
+    return {items:kept.map(mapMessage).reverse(),nextCursor:rows.length>limit?JSON.stringify([1,userId,last.created_at,last.id]):null};
+  },
   /**
    * Ensures that a default chat session exists in the database for the user.
    * Returns the session ID.

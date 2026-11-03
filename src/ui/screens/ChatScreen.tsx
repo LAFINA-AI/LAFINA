@@ -93,6 +93,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
 }) => {
   const commands=useCommandReview(userId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [olderCursor,setOlderCursor]=useState<string|null>(null);
+  const loadingOlder=useRef(false);
   const [inputText, setInputText] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [isOnlineMode, setIsOnlineMode] = useState(false);
@@ -221,8 +223,11 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   }, [userId, refreshTrigger]);
 
   const loadChatHistory = () => {
-    const history = chatStore.getMessages(userId);
-    setMessages(history);
+    try {
+      const page=chatStore.getMessagesPage(userId);
+      loadingOlder.current=false;setMessages(page.items);setOlderCursor(page.nextCursor);
+    } catch {setMessages([]);setOlderCursor(null);}
+
     if(scrollTimer.current) clearTimeout(scrollTimer.current);
     scrollTimer.current=setTimeout(() => {flatListRef.current?.scrollToEnd({animated:false});scrollTimer.current=null;},100);
   };
@@ -582,7 +587,12 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           renderItem={renderItem}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          onContentSizeChange={() => {if(!loadingOlder.current)flatListRef.current?.scrollToEnd({animated:true});}}
+          maintainVisibleContentPosition={{minIndexForVisible:0}}
+          ListHeaderComponent={olderCursor ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Load earlier messages" onPress={()=>{
+            try{const page=chatStore.getMessagesPage(userId,{before:olderCursor});loadingOlder.current=true;setMessages(previous=>[...page.items,...previous]);setOlderCursor(page.nextCursor);}
+            catch{Alert.alert('History unavailable','Earlier messages could not be loaded. Your history is kept.');}
+          }}><Text style={[styles.exampleText,themed.exampleText]}>Load earlier messages</Text></TouchableOpacity>:null}
           ListFooterComponent={
             isSending ? <TypingBubble label={pendingLabel} /> : null
           }

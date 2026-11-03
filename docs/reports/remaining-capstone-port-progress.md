@@ -19,4 +19,20 @@ while keeping Whisper/Kokoro defaults. No new package has been installed.
 - TypeScript PASS; 108 suites / 890 tests PASS with normal process exit; ESLint
   zero errors (244 warnings). Chat store line coverage 97.77%.
 
-Stages 1–8 remain in progress. Physical-device acceptance is separate from host tests.
+## Stage 1 — bounded reads
+
+- Added stable owner/filter-bound source cursors (1–50 records) and strict date
+  validation. Calendar queries restrict candidates to the visible range/recurrence
+  and explicit unfinished backlog; SQL reads use batches of 50.
+- Calendar no longer reloads all task history merely to draw its overdue strip.
+  Full reads remain for the explicit calendar export workflow. Calendar arrays
+  retain the relevant visible/backlog items; no fixed JavaScript-array size or
+  measured phone-speed improvement is claimed.
+- Chat initially loads the newest 50 records, with an explicit Load earlier messages
+  control and stable timestamp/ID cursors. Durable messages/attachments are preserved.
+- Real hook regression checks cover recurrence, navigation, visibility and calendar
+  import/export; component checks exercise load-earlier behavior.
+- TypeScript PASS; 110 suites / 898 tests PASS; ESLint zero errors (244 warnings).
+  Calendar hook line coverage 89.05%; source-query and Chat logic exceed 80%.
+
+Stages 2–8 remain in progress. Physical-device acceptance is separate from host tests.

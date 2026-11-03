@@ -1,3 +1,4 @@
+import {plannerQueries} from '../../../../storage/plannerQueries';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ViewMode, CalendarData } from '../types';
 import type { TimeBlock, Task, Event } from '../../../../storage';
@@ -99,16 +100,22 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
       end.setHours(23, 59, 59, 999);
       return { start, end };
     } else {
-      const start = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 15);
+      const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      start.setDate(start.getDate()-7);
       start.setHours(0, 0, 0, 0);
-      const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 2, 15);
+      const end = new Date(currentDate.getFullYear(), currentDate.getMonth()+1, 7);
       end.setHours(23, 59, 59, 999);
       return { start, end };
     }
   }, [viewMode, selectedDate, currentDate]);
 
+  const readWindow=useCallback(()=>{
+    const range=getViewRange();
+    const stamp=(date:Date)=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    return plannerQueries.calendarSources(userId,stamp(range.start),stamp(range.end),true);
+  },[userId,getViewRange]);
   const loadBlocks = useCallback(() => {
-    let rawData = timeBlocksStore.getAll(userId);
+    let rawData = readWindow().blocks;
 
     const importedBlockIds = new Set<string>();
     const hiddenBlockIds = new Set<string>();
@@ -154,11 +161,12 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
     });
 
     setBlocks(expandedBlocks);
-  }, [userId, batches, visibilityMap, getViewRange]);
+  }, [batches, visibilityMap, getViewRange,readWindow]);
 
   const loadScheduleData = useCallback(() => {
-    let rawTasks = tasksStore.getAllTasks(userId);
-    let rawEvents = tasksStore.getAllEvents(userId);
+    const sources=readWindow();
+    let rawTasks = sources.tasks;
+    let rawEvents = sources.events;
 
     const importedTaskIds = new Set<string>();
     const hiddenTaskIds = new Set<string>();
@@ -253,7 +261,7 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
 
     setTasks(dayTasks);
     setEvents(dayEvents);
-  }, [userId, batches, visibilityMap, selectedDate, getViewRange]);
+  }, [batches, visibilityMap, selectedDate, getViewRange,readWindow]);
 
   useEffect(() => {
     loadBlocks();
@@ -486,10 +494,9 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
   };
 
   const getOverdueTasks = useCallback(() => {
-    const tasksData = tasksStore.getAllTasks(userId);
     const todayStr = formatLocalDate(new Date());
-    return tasksData.filter((t) => t.dueDate && t.dueDate < todayStr && !t.isCompleted);
-  }, [userId]);
+    return allTasks.filter((t) => t.dueDate && t.dueDate < todayStr && !t.isCompleted);
+  }, [allTasks]);
 
   return {
     currentDate,
