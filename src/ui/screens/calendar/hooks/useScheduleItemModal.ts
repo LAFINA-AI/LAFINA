@@ -17,6 +17,8 @@ interface UseScheduleItemModalOptions {
 }
 
 const defaultForm = (): ScheduleItemForm => ({
+  hasDueDate: true,
+  hasDueTime: true,
   title: '',
   time: '12:00',
   endTime: '13:00',
@@ -66,6 +68,8 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
     setModalType(type);
     setEditingItem(item);
     setForm({
+      hasDueDate: type==='event'||!!(item as Task).dueDate,
+      hasDueTime: type==='event'||!!(item as Task).dueTime,
       title: item.title,
       time: type === 'task' ? (item as Task).dueTime || '12:00' : (item as Event).startTime,
       endTime: type === 'event' ? (item as Event).endTime : '13:00',
@@ -92,6 +96,9 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
 
     const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}`;
     const rule = recurrenceRule !== undefined ? recurrenceRule : (form.recurrenceRule || null);
+    const taskDate=form.hasDueDate===false?null:((editingItem as Task|null)?.dueDate||dateStr);
+    const taskTime=taskDate && form.hasDueTime!==false?form.time:null;
+    if(modalType==='task' && !taskDate && rule){Alert.alert('Date required','A repeating task needs a date.');return;}
 
     const syncReminder = (title: string, date: string, time: string, sourceId:string, tx:DatabaseTransaction) => {
       {
@@ -133,29 +140,29 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
         tasksStore.updateTask({
           id: editingItem.id,
           title: form.title,
-          dueDate: dateStr,
-          dueTime: form.time,
+          dueDate: taskDate,
+          dueTime: taskTime,
           priority: form.priority as Priority,
           category: form.category,
           notes: form.notes,
           recurrenceRule: rule,
         },tx);
-        syncReminder(form.title,dateStr,form.time,editingItem.id,tx);
+        if(taskDate && taskTime && !(editingItem as Task).isCompleted)syncReminder(form.title,taskDate,taskTime,editingItem.id,tx);
       } else {
         const taskId = generateId('task');
         tasksStore.insertTask({
           id: taskId,
           userId,
           title: form.title,
-          dueDate: dateStr,
-          dueTime: form.time,
+          dueDate: taskDate,
+          dueTime: taskTime,
           isCompleted: false,
           priority: form.priority as Priority,
           category: form.category,
           notes: form.notes,
           recurrenceRule: rule,
         },tx);
-        syncReminder(form.title,dateStr,form.time,taskId,tx);
+        if(taskDate && taskTime)syncReminder(form.title,taskDate,taskTime,taskId,tx);
       }
     } else {
       if (editingItem) {

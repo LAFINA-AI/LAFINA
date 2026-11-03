@@ -26,6 +26,8 @@ export interface TimeBlockForm {
 }
 
 export interface ScheduleItemForm {
+  hasDueDate?: boolean;
+  hasDueTime?: boolean;
   title: string;
   time: string;
   endTime: string;

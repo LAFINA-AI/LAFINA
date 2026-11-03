@@ -71,3 +71,4 @@ cursors. No messages or timestamps are rewritten. TypeScript PASS; 111 suites /
 - TypeScript PASS; 112 suites / 919 tests PASS; ESLint zero errors (244 warnings).
   Manual undated-task access and guest-history migration follow-ups are tracked next.
 Guest sign-in follow-up: a failing regression reproduced hidden transferred history. Default-session consolidation now accepts only sessions explicitly recorded as owned by the signed-in account. TypeScript PASS; 112 suites / 920 tests PASS; ESLint zero errors.
+Manual untimed follow-up: a failing real-hook test reproduced accidental noon deadlines on title edits. Explicit deadline/time switches now preserve absent values and an existing different due date. Calendar offers owner-scoped pages of 20 undated tasks for manual editing/deletion. TypeScript PASS; 113 suites / 924 tests PASS; ESLint zero errors; editor line coverage 96.47%.

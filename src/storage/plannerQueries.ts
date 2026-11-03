@@ -3,7 +3,7 @@ import type {Task,Event} from './tasksStore';
 import type {TimeBlock} from './timeBlocksStore';
 export interface PlannerRecords {task:Task;event:Event;time_block:TimeBlock;}
 export interface PlannerPage<T> {items:T[];nextCursor:string|null;}
-export interface PlannerQuery {userId:string;after?:string|null;limit?:number;filter?:'open'|'completed'|'all';}
+export interface PlannerQuery {userId:string;after?:string|null;limit?:number;filter?:'open'|'completed'|'all'|'undated';}
 const definitions={task:{table:'tasks',date:'due_date',time:'due_time'},event:{table:'events',date:'date',time:'start_time'},time_block:{table:'time_blocks',date:'date',time:'start_time'}} as const;
 type Row=Record<string,unknown>;
 const map=<K extends keyof PlannerRecords>(kind:K,row:Row):PlannerRecords[K]=>{
@@ -24,9 +24,10 @@ export const plannerQueries={
   page:<K extends keyof PlannerRecords>(kind:K,query:PlannerQuery):PlannerPage<PlannerRecords[K]>=>{
     owner(query.userId);const {table,date,time}=definitions[kind];const limit=query.limit??20;
     if(!Number.isInteger(limit)||limit<1||limit>50)throw new Error('Page limit must be 1–50.');
-    const filter=query.filter??'all';if(!['open','completed','all'].includes(filter))throw new Error('Invalid task filter.');
+    const filter=query.filter??'all';if(!['open','completed','all','undated'].includes(filter))throw new Error('Invalid task filter.');
     let where='user_id=? AND deleted_at IS NULL';const args:unknown[]=[query.userId];
-    if(kind==='task' && filter!=='all'){where+=' AND is_completed=?';args.push(filter==='completed'?1:0);}
+    if(kind==='task' && filter==='undated')where+=' AND due_date IS NULL AND is_completed=0';
+    else if(kind==='task' && filter!=='all'){where+=' AND is_completed=?';args.push(filter==='completed'?1:0);}
     if(query.after){
       let cursor:unknown;try{cursor=JSON.parse(query.after);}catch{throw new Error('Invalid planner cursor.');}
       if(!Array.isArray(cursor)||cursor.length!==7||cursor[0]!==1||cursor[1]!==query.userId||cursor[2]!==kind||cursor[3]!==filter||cursor.slice(4).some(v=>typeof v!=='string'))throw new Error('Invalid planner cursor.');

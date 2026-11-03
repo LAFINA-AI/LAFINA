@@ -6,6 +6,7 @@ import {
   Modal,
   TextInput,
   TouchableOpacity,
+  Switch,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -104,7 +105,11 @@ export const AddTaskEventModal: React.FC<AddTaskEventModalProps> = ({ state, tim
             onChangeText={(v) => state.updateField('title', v)}
           />
 
-          <View style={styles.modalRow}>
+          {state.modalType==='task' && <>
+            <View style={styles.modalRow}><Text style={{color:colors.textPrimary}}>Use due date (selected Calendar date for a new deadline)</Text><Switch accessibilityLabel="Use due date" value={state.form.hasDueDate!==false} onValueChange={v=>state.updateField('hasDueDate',v)}/></View>
+            {state.form.hasDueDate!==false && <View style={styles.modalRow}><Text style={{color:colors.textPrimary}}>Use due time and reminder</Text><Switch accessibilityLabel="Use due time" value={state.form.hasDueTime!==false} onValueChange={v=>state.updateField('hasDueTime',v)}/></View>}
+          </>}
+          {(state.modalType==='event'||(state.form.hasDueDate!==false && state.form.hasDueTime!==false)) && <View style={styles.modalRow}>
             <View style={styles.modalCol}>
               <Text style={[styles.modalColLabel, { color: colors.textSecondary }]}>
                 {state.modalType === 'task' ? 'Due Time' : 'Start Time'}
@@ -157,7 +162,7 @@ export const AddTaskEventModal: React.FC<AddTaskEventModalProps> = ({ state, tim
                 )}
               </View>
             )}
-          </View>
+          </View>}
 
           {state.modalType === 'task' && (
             <View style={[styles.segmentedRow, { backgroundColor: colors.divider }]}>

@@ -27,6 +27,7 @@ import {
   toggleChecklistItem,
 } from '../../../utils';
 import { CalendarLayersModal } from '../../components/calendar/CalendarLayersModal';
+import {UndatedTasks} from '../../components/UndatedTasks';
 
 /** Renders the offline calendar workspace and its local scheduling actions. */
 export const CalendarScreen: React.FC<CalendarScreenProps> = ({
@@ -39,6 +40,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const { colors } = useTheme();
 
   const [fabMenuVisible, setFabMenuVisible] = useState(false);
+  const [undatedVisible,setUndatedVisible]=useState(false);
   const [noteModalVisible, setNoteModalVisible] = useState(false);
   const [noteTitle, setNoteTitle] = useState('');
   const [noteBody, setNoteBody] = useState('');
@@ -288,6 +290,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       </View>
 
       {/* Body */}
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Tasks without a date" onPress={()=>setUndatedVisible(true)} style={{padding:10}}><Text style={{color:colors.textPrimary}}>Tasks without a date</Text></TouchableOpacity>
+      <UndatedTasks key={userId} userId={userId} visible={undatedVisible} onClose={()=>setUndatedVisible(false)} onEdit={task=>scheduleModal.openEdit(task,'task')}/>
       <View style={styles.body}>
         {calendar.viewMode === 'month' && (
           <MonthView
