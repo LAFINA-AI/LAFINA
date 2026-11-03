@@ -157,3 +157,32 @@ tests before implementation. Pure backend contract: 2 tests PASS, new module/tes
 Ruff clean, without importing settings/environment files. TypeScript PASS; 131
 suites / 1,068 tests PASS; ESLint zero errors (264 warnings). This is a separate
 corrective commit; stages 7–8 remain in progress.
+
+## 7 — reproducible evaluation tools and redacted diagnostics (owner item 6)
+
+Added frozen/versioned command, rich-Notes and speech-contract fixtures, manifest
+hash checks and reproducible runners that refuse to overwrite previous results.
+Reports record actual UTC run time before simulated command clocks, Node version,
+fixture hashes, relevant source hashes and a source-tree hash. They are host-only
+regressions, not model accuracy, phone latency or recorded-speech measurements.
+
+New immutable host reports: intents-eight-followups-2026-11-04.json (80/80 command
+expectations, no confirmations/writes), notes-eight-followups-2026-11-04.json (10
+rich-text cases, 5,020 unique paged rows across owner boundaries, 20-row first page,
+at most 50 normalizations/call across 101 calls), speech-eight-followups-2026-11-04.json
+(12/12 metadata contracts, zero recordings/utterances). Shared evidence code moved
+out of __tests__ so Jest does not treat it as an empty test suite.
+
+Added bounded redacted process-local native timing reads: initialization, recognition
+support, request-to-ready/start and request lifetime. They expose no audio, transcript,
+utterance text or request identity and start no capture/synthesis. Null means no
+observation, not zero latency. The expanded phone matrix explicitly marks actual
+speech quality, audibility, battery and phone timing unrun. Existing ONNX 16 KiB
+warning remains unresolved. No new package/model/network dependency was added.
+
+TypeScript PASS; 135 suites / 1,073 tests PASS with normal exit; ESLint zero errors
+(264 warnings). New critical diagnostics adapter 100% line coverage. Native QA/test
+builds PASS after using React Native's concrete context in the isolated idle fixture.
+Restored the existing headless emulator after its earlier session ended, preserving
+saved data; QA update and native regressions PASS, including redacted idle metadata
+without starting audio. Stage 8 and final two-ABI delivery remain in progress.

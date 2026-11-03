@@ -50,12 +50,21 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
   private var engine: TextToSpeech? = null
   private var ready = false
   private var enginePackage: String? = null
+  private var initializationStarted=0L
+  private var lastTtsInitializationMs: Double?=null
+  private var lastRecognitionSupportMs: Double?=null
+  private var lastCaptureReadyMs: Double?=null
+  private var lastCaptureDurationMs: Double?=null
+  private var lastSpeechStartMs: Double?=null
+  private var lastSpeechDurationMs: Double?=null
+  private var lastRecognitionState="unknown"
+  private var supportSequence=0
   private var initialization = 0
   private var initTimer: Runnable? = null
   private val waiting = mutableListOf<(TextToSpeech?) -> Unit>()
   private data class Capture(val id: String, val promise: Promise, val started: Long, val microphone: LafinaMicrophoneLease,
     var recognizer: SpeechRecognizer? = null, var listening: Boolean = false, var timeout: Runnable? = null)
-  private data class Speech(val id: String, val promise: Promise, var timeout: Runnable? = null)
+  private data class Speech(val id: String, val promise: Promise, val started: Long = SystemClock.elapsedRealtime(), var timeout: Runnable? = null)
   private var capture: Capture? = null
   private var speech: Speech? = null
   private var cancelSupportProbe: (() -> Unit)? = null
@@ -65,11 +74,13 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,false);putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,1)
   }
   private fun checkEnglish(recognizer: SpeechRecognizer, complete: (String) -> Unit) {
-    if(Build.VERSION.SDK_INT<33) { complete("unknown");return }
+    val started=SystemClock.elapsedRealtime();val ticket=++supportSequence
+    fun finish(state: String) { if(ticket==supportSequence){lastRecognitionSupportMs=(SystemClock.elapsedRealtime()-started).toDouble();lastRecognitionState=state};complete(state) }
+    if(Build.VERSION.SDK_INT<33) { finish("unknown");return }
     try { recognizer.checkRecognitionSupport(englishIntent(),context.mainExecutor,object : RecognitionSupportCallback {
-      override fun onSupportResult(support: RecognitionSupport) { complete(LafinaAndroidSpeechPolicy.englishSupport(support.installedOnDeviceLanguages)) }
-      override fun onError(error: Int) { complete(LafinaAndroidSpeechPolicy.englishSupport(null,error)) }
-    }) } catch (_: Exception) { complete("unavailable") }
+      override fun onSupportResult(support: RecognitionSupport) { finish(LafinaAndroidSpeechPolicy.englishSupport(support.installedOnDeviceLanguages)) }
+      override fun onError(error: Int) { finish(LafinaAndroidSpeechPolicy.englishSupport(null,error)) }
+    }) } catch (_: Exception) { finish("unavailable") }
   }
   private fun recognitionReadiness(complete: (String) -> Unit) {
     if(!available()||!foreground()) { complete("unavailable");return }
@@ -102,6 +113,7 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
   private fun releaseFocus() { focus?.let { try { audio.abandonAudioFocusRequest(it) } catch (_: Exception) { } }; focus = null }
   private fun finishCapture(run: Capture, text: String, cancelled: Boolean, error: Boolean = false) {
     if (capture !== run) return
+    lastCaptureDurationMs=(SystemClock.elapsedRealtime()-run.started).toDouble()
     capture = null; run.timeout?.let(handler::removeCallbacks)
     var stopped=run.recognizer==null
     try { run.recognizer?.cancel();stopped=true } catch (_: Exception) { }
@@ -125,12 +137,13 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
     val microphone = LafinaMicrophoneLease.acquire(context)
     if (microphone == null) { promise.reject("CAPTURE_BUSY", "The microphone is in use. Stop the other recording first."); return@onMain }
     try { check(acquireFocus()) } catch (error: Exception) { microphone.close(); throw error }
+    lastCaptureReadyMs=null;lastCaptureDurationMs=null
     val run = Capture(id, promise, SystemClock.elapsedRealtime(), microphone); capture = run
     try {
       if (Build.VERSION.SDK_INT < 31) error("Unsupported")
       val recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context); run.recognizer = recognizer
       recognizer.setRecognitionListener(object : RecognitionListener {
-        override fun onReadyForSpeech(params: Bundle?) { if (!foreground()) finishCapture(run, "", true) }
+        override fun onReadyForSpeech(params: Bundle?) { if(capture===run)lastCaptureReadyMs=(SystemClock.elapsedRealtime()-run.started).toDouble();if (!foreground()) finishCapture(run, "", true) }
         override fun onBeginningOfSpeech() { }
         override fun onRmsChanged(rms: Float) { }
         override fun onBufferReceived(buffer: ByteArray?) { }
@@ -169,6 +182,7 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
     val run = capture?.takeIf { it.id == id }; if (run != null) finishCapture(run, "", true); promise.resolve(run != null)
   }
   private fun finishInitialization(value: TextToSpeech?) {
+    if(initializationStarted>0)lastTtsInitializationMs=(SystemClock.elapsedRealtime()-initializationStarted).toDouble();initializationStarted=0
     initTimer?.let(handler::removeCallbacks); initTimer = null
     val callbacks = waiting.toList(); waiting.clear(); callbacks.forEach { it(value) }
   }
@@ -189,6 +203,7 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
     if (waiting.size >= 8 || !foreground()) { complete(null); return }
     waiting.add(complete); if (waiting.size > 1) return
     val ticket = ++initialization
+    initializationStarted=SystemClock.elapsedRealtime()
     initTimer = Runnable { if (ticket == initialization) { ++initialization; try { engine?.shutdown() } catch (_: Exception) { }; engine = null; ready = false; finishInitialization(null) } }.also { handler.postDelayed(it, 10000) }
     try { engine = TextToSpeech(context, { status -> handler.post {
       if (ticket != initialization) return@post
@@ -196,7 +211,7 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
       try { if (ready) {
         engine?.setAudioAttributes(attributes)
         engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-          override fun onStart(id: String?) { }
+          override fun onStart(id: String?) { handler.post { speech?.takeIf { it.id==id }?.let { lastSpeechStartMs=(SystemClock.elapsedRealtime()-it.started).toDouble() } } }
           override fun onDone(id: String?) { handler.post { speech?.takeIf { it.id == id }?.let { finishSpeech(it, true) } } }
           @Deprecated("Legacy platform callback") override fun onError(id: String?) { handler.post { speech?.takeIf { it.id == id }?.let { finishSpeech(it, false) } } }
           override fun onError(id: String?, code: Int) { onError(id) }
@@ -225,6 +240,7 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
 
   private fun finishSpeech(run: Speech, success: Boolean) {
     if (speech !== run) return
+    lastSpeechDurationMs=(SystemClock.elapsedRealtime()-run.started).toDouble()
     speech = null; run.timeout?.let(handler::removeCallbacks)
     try { engine?.stop() } catch (_: Exception) { }; releaseFocus(); run.promise.resolve(success)
   }
@@ -236,6 +252,7 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
     val rate=if(request.hasKey("rate"))request.getDouble("rate") else 1.0
     val pitch=if(request.hasKey("pitch"))request.getDouble("pitch") else 1.0
     check(LafinaAndroidSpeechPolicy.validCustomization(requestedPackage,rate,pitch))
+    lastSpeechStartMs=null;lastSpeechDurationMs=null
     val run = Speech(id, promise); speech = run
     run.timeout = Runnable { finishSpeech(run, false) }.also { handler.postDelayed(it, 70000) }
     withEngine(requestedPackage) { service ->
@@ -254,7 +271,15 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
   @ReactMethod fun stopSpeaking(id: String, promise: Promise) = onMain(promise) {
     val run = speech?.takeIf { it.id == id }; if (run != null) finishSpeech(run, false); promise.resolve(run != null)
   }
+  @ReactMethod fun getDiagnostics(promise: Promise) = onMain(promise) {
+    val metrics=Arguments.createMap()
+    for((key,value) in listOf("ttsInitializationMs" to lastTtsInitializationMs,"recognitionSupportMs" to lastRecognitionSupportMs,"captureReadyMs" to lastCaptureReadyMs,"captureDurationMs" to lastCaptureDurationMs,"speechStartMs" to lastSpeechStartMs,"speechDurationMs" to lastSpeechDurationMs)) {
+      if(value==null)metrics.putNull(key) else metrics.putDouble(key,value)
+    }
+    promise.resolve(Arguments.createMap().apply { putInt("sdk",Build.VERSION.SDK_INT);putBoolean("onDeviceRecognition",available());putString("recognitionState",lastRecognitionState);putBoolean("captureActive",capture!=null);putBoolean("speechActive",speech!=null);putMap("metrics",metrics) })
+  }
   private fun release() {
+    ++supportSequence
     cancelSupportProbe?.invoke()
     capture?.let { finishCapture(it, "", true) }; speech?.let { finishSpeech(it, false) }
     ++initialization; ready = false; try { engine?.shutdown() } catch (_: Exception) { }; engine = null; finishInitialization(null); releaseFocus()

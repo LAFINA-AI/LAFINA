@@ -6,7 +6,7 @@ size, battery state and permission state for each run. Use synthetic named items
 and remove only those fixtures afterward; preserve all existing app data.
 
 1. Update with the matching signed APK and confirm retained accounts, records,
-   Chat attachments/history, preferences and schema 21. Never clear data to pass.
+   Chat attachments/history, preferences and schema 23. Never clear data to pass.
 2. Disconnect Wi-Fi/mobile data and enable airplane mode. Cold launch without
    Metro. Open every main screen, read saved tasks/agenda, use the command guide,
    and create an untimed/date-only task, timed task, event, block and note through
@@ -45,3 +45,37 @@ and remove only those fixtures afterward; preserve all existing app data.
 Commands: `npm run check:architecture`, `npm run benchmark:planner`, and the ordered
 TypeScript/tests/ESLint gates in AGENTS.md. Benchmark JSON is synthetic host evidence,
 not physical-phone performance. Production signing/distribution is a separate action.
+
+
+## CAPSTONE eight-follow-up matrix (2026-11-04)
+
+Record device/vendor, Android version, ABI/page size, permission state and exact
+QA artifact/certificate. A physical row needs physical evidence. Keep API31/32,
+API33+ with installed English, missing English and no-recognition-service devices
+separate. Emulator policy checks do not establish microphone or speaker quality.
+
+| Case | Current host / emulator evidence | Physical phone status |
+| --- | --- | --- |
+| Whisper / Android / meeting competing microphone owners | OS lease across real processes and native checks | NOT RUN: actual microphone interruption |
+| Stop during recognition preparation, revoked permission, background | Native guards and JS lifetime regressions | NOT RUN: vendor capture paths |
+| Installed English vs pending/supported-only and unsupported query | Native policy and frozen speech contracts | NOT RUN: installed-language behavior |
+| Missing provider, removed voice, changed system default | Inventory/selection guards and recovery tests | NOT RUN: binding and actual audibility |
+| Speed/pitch 0.5, 1.0, 2.0, Preview/Stop and focus loss | Bounds/options/cancellation tests | NOT RUN: audible output and real calls |
+| Busy return, close, sign-out during preview | Bounded recheck, stale handlers and timer tests | NOT RUN: real focus/account interaction |
+| Notes paging, rich-text phrases, literal %/_ | 5,020-row synthetic SQLite benchmark/corpus | NOT RUN: phone frame time and memory |
+| Stale Note save/delete, synced edits, full/partial drag ordering | SQL and UI regressions | NOT RUN: two-device timing |
+| Overnight/multi-day event, timezone changes, linked alarm | UTC/span/layout/linked-source tests | NOT RUN: locked alarm across zone changes |
+| DST gap/fold, recurrence span, legacy sync and ICS | Resolver/UI/backend contract/import tests | NOT RUN: travel/series flow |
+| Native timing diagnostics | Redacted process-local callback intervals | NOT RUN: WER/NIEA, first audibility and quality |
+| QA-only isolated SQL screen | Final QA diagnostics stage | NOT RUN: physical QA screen |
+| Vendor ONNX Runtime 16 KiB alignment | Existing warning remains | UNRESOLVED: vendor binary compatibility |
+
+Native request-to-ready/start/done intervals are callbacks, not acoustic measures.
+Null means no observation in this process; do not substitute zero. Host performance
+is not phone latency. No diagnostics here automatically capture/export recordings.
+
+Runners: `npm run test:golden`, `npm run benchmark:intents`, `npm run benchmark:notes`,
+`npm run benchmark:speech`. Benchmark outputs refuse overwrite; rerun with
+`-- --output docs/reports/new-name.json`. Frozen hashes live in
+`evaluation/fixture-manifest-v1.json`. Reports record the Node version, real UTC run
+time captured before simulated command clocks, fixture/source hashes and limits.

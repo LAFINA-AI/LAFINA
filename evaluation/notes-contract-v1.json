@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "scope": "Synthetic host contract regression; no physical audio or model accuracy claim",
+  "cases": [
+    {
+      "id": "html-bold",
+      "title": "Lecture",
+      "body": "<p>Study <b>group</b> today</p>",
+      "query": "study group",
+      "match": true
+    },
+    {
+      "id": "markdown-bold",
+      "title": "Lecture",
+      "body": "Study **group** today",
+      "query": "study group",
+      "match": true
+    },
+    {
+      "id": "checklist",
+      "title": "Plan",
+      "body": "- [ ] Project proposal",
+      "query": "project proposal",
+      "match": true
+    },
+    {
+      "id": "entity",
+      "title": "Design",
+      "body": "<p>Research &amp; design</p>",
+      "query": "research & design",
+      "match": true
+    },
+    {
+      "id": "percent",
+      "title": "Progress",
+      "body": "50%_done",
+      "query": "50%_done",
+      "match": true
+    },
+    {
+      "id": "not-wildcard",
+      "title": "Progress",
+      "body": "50ZZdone",
+      "query": "50%_done",
+      "match": false
+    },
+    {
+      "id": "link-label",
+      "title": "Reference",
+      "body": "[Due dates](https://example.invalid/synthetic)",
+      "query": "due dates",
+      "match": true
+    },
+    {
+      "id": "title",
+      "title": "Oral examination",
+      "body": "",
+      "query": "oral examination",
+      "match": true
+    },
+    {
+      "id": "image-alt",
+      "title": "Diagram",
+      "body": "![Meeting diagram](file:///synthetic.png)",
+      "query": "meeting diagram",
+      "match": true
+    },
+    {
+      "id": "no-match",
+      "title": "Other",
+      "body": "A different subject",
+      "query": "chemistry",
+      "match": false
+    }
+  ]
+}

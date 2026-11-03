@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "frozen": "2026-11-04",
+  "classification": "Regression fixtures, not held-out model evaluation",
+  "files": {
+    "intent-golden-v1.json": "3b33ef089cd927911c27549063b1d9082fec88d4e0b3db67a73f8423eee6b88e",
+    "notes-contract-v1.json": "d44223aa58fd3a60ff6f6cc58b1960006f685a6b13a7c9bfc48e87ad45ac7078",
+    "speech-contract-v1.json": "9172c18ac1241538c27f209aab3b88930ea7f44623c1df53b065844754aaf209"
+  }
+}

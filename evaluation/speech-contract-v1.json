@@ -1,0 +1,182 @@
+{
+  "version": 1,
+  "scope": "Synthetic host contract regression; no physical audio or model accuracy claim",
+  "cases": [
+    {
+      "id": "offline",
+      "capabilities": {
+        "onDeviceRecognition": true,
+        "recognitionState": "unknown",
+        "voices": [
+          {
+            "name": "safe",
+            "locale": "en-US",
+            "networkRequired": false,
+            "installed": true
+          }
+        ]
+      },
+      "expectedVoices": 1,
+      "recognitionState": "unknown"
+    },
+    {
+      "id": "network",
+      "capabilities": {
+        "onDeviceRecognition": true,
+        "recognitionState": "unknown",
+        "voices": [
+          {
+            "name": "safe",
+            "locale": "en-US",
+            "networkRequired": true,
+            "installed": true
+          }
+        ]
+      },
+      "expectedVoices": 0,
+      "recognitionState": "unknown"
+    },
+    {
+      "id": "uninstalled",
+      "capabilities": {
+        "onDeviceRecognition": true,
+        "recognitionState": "unknown",
+        "voices": [
+          {
+            "name": "safe",
+            "locale": "en-US",
+            "networkRequired": false,
+            "installed": false
+          }
+        ]
+      },
+      "expectedVoices": 0,
+      "recognitionState": "unknown"
+    },
+    {
+      "id": "non-english",
+      "capabilities": {
+        "onDeviceRecognition": true,
+        "recognitionState": "unknown",
+        "voices": [
+          {
+            "name": "safe",
+            "locale": "fr-FR",
+            "networkRequired": false,
+            "installed": true
+          }
+        ]
+      },
+      "expectedVoices": 0,
+      "recognitionState": "unknown"
+    },
+    {
+      "id": "empty-name",
+      "capabilities": {
+        "onDeviceRecognition": true,
+        "recognitionState": "unknown",
+        "voices": [
+          {
+            "name": "",
+            "locale": "en-US",
+            "networkRequired": false,
+            "installed": true
+          }
+        ]
+      },
+      "expectedVoices": 0,
+      "recognitionState": "unknown"
+    },
+    {
+      "id": "english-region",
+      "capabilities": {
+        "onDeviceRecognition": true,
+        "recognitionState": "unknown",
+        "voices": [
+          {
+            "name": "safe",
+            "locale": "en-GB",
+            "networkRequired": false,
+            "installed": true
+          }
+        ]
+      },
+      "expectedVoices": 1,
+      "recognitionState": "unknown"
+    },
+    {
+      "id": "unknown-flag",
+      "capabilities": {
+        "onDeviceRecognition": true,
+        "recognitionState": "unknown",
+        "voices": [
+          {
+            "name": "safe",
+            "locale": "en-US",
+            "networkRequired": null,
+            "installed": true
+          }
+        ]
+      },
+      "expectedVoices": 0,
+      "recognitionState": "unknown"
+    },
+    {
+      "id": "malformed-locale",
+      "capabilities": {
+        "onDeviceRecognition": true,
+        "recognitionState": "unknown",
+        "voices": [
+          {
+            "name": "safe",
+            "locale": 5,
+            "networkRequired": false,
+            "installed": true
+          }
+        ]
+      },
+      "expectedVoices": 0,
+      "recognitionState": "unknown"
+    },
+    {
+      "id": "installed-english",
+      "capabilities": {
+        "onDeviceRecognition": true,
+        "recognitionState": "installed",
+        "voices": []
+      },
+      "expectedVoices": 0,
+      "recognitionState": "installed"
+    },
+    {
+      "id": "missing-english",
+      "capabilities": {
+        "onDeviceRecognition": true,
+        "recognitionState": "missing",
+        "voices": []
+      },
+      "expectedVoices": 0,
+      "recognitionState": "missing"
+    },
+    {
+      "id": "service-absent",
+      "capabilities": {
+        "onDeviceRecognition": false,
+        "voices": []
+      },
+      "expectedVoices": 0,
+      "recognitionState": "unavailable"
+    },
+    {
+      "id": "busy",
+      "capabilities": {
+        "onDeviceRecognition": true,
+        "recognitionState": "busy",
+        "busy": true,
+        "voices": []
+      },
+      "expectedVoices": 0,
+      "recognitionState": "busy"
+    }
+  ]
+}

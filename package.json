@@ -16,7 +16,10 @@
     "typecheck": "tsc --noEmit",
     "check:architecture": "node scripts/check-architecture.cjs",
     "benchmark:planner": "node scripts/benchmark-planner.cjs",
-    "test:golden": "jest --runInBand --runTestsByPath __tests__/evaluation/intentGolden.test.ts"
+    "test:golden": "jest --runInBand --runTestsByPath __tests__/evaluation/intentGolden.test.ts",
+    "benchmark:intents": "node scripts/run-evaluation.cjs intents",
+    "benchmark:notes": "node scripts/run-evaluation.cjs notes",
+    "benchmark:speech": "node scripts/run-evaluation.cjs speech"
   },
   "dependencies": {
     "@op-engineering/op-sqlite": "^16.2.0",

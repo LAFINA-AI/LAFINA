@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "kind": "speech",
+  "recordedAt": "2026-11-03T18:07:37.531Z",
+  "environment": "Host Node v24.19.0, Jest and in-memory better-sqlite3; not Android timing",
+  "fixtureHashes": {
+    "intent-golden-v1.json": "3b33ef089cd927911c27549063b1d9082fec88d4e0b3db67a73f8423eee6b88e",
+    "notes-contract-v1.json": "d44223aa58fd3a60ff6f6cc58b1960006f685a6b13a7c9bfc48e87ad45ac7078",
+    "speech-contract-v1.json": "9172c18ac1241538c27f209aab3b88930ea7f44623c1df53b065844754aaf209"
+  },
+  "sourceHashes": {
+    "src/ai/native/androidSpeech.ts": "0a357f691d675fcf3e79e5b6da15f187b0e3b64c35b78dde84e21e321214eb3b",
+    "src/ai/native/speechDiagnostics.ts": "dc91246224f11dfbb17592ac043ff972782a2f3866d8159937ff99e0b60da106",
+    "scripts/run-evaluation.cjs": "8fe51403000258caa9285afc6876932bf24c6f32130c9bffb7763c3c5ec3f298"
+  },
+  "sourceTreeSha256": "503fd4a3a885f806a888e43dc13842216885c57acfbda88d08592b68eab4db11",
+  "metrics": {
+    "fixtureCases": 12,
+    "matched": 12,
+    "actualRecordings": 0,
+    "actualUtterances": 0,
+    "medianHostAdapterMs": 0.10199999999986176,
+    "maxHostAdapterMs": 1.106800000000021
+  },
+  "limits": "Synthetic regression only. No phone latency, WER, model NIEA, audibility, battery or memory claim."
+}

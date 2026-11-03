@@ -5,6 +5,12 @@ import android.app.Instrumentation
 import android.content.ContextWrapper
 import android.database.sqlite.SQLiteDatabase
 import android.os.Bundle
+import com.facebook.react.bridge.Callback
+import com.facebook.react.bridge.PromiseImpl
+import com.facebook.react.bridge.BridgeReactContext
+import com.facebook.react.bridge.ReadableMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.io.File
 import java.time.Instant
 
@@ -52,6 +58,17 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
       check(!LafinaAndroidSpeechPolicy.validCustomization("bad package",1.0,1.0))
       check(!LafinaAndroidSpeechPolicy.validCustomization(null,Double.NaN,1.0))
       check(!LafinaAndroidSpeechPolicy.validCustomization(null,1.0,2.1))
+      val speechContext=BridgeReactContext(targetContext)
+      val speechModule=LafinaAndroidSpeechModule(speechContext)
+      val diagnosticDone=CountDownLatch(1);var diagnostic: ReadableMap?=null
+      try {
+        speechModule.getDiagnostics(PromiseImpl(Callback { args -> diagnostic=args.firstOrNull() as? ReadableMap;diagnosticDone.countDown() },Callback { diagnosticDone.countDown() }))
+        check(diagnosticDone.await(5,TimeUnit.SECONDS))
+        val snapshot=requireNotNull(diagnostic);check(snapshot.getInt("sdk")==android.os.Build.VERSION.SDK_INT)
+        check(!snapshot.getBoolean("captureActive")&&!snapshot.getBoolean("speechActive"))
+        check(!snapshot.hasKey("transcript")&&!snapshot.hasKey("text")&&!snapshot.hasKey("requestId"))
+        val metrics=requireNotNull(snapshot.getMap("metrics"));check(metrics.isNull("ttsInitializationMs")&&metrics.isNull("captureDurationMs")&&metrics.isNull("speechStartMs"))
+      } finally { speechModule.invalidate() }
       val context = object : ContextWrapper(targetContext) {
         override fun getDatabasePath(name: String): File = file
       }
@@ -142,7 +159,7 @@ class LafinaDeliveryInstrumentation : Instrumentation() {
       LafinaDeliveryStore(context).use { store -> check(!store.sourceLive(requireNotNull(store.current("qa-rem")))) }
       openFixture(file).use { it.execSQL("PRAGMA user_version=999") }
       check(runCatching { LafinaDeliveryStore(context).close() }.isFailure)
-      results.putString("stream", "PASS: PendingIntent hash-collision isolation, native SQLite claim, duplicate/stale rejection, concurrent-call serialization/release, posting receipt, reopen recovery, bounded failure counters, source-change retirement, atomic rollback, schema-21/22/23 compatibility, timezone source validation and future-schema refusal.\n")
+      results.putString("stream", "PASS: PendingIntent hash-collision isolation, native SQLite claim, duplicate/stale rejection, concurrent-call serialization/release, posting receipt, reopen recovery, bounded failure counters, source-change retirement, atomic rollback, schema-21/22/23 compatibility, timezone source validation, redacted idle diagnostics and future-schema refusal.\n")
       results.putInt("passed", 17)
       finish(Activity.RESULT_OK, results)
     } catch (error: Throwable) {
