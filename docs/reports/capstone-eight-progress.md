@@ -26,3 +26,19 @@ TypeScript PASS; 122 suites / 946 tests PASS with normal exit; ESLint zero error
 (261 warnings). Standalone QA/native-test builds PASS. Updated existing emulator
 app in place, without uninstall/data clear. Physical recording quality/interruption
 validation remains pending. Stages 2–8 remain in progress.
+
+## 2 — revision-checked Notes editing/deletion
+
+Reused schema-21 SQL-triggered note revisions. Added owner-bound snapshots and
+transactional checked create/save/soft-delete operations, including sync outbox and
+revision rollback. No schema bump. Editors read a fresh snapshot and retain their
+drafts on conflict/storage failure. Retained Delete/Save and delayed editor actions
+are fenced by account/editor lifetime; changing accounts remounts Notes. Rich HTML,
+checklists, tags, images and legacy integration/sync APIs remain supported.
+
+Reproduced stale editor overwrite and stale delete before integration. Acceptance
+checks now cover competing writers, account changes, repeated actions, disk failure
+and safe retry, ordinary editing/deletion, rich body preservation and delayed work.
+TypeScript PASS; 124 suites / 954 tests PASS; ESLint zero errors (261 warnings).
+Checked Notes store 100% line coverage; Notes hook 60.2%, meeting the general gate.
+Stages 3–8 remain in progress; this stage has host evidence, not a physical UI claim.

@@ -733,6 +733,7 @@ function AppContent({
       case 'notes':
         return (
           <NotesScreen
+            key={userId}
             userId={userId}
             refreshTrigger={refreshTrigger}
             onRefresh={triggerRefresh}

@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Alert, Animated, LayoutAnimation, UIManager } from 'react-native';
 import type { Note } from '../../../../storage';
 import { localSettingsStore, notesStore, tasksStore } from '../../../../storage';
+import {notesEditStore} from '../../../../storage/notesEditStore';
+import type {NoteEditSnapshot} from '../../../../storage/notesEditStore';
 import { FilterType } from '../types';
 import {
   applyNoteFormat,
@@ -55,8 +57,18 @@ interface UseNotesDataOptions {
   onRefresh: () => void;
 }
 
+/** Manages account-scoped Notes and version-checked, recoverable editor actions. */
 export const useNotesData = (options: UseNotesDataOptions) => {
   const { userId, refreshTrigger, onRefresh } = options;
+  const lifecycle=useRef({userId,mounted:true,editor:0});
+  if(lifecycle.current.userId!==userId){lifecycle.current.userId=userId;lifecycle.current.editor++;}
+  const editorGeneration=lifecycle.current.editor;
+  const deleteDecision=useRef<symbol|null>(null);
+  const noteActionTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const cancelPendingAction=useCallback(()=>{if(noteActionTimer.current)clearTimeout(noteActionTimer.current);noteActionTimer.current=null;},[]);
+  const retire=useCallback(()=>{lifecycle.current.mounted=false;deleteDecision.current=null;cancelPendingAction();},[cancelPendingAction]);
+  const isCurrent=useCallback((generation?:number)=>lifecycle.current.mounted&&lifecycle.current.userId===userId&&(generation===undefined||generation===lifecycle.current.editor)&&notesEditStore.isActiveAccount(userId),[userId]);
+  useEffect(()=>{lifecycle.current.mounted=true;return retire;},[retire]);
 
   const [notes, setNotes] = useState<Note[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,7 +82,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
 
   // Editor state
   const [editorVisible, setEditorVisible] = useState(false);
-  const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const [editingNote, setEditingNote] = useState<NoteEditSnapshot | null>(null);
   const [noteTitle, setNoteTitle] = useState('');
   const [noteBody, setNoteBody] = useState('');
   const [noteCategory, setNoteCategory] = useState('Personal');
@@ -80,6 +92,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [selection, setSelection] = useState({ start: 0, end: 0 });
   const [customCategories, setCustomCategories] = useState<string[]>([]);
+  useEffect(()=>{setEditorVisible(false);setEditingNote(null);setNoteTitle('');setNoteBody('');deleteDecision.current=null;cancelPendingAction();},[userId,cancelPendingAction]);
 
   // Drag state
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -253,6 +266,9 @@ export const useNotesData = (options: UseNotesDataOptions) => {
   // ── Editor ──
 
   const openNewNote = useCallback(() => {
+    if(!isCurrent())return;
+    lifecycle.current.editor++;deleteDecision.current=null;
+    cancelPendingAction();setAiLoading(false);
     setEditingNote(null);
     setNoteTitle('');
     setNoteBody('');
@@ -263,25 +279,29 @@ export const useNotesData = (options: UseNotesDataOptions) => {
     setImageUri(null);
     setSelection({ start: 0, end: 0 });
     setEditorVisible(true);
-  }, []);
+  }, [isCurrent,cancelPendingAction]);
 
   const openEditNote = useCallback((note: Note) => {
-    if (isDragging) return;
+    if (isDragging||!isCurrent()) return;
+    let snapshot:NoteEditSnapshot|null;
+    try{snapshot=notesEditStore.getSnapshot(userId,note.id);if(!snapshot)throw new Error('Unavailable');}catch{Alert.alert('Note unavailable','This note could not be opened. Refresh Notes and try again.');return;}
+    lifecycle.current.editor++;deleteDecision.current=null;
+    cancelPendingAction();setAiLoading(false);
     // A note last saved on desktop is HTML; edit it in the mobile dialect.
-    const body = noteBodyToMarkdown(note.body);
-    setEditingNote(note);
-    setNoteTitle(note.title);
+    const body = noteBodyToMarkdown(snapshot.body);
+    setEditingNote(snapshot);
+    setNoteTitle(snapshot.title);
     setNoteBody(body);
-    setNoteCategory(note.category);
-    setNoteTags(note.tags);
-    setIsPinned(note.isPinned);
-    setIsVoice(note.isVoiceTranscribed);
-    setImageUri(note.imageUri || null);
+    setNoteCategory(snapshot.category);
+    setNoteTags(snapshot.tags);
+    setIsPinned(snapshot.isPinned);
+    setIsVoice(snapshot.isVoiceTranscribed);
+    setImageUri(snapshot.imageUri || null);
     setSelection({ start: body.length, end: body.length });
     setEditorVisible(true);
-  }, [isDragging]);
+  }, [isDragging,isCurrent,userId,cancelPendingAction]);
 
-  const closeEditor = useCallback(() => setEditorVisible(false), []);
+  const closeEditor = useCallback(() => {lifecycle.current.editor++;deleteDecision.current=null;cancelPendingAction();setAiLoading(false);setEditorVisible(false);}, [cancelPendingAction]);
 
   const applyFormatting = useCallback(
     (type: NoteFormat) => {
@@ -331,37 +351,34 @@ export const useNotesData = (options: UseNotesDataOptions) => {
    */
   const toggleNoteChecklist = useCallback(
     (note: Note, index: number) => {
-      const body = toggleChecklistItem(note.body, index);
-      if (body === note.body) return;
-      notesStore.update({
-        id: note.id,
-        title: note.title,
-        body,
-        category: note.category,
-        isPinned: note.isPinned,
-        tags: note.tags,
-        imageUri: note.imageUri,
-      });
+      if(!isCurrent())return;
+      try{
+      const snapshot=notesEditStore.getSnapshot(userId,note.id);
+      if(!snapshot||snapshot.body!==note.body)throw new Error('Changed');
+      const body = toggleChecklistItem(snapshot.body, index);
+      if (body === snapshot.body) return;
+      notesEditStore.save(snapshot,{body});
       loadNotes();
       onRefresh();
+      }catch{Alert.alert('Note changed','Refresh Notes before changing this checklist.');}
     },
-    [loadNotes, onRefresh]
+    [loadNotes, onRefresh,isCurrent,userId]
   );
 
   const saveNote = useCallback(() => {
+    if(!isCurrent(editorGeneration))return;
     if (!noteTitle.trim() && !noteBody.trim() && !imageUri) {
       setEditorVisible(false);
       return;
     }
     const titleStr = noteTitle.trim() || 'Untitled Note';
 
-    if (editingNote) {
+    try{if (editingNote) {
       // Unchanged text keeps the desktop's HTML, and with it the formatting
       // this editor can't show (colours, highlights, images).
       const bodyUnchanged =
         isHtmlBody(editingNote.body) && noteBody === noteBodyToMarkdown(editingNote.body);
-      notesStore.update({
-        id: editingNote.id,
+      notesEditStore.save(editingNote,{
         title: titleStr,
         body: bodyUnchanged ? editingNote.body : noteBody,
         category: noteCategory,
@@ -370,7 +387,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
         imageUri: imageUri,
       });
     } else {
-      notesStore.insert({
+      notesEditStore.create({
         id: generateId('note'),
         userId,
         title: titleStr,
@@ -381,24 +398,32 @@ export const useNotesData = (options: UseNotesDataOptions) => {
         isVoiceTranscribed: isVoice,
         imageUri: imageUri,
       });
-    }
+    }}catch{Alert.alert('Note not saved','The saved note may have changed, or storage is unavailable. Your draft is still here. Reopen the saved note before retrying.');return;}
 
     setEditorVisible(false);
+    lifecycle.current.editor++;deleteDecision.current=null;
     loadNotes();
     onRefresh();
-  }, [noteTitle, noteBody, imageUri, editingNote, noteCategory, isPinned, noteTags, isVoice, userId, loadNotes, onRefresh]);
+  }, [noteTitle, noteBody, imageUri, editingNote, noteCategory, isPinned, noteTags, isVoice, userId, loadNotes, onRefresh,isCurrent,editorGeneration]);
 
   const deleteNote = useCallback((id: string) => {
+    if(!isCurrent())return;
+    let snapshot:NoteEditSnapshot|null;
+    try{snapshot=editingNote?.id===id?editingNote:notesEditStore.getSnapshot(userId,id);if(!snapshot)throw new Error('Unavailable');}catch{Alert.alert('Note unavailable','Refresh Notes before deleting this item.');return;}
+    const decision=Symbol('note-delete');deleteDecision.current=decision;
     Alert.alert('Delete Note', 'Are you sure you want to delete this note?', [
-      { text: 'Cancel', style: 'cancel' },
+      { text: 'Cancel', style: 'cancel',onPress:()=>{if(deleteDecision.current===decision)deleteDecision.current=null;} },
       { text: 'Delete', style: 'destructive', onPress: () => {
-        notesStore.delete(id);
+        if(!isCurrent(editorGeneration)||deleteDecision.current!==decision)return;
+        deleteDecision.current=null;
+        try{notesEditStore.remove(snapshot!);}catch{Alert.alert('Note not deleted','The note changed or could not be deleted. Your draft is still here. Refresh before retrying.');return;}
+        lifecycle.current.editor++;
         setEditorVisible(false);
         loadNotes();
         onRefresh();
       }},
     ]);
-  }, [loadNotes, onRefresh]);
+  }, [loadNotes, onRefresh,isCurrent,editorGeneration,editingNote,userId]);
 
   const getFilteredNotes = useCallback(() => {
     return notes.filter((n) => {
@@ -413,6 +438,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
   }, [notes, searchQuery, selectedFilter]);
 
   const triggerAiAction = useCallback((action: 'summarize' | 'clean' | 'tasks') => {
+    if(!isCurrent(editorGeneration))return;
     if (isBodyEmpty(noteBody)) {
       Alert.alert('Nothing to work with', 'Write something in the note body first.');
       return;
@@ -420,7 +446,9 @@ export const useNotesData = (options: UseNotesDataOptions) => {
     setAiActionType(action);
     setAiLoading(true);
 
-    setTimeout(() => {
+    cancelPendingAction();noteActionTimer.current=setTimeout(() => {
+      noteActionTimer.current=null;
+      if(!isCurrent(editorGeneration))return;
       setAiLoading(false);
       if (action === 'summarize') {
         // Written in the dialect, so the desktop reads it back as a heading
@@ -494,7 +522,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
         onRefresh();
       }
     }, 1500);
-  }, [noteBody, noteTitle, noteCategory, userId, onRefresh]);
+  }, [noteBody, noteTitle, noteCategory, userId, onRefresh,isCurrent,editorGeneration,cancelPendingAction]);
 
   const deleteCategory = useCallback((name: string) => {
     notesStore.deleteCustomCategory(userId, name);

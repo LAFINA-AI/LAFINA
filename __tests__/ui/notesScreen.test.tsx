@@ -47,6 +47,7 @@ import { db } from '../../src/storage/database';
 import { initDatabase } from '../../src/storage/dbInit';
 import { localSettingsStore } from '../../src/storage/localSettingsStore';
 import { notesStore } from '../../src/storage/notesStore';
+import {userStore} from '../../src/storage/userStore';
 import { NotesScreen } from '../../src/ui/screens/notes';
 
 type Tree = ReactTestRenderer.ReactTestRenderer;
@@ -108,6 +109,7 @@ describe('Notes screen', () => {
       'INSERT OR IGNORE INTO users (id, username, created_at, updated_at) VALUES (?, ?, ?, ?)',
       [USER, 'Notes Tester', now, now]
     );
+    userStore.setCurrentUser(USER);
     db.executeSync('DELETE FROM notes');
     db.executeSync('DELETE FROM local_settings');
     db.executeSync('DELETE FROM custom_categories');

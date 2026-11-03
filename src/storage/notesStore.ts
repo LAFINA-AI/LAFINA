@@ -17,28 +17,30 @@ export interface Note {
   deletedAt?: string | null;
 }
 
-const mapRowToNote = (row: any): Note => {
+/** Decodes a local note without changing its rich body or legacy category/tag semantics. */
+export const mapStoredNote = (row: Record<string,unknown>): Note => {
   let tags: string[] = [];
   try {
-    tags = JSON.parse(row.tags || '[]');
+    const parsed:unknown=JSON.parse(typeof row.tags==='string'?row.tags:'[]');
+    tags=Array.isArray(parsed)?parsed.filter((tag):tag is string=>typeof tag==='string'):[];
   } catch {
-    tags = row.tags ? row.tags.split(',') : [];
+    tags = typeof row.tags==='string' ? row.tags.split(',') : [];
   }
 
   return {
-    id: row.id,
-    userId: row.user_id,
-    title: row.title,
-    body: row.body,
+    id: String(row.id),
+    userId: String(row.user_id),
+    title: String(row.title),
+    body: String(row.body),
     isPinned: row.is_pinned === 1,
     tags,
-    category: row.category,
+    category: String(row.category),
     isVoiceTranscribed: row.is_voice_transcribed === 1,
-    imageUri: row.image_uri || null,
-    sortOrder: row.sort_order || 0,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at,
+    imageUri: typeof row.image_uri==='string'?row.image_uri:null,
+    sortOrder: Number(row.sort_order??0),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    deletedAt: row.deleted_at==null?null:String(row.deleted_at),
   };
 };
 
@@ -70,7 +72,7 @@ export const notesStore = {
         `SELECT * FROM notes WHERE user_id = ? AND deleted_at IS NULL ORDER BY is_pinned DESC, sort_order ASC, updated_at DESC`,
         [userId]
       );
-      return result.rows.map(mapRowToNote);
+      return result.rows.map(mapStoredNote);
     } catch (error) {
       console.error('Error fetching notes:', error);
       return [];
@@ -130,10 +132,11 @@ export const notesStore = {
     }
   },
 
-  update: (note: Partial<Note> & { id: string }): void => {
+  /** Applies legacy/integration updates, optionally inside an existing checked transaction. */
+  update: (note: Partial<Note> & { id: string }, executor?:DatabaseTransaction): void => {
     const now = new Date().toISOString();
     const sets: string[] = [];
-    const params: any[] = [];
+    const params: unknown[] = [];
 
     const fields: { key: keyof Note; col: string; type?: string }[] = [
       { key: 'title', col: 'title' },
@@ -168,10 +171,11 @@ export const notesStore = {
     const hasCloudChange = Object.keys(note).some((key) => key !== 'id' && key !== 'imageUri');
 
     try {
-      db.transactionSync((tx) => {
+      const apply=(tx:DatabaseTransaction)=>{
         tx.executeSync(`UPDATE notes SET ${sets.join(', ')} WHERE id = ?`, params);
         if (hasCloudChange) enqueueNoteUpdate(note.id, tx);
-      });
+      };
+      if(executor)apply(executor);else db.transactionSync(apply);
     } catch (error) {
       console.error('Error updating note:', error);
       throw error;
