@@ -116,3 +116,28 @@ line coverage; speech settings UI exceeds 60%. Standalone QA/native builds PASS;
 data-preserving emulator update and native instrumentation PASS, including added
 invalid-provider/NaN/boundary policy assertions. No actual voice or microphone
 quality result is claimed. Stages 6–8 remain in progress.
+
+## 6 — speech readiness and safe recovery (owner item 3)
+
+Distinguished recognition service existence from installed en-US readiness with
+Android API-33 support checks. Unsupported queries/API31–32 remain explicitly unknown
+and only the on-device recognizer may attempt capture. Missing English, permission
+loss, preparation timeout and other failures remain recoverable through text.
+Support probes are bounded/destroyed; Stop before readiness cannot start a late
+recording. Duplicate readiness callbacks cannot restart capture. Both platform stop
+operations are attempted independently; failed stop/destroy retains exclusion.
+
+Coalesced and bounded inventory checks, fresh provider/voice checks before Preview,
+owner/foreground/visibility/render fences, bounded busy rechecks and owned preview
+cancellation preserve saved choices across transient failures. Malformed saved
+preferences now offer an explicit Whisper/Kokoro defaults reset. No silent engine
+change, downloads or new dependencies. ADR-006 records the protocol and Android APIs.
+
+TypeScript PASS; 131 suites / 1,066 tests PASS with normal exit; ESLint zero errors
+(264 warnings). Modified critical adapters/settings retain 100% line coverage;
+settings UI 94.73% line coverage. Native QA and test builds PASS; data-preserving
+emulator install and all native groups/policy checks PASS. Timer tests distinguish
+React microtasks/opacity animation from application watchdogs and assert zero timers
+after cancellation settles. Final delivery will rebundle the completed UI feedback
+and defaults reset with both ABIs. Physical audio/permission/interruption matrix is
+still unrun. Stages 7–8 remain in progress.

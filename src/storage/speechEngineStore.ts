@@ -10,6 +10,8 @@ const resolve=(input:unknown):ResolvedSpeechEnginePreference=>{
  return {version:2,stt:value.stt as SpeechEnginePreference['stt'],tts:value.tts as SpeechEnginePreference['tts'],voiceName:value.voiceName as string|null,providerPackage:provider as string|null,rate,pitch};
 };
 export const speechEngineStore={
+ /** Checks active ownership for retained Profile controls without exposing session credentials. */
+ isActiveAccount:(userId:string):boolean=>{try{return !!userId&&db.executeSync('SELECT user_id FROM active_session LIMIT 1').rows[0]?.user_id===userId;}catch{return false;}},
  /** Reads versioned account-local choices; old saved choices gain neutral customization in memory. */
  read:(userId?:string):ResolvedSpeechEnginePreference=>{
   if(!userId)return {...defaults};

@@ -12,6 +12,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import android.speech.RecognitionSupport
+import android.speech.RecognitionSupportCallback
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -24,6 +26,12 @@ import com.facebook.react.bridge.*
 internal object LafinaAndroidSpeechPolicy {
   fun installedEnglish(name: String, language: String, network: Boolean, features: Set<String>): Boolean =
     name.length in 1..512 && language == "en" && !network && !features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
+  fun englishSupport(installed: List<String>?, error: Int? = null): String = when {
+    error == SpeechRecognizer.ERROR_CANNOT_CHECK_SUPPORT -> "unknown"
+    error != null -> "unavailable"
+    installed.orEmpty().any { it.replace('_','-').equals("en-US",ignoreCase=true) } -> "installed"
+    else -> "missing"
+  }
   fun validCustomization(provider: String?, rate: Double, pitch: Double): Boolean =
     (provider == null || (provider.length in 1..200 && Regex("([a-zA-Z0-9_]+\\.)+[a-zA-Z0-9_]+").matches(provider))) &&
       rate.isFinite() && pitch.isFinite() && rate in 0.5..2.0 && pitch in 0.5..2.0
@@ -46,10 +54,34 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
   private var initTimer: Runnable? = null
   private val waiting = mutableListOf<(TextToSpeech?) -> Unit>()
   private data class Capture(val id: String, val promise: Promise, val started: Long, val microphone: LafinaMicrophoneLease,
-    var recognizer: SpeechRecognizer? = null, var timeout: Runnable? = null)
+    var recognizer: SpeechRecognizer? = null, var listening: Boolean = false, var timeout: Runnable? = null)
   private data class Speech(val id: String, val promise: Promise, var timeout: Runnable? = null)
   private var capture: Capture? = null
   private var speech: Speech? = null
+  private var cancelSupportProbe: (() -> Unit)? = null
+  private fun englishIntent() = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+    putExtra(RecognizerIntent.EXTRA_LANGUAGE,"en-US");putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE,true)
+    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,false);putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,1)
+  }
+  private fun checkEnglish(recognizer: SpeechRecognizer, complete: (String) -> Unit) {
+    if(Build.VERSION.SDK_INT<33) { complete("unknown");return }
+    try { recognizer.checkRecognitionSupport(englishIntent(),context.mainExecutor,object : RecognitionSupportCallback {
+      override fun onSupportResult(support: RecognitionSupport) { complete(LafinaAndroidSpeechPolicy.englishSupport(support.installedOnDeviceLanguages)) }
+      override fun onError(error: Int) { complete(LafinaAndroidSpeechPolicy.englishSupport(null,error)) }
+    }) } catch (_: Exception) { complete("unavailable") }
+  }
+  private fun recognitionReadiness(complete: (String) -> Unit) {
+    if(!available()||!foreground()) { complete("unavailable");return }
+    if(capture!=null||speech!=null||cancelSupportProbe!=null) { complete("busy");return }
+    if(context.checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED) { complete("permission_required");return }
+    if(Build.VERSION.SDK_INT<33) { complete("unknown");return }
+    var probe: SpeechRecognizer?=null;var timer: Runnable?=null;var done=false
+    fun finish(state: String) { if(done)return;done=true;timer?.let(handler::removeCallbacks);try { probe?.destroy() } catch (_: Exception) { };cancelSupportProbe=null;complete(state) }
+    cancelSupportProbe={ finish("unavailable") }
+    timer=Runnable { finish("unavailable") }.also { handler.postDelayed(it,4000) }
+    try { probe=SpeechRecognizer.createOnDeviceSpeechRecognizer(context);checkEnglish(probe!!) { finish(it) } } catch (_: Exception) { finish("unavailable") }
+  }
 
   init { context.addLifecycleEventListener(this) }
   override fun getName() = "LafinaAndroidSpeech"
@@ -71,8 +103,11 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
   private fun finishCapture(run: Capture, text: String, cancelled: Boolean, error: Boolean = false) {
     if (capture !== run) return
     capture = null; run.timeout?.let(handler::removeCallbacks)
-    try { run.recognizer?.cancel(); run.recognizer?.destroy() } catch (_: Exception) { }
-    run.microphone.close()
+    var stopped=run.recognizer==null
+    try { run.recognizer?.cancel();stopped=true } catch (_: Exception) { }
+    try { run.recognizer?.destroy();stopped=true } catch (_: Exception) { }
+    // If both platform stop operations fail, retain exclusion until process death.
+    if(stopped)run.microphone.close()
     releaseFocus()
     if (error) run.promise.reject("ANDROID_ENGLISH_RECOGNITION_UNAVAILABLE", "On-device English recognition could not finish. Type your command or check Speech engines in Profile.")
     else run.promise.resolve(Arguments.createMap().apply {
@@ -86,6 +121,7 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
     check(LafinaAndroidSpeechPolicy.validOwner(id) && foreground() && available())
     check(context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
     check(capture == null && speech == null)
+    cancelSupportProbe?.invoke()
     val microphone = LafinaMicrophoneLease.acquire(context)
     if (microphone == null) { promise.reject("CAPTURE_BUSY", "The microphone is in use. Stop the other recording first."); return@onMain }
     try { check(acquireFocus()) } catch (error: Exception) { microphone.close(); throw error }
@@ -108,17 +144,22 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
           else finishCapture(run, text, false)
         }
       })
-      run.timeout = Runnable { finishCapture(run, "", false, true) }.also { handler.postDelayed(it, 60000) }
-      recognizer.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US"); putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false); putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-      })
+      run.timeout = Runnable { finishCapture(run,"",false,true) }.also { handler.postDelayed(it,4000) }
+      checkEnglish(recognizer) { state ->
+        if(capture!==run||run.listening)return@checkEnglish
+        if(state!="installed"&&state!="unknown") { finishCapture(run,"",false,true);return@checkEnglish }
+        try { check(foreground()&&context.checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED)
+          run.timeout?.let(handler::removeCallbacks);run.timeout=Runnable { finishCapture(run,"",false,true) }.also { handler.postDelayed(it,60000) }
+          run.listening=true;recognizer.startListening(englishIntent())
+        } catch (_: Exception) { finishCapture(run,"",false,true) }
+      }
+
     } catch (_: Exception) { finishCapture(run, "", false, true) }
   }
   @ReactMethod fun stopListening(id: String, promise: Promise) = onMain(promise) {
     val run = capture?.takeIf { it.id == id }
     if (run == null) promise.resolve(false) else {
+      if(!run.listening) { finishCapture(run,"",true);promise.resolve(true);return@onMain }
       try { run.recognizer?.stopListening(); run.timeout?.let(handler::removeCallbacks)
         run.timeout = Runnable { finishCapture(run, "", false, true) }.also { handler.postDelayed(it, 15000) }; promise.resolve(true)
       } catch (_: Exception) { finishCapture(run, "", false, true); promise.resolve(false) }
@@ -169,16 +210,19 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
   @ReactMethod fun getCapabilities(requestedPackage: String?, promise: Promise) = onMain(promise) {
     val recognition = available()
     check(LafinaAndroidSpeechPolicy.validCustomization(requestedPackage,1.0,1.0))
-    check(speech==null && capture==null)
-    val providers=Arguments.createArray();installedProviders().forEach { (name,label) -> providers.pushMap(Arguments.createMap().apply { putString("packageName",name);putString("label",label) }) }
+    val response=Arguments.createMap();response.putBoolean("onDeviceRecognition",recognition)
+    val providers=Arguments.createArray();installedProviders().forEach { (name,label) -> providers.pushMap(Arguments.createMap().apply { putString("packageName",name);putString("label",label) }) };response.putArray("providers",providers)
+    if(speech!=null||capture!=null) { response.putBoolean("busy",true);response.putString("recognitionState","busy");response.putArray("voices",Arguments.createArray());response.putString("providerPackage",requestedPackage);promise.resolve(response);return@onMain }
+    var speechReady=false;var recognitionReady=false
+    fun publish() { if(speechReady&&recognitionReady)promise.resolve(response) }
+    recognitionReadiness { state -> response.putString("recognitionState",state);response.putBoolean("busy",state=="busy");recognitionReady=true;publish() }
     withEngine(requestedPackage) { service ->
-      val voices = Arguments.createArray()
-      try { service?.voices.orEmpty().filter(::safe).sortedBy { it.name }.take(200).forEach { voice ->
-        voices.pushMap(Arguments.createMap().apply { putString("name", voice.name); putString("locale", voice.locale.toLanguageTag()); putBoolean("networkRequired", false); putBoolean("installed", true) })
-      } } catch (_: Exception) { /* An empty inventory remains unavailable. */ }
-      promise.resolve(Arguments.createMap().apply { putBoolean("onDeviceRecognition", recognition); putArray("voices", voices);putArray("providers",providers);putString("providerPackage",enginePackage?:service?.defaultEngine) })
+      val voices=Arguments.createArray()
+      try { service?.voices.orEmpty().filter(::safe).sortedBy { it.name }.take(200).forEach { voice -> voices.pushMap(Arguments.createMap().apply { putString("name",voice.name);putString("locale",voice.locale.toLanguageTag());putBoolean("networkRequired",false);putBoolean("installed",true) }) } } catch (_: Exception) { }
+      response.putArray("voices",voices);response.putString("providerPackage",enginePackage?:service?.defaultEngine);speechReady=true;publish()
     }
   }
+
   private fun finishSpeech(run: Speech, success: Boolean) {
     if (speech !== run) return
     speech = null; run.timeout?.let(handler::removeCallbacks)
@@ -211,6 +255,7 @@ class LafinaAndroidSpeechModule(private val context: ReactApplicationContext) :
     val run = speech?.takeIf { it.id == id }; if (run != null) finishSpeech(run, false); promise.resolve(run != null)
   }
   private fun release() {
+    cancelSupportProbe?.invoke()
     capture?.let { finishCapture(it, "", true) }; speech?.let { finishSpeech(it, false) }
     ++initialization; ready = false; try { engine?.shutdown() } catch (_: Exception) { }; engine = null; finishInitialization(null); releaseFocus()
   }
