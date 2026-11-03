@@ -272,7 +272,7 @@ describe('accountLinkService', () => {
       sessionId,
       sender: 'user',
       content: 'Preserve chat',
-    });
+    }, localUserId);
     jest.spyOn(authService, 'login').mockResolvedValue({
       status: 'auth_required',
       error: 'Invalid email or password.',

@@ -8,7 +8,7 @@ import { db } from '../../src/storage/database';
 import { initDatabase } from '../../src/storage/dbInit';
 import { chatStore } from '../../src/storage/chatStore';
 
-const DEFAULT_SESSION_ID = 'default_chat_session';
+const DEFAULT_SESSION_ID = 'default_chat_session:user1';
 const iso = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString();
 
 describe('chatStore', () => {
@@ -47,7 +47,7 @@ describe('chatStore', () => {
       sessionId,
       sender: 'assistant',
       content: 'See you at 3 PM.',
-    });
+    }, 'user1');
     // Inserted directly with an earlier timestamp so the ORDER BY is observable.
     db.executeSync(
       `INSERT INTO messages (id, session_id, sender, content, created_at, updated_at)
@@ -76,7 +76,7 @@ describe('chatStore', () => {
       sessionId,
       sender: 'user',
       content: 'My message',
-    });
+    }, 'user1');
     // A different session owned by the same user must not leak into history.
     db.executeSync(
       `INSERT INTO chat_sessions (id, user_id, title, created_at, updated_at)
@@ -99,7 +99,7 @@ describe('chatStore', () => {
       sessionId,
       sender: 'user',
       content: 'Hello',
-    });
+    }, 'user1');
 
     chatStore.clearHistory('user1');
 
@@ -116,13 +116,13 @@ describe('chatStore', () => {
     expect(errorSpy).toHaveBeenCalled();
   });
 
-  it('still returns the default session id when the session insert fails', () => {
+  it('rejects a failed session insert instead of claiming success', () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     jest.spyOn(db, 'executeSync').mockImplementation(() => {
       throw new Error('disk full');
     });
 
-    expect(chatStore.ensureDefaultSession('user1')).toBe(DEFAULT_SESSION_ID);
+    expect(()=>chatStore.ensureDefaultSession('user1')).toThrow('disk full');
     expect(errorSpy).toHaveBeenCalled();
   });
 
@@ -138,7 +138,7 @@ describe('chatStore', () => {
         sessionId: DEFAULT_SESSION_ID,
         sender: 'user',
         content: 'Hello',
-      })
+      }, 'user1')
     ).toThrow('unique constraint failed');
     expect(errorSpy).toHaveBeenCalled();
   });

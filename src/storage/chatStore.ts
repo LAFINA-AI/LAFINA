@@ -31,7 +31,11 @@ export interface ChatSession {
   updatedAt: string;
 }
 
-const DEFAULT_SESSION_ID = 'default_chat_session';
+const LEGACY_SESSION_ID = 'default_chat_session';
+const ownedSessionId=(userId:string):string=>{
+  if(typeof userId!=='string' || !userId.trim() || userId.length>256) throw new Error('A valid Chat owner is required.');
+  return `default_chat_session:${encodeURIComponent(userId)}`;
+};
 
 /** Reads a stored attachment, treating anything malformed as no attachment. */
 const parseAttachment = (raw: unknown): ChatAttachment | null => {
@@ -57,17 +61,18 @@ export const chatStore = {
    * Returns the session ID.
    */
   ensureDefaultSession: (userId: string): string => {
-    const now = new Date().toISOString();
+    const id=ownedSessionId(userId),now=new Date().toISOString();
     try {
-      db.executeSync(
-        `INSERT OR IGNORE INTO chat_sessions (id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-        [DEFAULT_SESSION_ID, userId, 'Default Chat', now, now]
-      );
-      return DEFAULT_SESSION_ID;
-    } catch (error) {
-      console.error('Error ensuring default chat session:', error);
-      return DEFAULT_SESSION_ID;
-    }
+      return db.transactionSync(tx=>{
+        tx.executeSync('INSERT OR IGNORE INTO chat_sessions(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)',[id,userId,'Default Chat',now,now]);
+        const owner=tx.executeSync('SELECT user_id FROM chat_sessions WHERE id=?',[id]).rows?.[0]?.user_id;
+        if(owner!==userId) throw new Error('Chat session ownership changed.');
+        const legacy=tx.executeSync('SELECT user_id FROM chat_sessions WHERE id=?',[LEGACY_SESSION_ID]).rows?.[0];
+        if(legacy?.user_id===userId) tx.executeSync('UPDATE messages SET session_id=? WHERE session_id=?',[id,LEGACY_SESSION_ID]);
+        return id;
+      });
+    } catch(error){console.error('Chat session could not be opened.');throw error;}
+
   },
 
   /**
@@ -79,18 +84,18 @@ export const chatStore = {
       const sessionId = chatStore.ensureDefaultSession(userId);
 
       const result = db.executeSync(
-        `SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC`,
-        [sessionId]
+        `SELECT m.* FROM messages m JOIN chat_sessions s ON s.id=m.session_id WHERE m.session_id=? AND s.user_id=? ORDER BY m.created_at ASC,m.id ASC`,
+        [sessionId,userId]
       );
 
-      return result.rows.map((row: any) => ({
-        id: row.id,
-        sessionId: row.session_id,
+      return result.rows.map((row: Record<string,unknown>) => ({
+        id: String(row.id),
+        sessionId: String(row.session_id),
         sender: row.sender as 'user' | 'assistant',
-        content: row.content,
+        content: String(row.content),
         attachment: parseAttachment(row.attachment_json),
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
+        createdAt: String(row.created_at),
+        updatedAt: String(row.updated_at),
       }));
     } catch (error) {
       console.error('Error fetching chat messages:', error);
@@ -107,10 +112,13 @@ export const chatStore = {
     sender: 'user' | 'assistant';
     content: string;
     attachment?: ChatAttachment | null;
-  }): void => {
+  }, userId:string): void => {
     const now = new Date().toISOString();
     try {
-      db.executeSync(
+      db.transactionSync(tx=>{
+      const owner=tx.executeSync('SELECT user_id FROM chat_sessions WHERE id=?',[msg.sessionId]).rows?.[0]?.user_id;
+      if(owner!==userId) throw new Error('Chat message owner does not match its session.');
+      tx.executeSync(
         `INSERT INTO messages (id, session_id, sender, content, attachment_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           msg.id,
@@ -122,6 +130,7 @@ export const chatStore = {
           now,
         ]
       );
+      });
     } catch (error) {
       console.error('Error inserting chat message:', error);
       throw error;
@@ -135,15 +144,18 @@ export const chatStore = {
       .map((message) => message.attachment?.uri)
       .filter((uri): uri is string => typeof uri === 'string' && uri.length > 0),
 
+  /** Checks attachment access against the account's owned session, never just a supplied file path. */
+  hasAttachment:(userId:string,uri:string):boolean=>chatStore.getAttachmentUris(userId).includes(uri),
+
   /**
    * Clears chat history for the user's default session.
    */
   clearHistory: (userId: string): void => {
-    const sessionId = chatStore.ensureDefaultSession(userId);
     try {
+      const sessionId = chatStore.ensureDefaultSession(userId);
       db.executeSync(
-        `DELETE FROM messages WHERE session_id = ?`,
-        [sessionId]
+        `DELETE FROM messages WHERE session_id=? AND EXISTS(SELECT 1 FROM chat_sessions WHERE id=messages.session_id AND user_id=?)`,
+        [sessionId,userId]
       );
     } catch (error) {
       console.error('Error clearing chat history:', error);

@@ -110,6 +110,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const [handbookNotes, setHandbookNotes] = useState<Record<string, string>>({});
   const flatListRef = useRef<FlatList>(null);
   const requestEpoch=useRef(0);
+  const currentAccount=useRef(userId);currentAccount.current=userId;
   const scrollTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const draftProtection=useDraftProtection(userId,inputText,!!commands.review,
     ()=>{commands.cancel();setInputText('');setDocFormat(null);},
@@ -321,7 +322,9 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   };
 
   const handleOpenAttachment = async (attachment: ChatAttachment) => {
+    if(currentAccount.current!==userId || !chatStore.hasAttachment(userId,attachment.uri)) return;
     const outcome = await shareAttachment(attachment);
+    if(currentAccount.current!==userId) return;
     if (outcome === 'missing') {
       Alert.alert('File Not Found', 'This file is no longer on this phone. Ask for it again to get a new copy.');
     } else if (outcome === 'failed') {
@@ -363,7 +366,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       sender: 'user' as const,
       content: userText,
     };
-    try {chatStore.insertMessage(userMsg);} catch {setInputText(userText);setIsSending(false);Alert.alert('Message not sent','Your draft is kept. Please try again.');return;}
+    try {chatStore.insertMessage(userMsg, userId);} catch {setInputText(userText);setIsSending(false);Alert.alert('Message not sent','Your draft is kept. Please try again.');return;}
 
     // Temp state update for immediate user feedback
     const tempMessages = [
@@ -449,7 +452,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       content: aiReply,
       attachment,
     };
-    chatStore.insertMessage(aiMsg);
+    chatStore.insertMessage(aiMsg, userId);
     if (handbookNote) {
       const note = handbookNote;
       setHandbookNotes((previous) => ({ ...previous, [aiMsgId]: note }));
@@ -471,6 +474,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           text: 'Clear',
           style: 'destructive',
           onPress: () => {
+            if(currentAccount.current!==userId) return;
             // The generated files go with the history that offered them.
             // Copies already shared elsewhere are untouched.
             commands.cancel();setInputText('');setDocFormat(null);
@@ -590,8 +594,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         if(result.status==='saved') {
           try {
             const sessionId=chatStore.ensureDefaultSession(userId);
-            chatStore.insertMessage({id:generateId('msg'),sessionId,sender:'user',content:inputText.trim()});
-            chatStore.insertMessage({id:generateId('msg'),sessionId,sender:'assistant',content:result.reply});
+            chatStore.insertMessage({id:generateId('msg'),sessionId,sender:'user',content:inputText.trim()}, userId);
+            chatStore.insertMessage({id:generateId('msg'),sessionId,sender:'assistant',content:result.reply}, userId);
             loadChatHistory();
           } catch { /* The command itself has already committed. */ }
           setInputText('');onRefresh();

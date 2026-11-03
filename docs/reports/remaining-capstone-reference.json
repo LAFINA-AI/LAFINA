@@ -1,0 +1,63 @@
+{
+  "source": "CAPSTONE local reviewed working tree",
+  "targetBaseline": "373be8c",
+  "date": "2026-11-03",
+  "files": [
+    {
+      "path": "src/core/storage/plannerQueries.ts",
+      "sha256": "c5495225d9cd19463017db2fc25efab5930709ef9616f8c312ad188edf4d171c"
+    },
+    {
+      "path": "src/core/ai/commandSession.ts",
+      "sha256": "7a7e8e75d6b1640b22fe77caf0fe6bf09ccb11b87fe3eb4b90a01b3fc2b3142c"
+    },
+    {
+      "path": "src/core/ai/intents.ts",
+      "sha256": "ea6cba42c5976fb58905377ec8c5aab34ed82029a0738c9c214831f4cacfc02f"
+    },
+    {
+      "path": "src/core/ai/offlineConversation.ts",
+      "sha256": "50d1c152692b895a6fe2eab07663b39c68cca1b95721c5f99ae6faf04830b60d"
+    },
+    {
+      "path": "src/core/ai/plannerRequest.ts",
+      "sha256": "9ad2c583c82be7d2d00deb13956c91b681edd9fbf5a780425bd3ef856b3c559c"
+    },
+    {
+      "path": "src/core/domain/memory.ts",
+      "sha256": "f58cdc425113d736002530b7f492baabe5953e418dba01411a2430059c0d1098"
+    },
+    {
+      "path": "src/core/storage/memoryRepository.ts",
+      "sha256": "62e7164d36c21a144286fb25e604413e5fd394ad32aa17fef60050ca622caba8"
+    },
+    {
+      "path": "src/features/chat/commandGuideContent.ts",
+      "sha256": "a5527f5c21cf0663657e82851b61a07a32330d1ba6578e29eb0bf3dadfd19e3f"
+    },
+    {
+      "path": "src/features/reminders/ReminderSettings.tsx",
+      "sha256": "4879ebc9519c83a4649d80f5d71394c5148e18b051d2b63a0f2584aef16695a7"
+    },
+    {
+      "path": "src/features/settings/MemorySettings.tsx",
+      "sha256": "bb3cf60ffde1068de251db019eae50d389357ff5ca80decf2e8a994add1365a5"
+    },
+    {
+      "path": "src/core/native/speechToText.ts",
+      "sha256": "c0cd39f1f69f0113971189df55200697ecbffe88fd664db46c76f7e4cfa32b7f"
+    },
+    {
+      "path": "android/app/src/main/java/com/lafina/capstone/voice/SystemSpeech.kt",
+      "sha256": "709115729112fa4ff94354c2332a6c07ffd20d527d971e15f0e8d4d9c8069418"
+    },
+    {
+      "path": "android/app/src/main/java/com/lafina/capstone/voice/SpeechInput.kt",
+      "sha256": "87ec7daddc04d7279ffa529e6e241a0c1b982a82cf89f629d0399ba105bc5787"
+    },
+    {
+      "path": "android/app/build.gradle",
+      "sha256": "3dc525aade784801d963d001bc5177e613f4a5f5c445530e620d1fe5a3de9223"
+    }
+  ]
+}
