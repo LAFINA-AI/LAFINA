@@ -35,4 +35,11 @@ describe('account-owned Chat sessions',()=>{
     expect(chatStore.hasAttachment('chat-b','local://private-file')).toBe(false);
     expect(chatStore.hasAttachment('chat-a','local://private-file')).toBe(true);
   });
+  it('retains an explicitly migrated guest default history for its new recorded owner',()=>{
+    const guest=chatStore.ensureDefaultSession('chat-a');
+    chatStore.insertMessage({id:'guest-history',sessionId:guest,sender:'user',content:'Keep my history'},'chat-a');
+    db.executeSync('UPDATE chat_sessions SET user_id=? WHERE id=?',['chat-b',guest]);
+    expect(chatStore.getMessages('chat-b').map(m=>m.id)).toEqual(['guest-history']);
+    expect(chatStore.getMessages('chat-a')).toEqual([]);
+  });
 });

@@ -70,3 +70,4 @@ cursors. No messages or timestamps are rewritten. TypeScript PASS; 111 suites /
   use the same local planner answers.
 - TypeScript PASS; 112 suites / 919 tests PASS; ESLint zero errors (244 warnings).
   Manual undated-task access and guest-history migration follow-ups are tracked next.
+Guest sign-in follow-up: a failing regression reproduced hidden transferred history. Default-session consolidation now accepts only sessions explicitly recorded as owned by the signed-in account. TypeScript PASS; 112 suites / 920 tests PASS; ESLint zero errors.

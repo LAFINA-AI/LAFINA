@@ -84,8 +84,9 @@ export const chatStore = {
         tx.executeSync('INSERT OR IGNORE INTO chat_sessions(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)',[id,userId,'Default Chat',now,now]);
         const owner=tx.executeSync('SELECT user_id FROM chat_sessions WHERE id=?',[id]).rows?.[0]?.user_id;
         if(owner!==userId) throw new Error('Chat session ownership changed.');
-        const legacy=tx.executeSync('SELECT user_id FROM chat_sessions WHERE id=?',[LEGACY_SESSION_ID]).rows?.[0];
-        if(legacy?.user_id===userId) tx.executeSync('UPDATE messages SET session_id=? WHERE session_id=?',[id,LEGACY_SESSION_ID]);
+        // Guest migration explicitly transfers session ownership. Retain that history,
+        // including prefixed defaults, without adopting any other owner's messages.
+        tx.executeSync("UPDATE messages SET session_id=? WHERE session_id IN (SELECT id FROM chat_sessions WHERE user_id=? AND id<>? AND (id=? OR id GLOB 'default_chat_session:*'))",[id,userId,id,LEGACY_SESSION_ID]);
         return id;
       });
     } catch(error){console.error('Chat session could not be opened.');throw error;}
