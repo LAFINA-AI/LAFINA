@@ -167,3 +167,23 @@ coverage respectively under standard-library tracing, without settings or a netw
   remain pending that input. No guessed host or unrelated wiki project was modified.
 - Production signing/distribution and pilot acceptance remain separate from the
   development-signed QA APKs. No real student audio or records were used.
+
+## 2026-11-05 deployment follow-up (Asia/Manila)
+
+The prior approval-review usage interruption cleared; commit ea6358e was normally
+pushed to original upstream LAFINA-USTP and its remote full SHA matched locally.
+The owner supplied lafina-backend-git-main-nblancs-projects.vercel.app. Public health
+verification returned UNAVAILABLE / HTTP 401, without a deployed identity. Both
+connected Vercel lookup and authenticated fetch returned 404 / no project access;
+no existing local Vercel CLI was available. Receipt: backend-health-2026-11-05.json.
+The project/team connection or public production API URL is now the required input,
+followed by an authorized synthetic staging flow. No host replacement or deployment
+was made. The attached environment file was not opened. Physical acceptance stays
+NOT RUN. See ../backend-deployment-verification.md for the precise access state.
+
+Owner then explicitly deferred all backend-related work because the friend with
+access is unavailable. Stop deployment/access work until the owner resumes it;
+do not hold completed app improvements open for that dependency. The local/offline
+implementation and its successful verification remain delivered independently.
+Documentation follow-up gates: TypeScript PASS; 143 suites / 1,100 tests with
+coverage PASS; ESLint zero errors (267 existing warnings). No app code changed.

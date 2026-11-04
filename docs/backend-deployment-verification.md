@@ -1,5 +1,27 @@
 # Verify the event-sync backend update
 
+## Owner-supplied address, 2026-11-05 (Asia/Manila)
+
+Owner decision: skip backend/deployment work for now because the friend who holds
+access is unavailable. Resume only when the owner requests it. The observations
+below are a handoff record, not an instruction to continue seeking access now.
+
+The owner supplied `https://lafina-backend-git-main-nblancs-projects.vercel.app`.
+The read-only `/healthz` probe returned UNAVAILABLE; a bounded diagnostic confirmed
+HTTP 401 (application/json), with no redirect. See
+`reports/backend-health-2026-11-05.json`. The expected revision was the tested,
+pushed USTP commit ea6358e3e91e1a5c46ed3e5defc5ae3761c2d771; no deployed revision or
+contract version could be verified. A 401 alone does not distinguish platform
+protection from application authentication.
+
+Both deployment lookup and the authenticated Vercel fetch reported 404 / no access
+for the connected account. No existing local vercel/vc CLI was available. Required
+next input is Vercel connection access to the actual backend project/team, or a
+public production API URL. The supplied environment-file attachment was not read,
+in accordance with AGENTS.md. No protection setting, credentials, database or mobile
+host was changed. When the owner resumes this work and access is available, use the
+verification procedure below.
+
 Owner correction, 2026-11-04: Render was cancelled; PostgreSQL moved to Neon and the
 API host may be Vercel. Do not deploy to the former Render service. Neon database
 access does not by itself identify the public FastAPI host. Do not put a database

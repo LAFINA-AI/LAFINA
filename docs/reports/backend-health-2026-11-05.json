@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "recordedAtUtc": "2026-11-04T16:03:29.273091+00:00",
+  "baseUrl": "https://lafina-backend-git-main-nblancs-projects.vercel.app",
+  "expectedRevision": "ea6358e3e91e1a5c46ed3e5defc5ae3761c2d771",
+  "status": "UNAVAILABLE",
+  "observedRevision": null,
+  "eventTimeContractVersion": null,
+  "limits": [
+    "Read-only identity check; not database sync, authentication or deployment proof by itself."
+  ]
+}

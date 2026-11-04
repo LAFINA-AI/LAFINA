@@ -145,3 +145,7 @@ External acceptance remains open: PH01-PH14 on a real phone and confirmation of
 the actual API host/project plus authorized staging verification. Render is
 retired; no replacement mobile URL or deployment was guessed. Physical acceptance
 and production distribution are not marked complete by these development QA runs.
+
+Owner scope update, 2026-11-05: skip backend/deployment work while the friend with
+Vercel access is unavailable. Resume only on the owner's request. This deferred
+work does not block delivery of the completed local/offline app improvements.
