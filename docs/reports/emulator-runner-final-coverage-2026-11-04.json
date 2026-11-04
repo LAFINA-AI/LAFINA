@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "recordedAtUtc": "2026-11-04T10:18:02.197190+00:00",
+  "source": "scripts/emulator_qa.py",
+  "sourceSha256": "798ea64af4025bef885aadf6b595abfc2adc3066cbabc161fd12469f065665a2",
+  "method": "Python standard-library trace; exact same source hash; unit and actual native-integration execution union",
+  "executableLines": 603,
+  "coveredLines": 407,
+  "lineCoveragePercent": 67.5,
+  "unitOnlyLineCoveragePercent": 44.61,
+  "pythonUnitCases": 17,
+  "nativeIntegrationEvidence": "docs/reports/stt-emulator-final-2026-11-04.json",
+  "generalThresholdPercent": 60,
+  "status": "PASS",
+  "limits": [
+    "Combined unit/integration line coverage, not unit-only or TypeScript coverage.",
+    "Earlier full UI and STT traces are excluded because their source fingerprints predate subsequent safety corrections.",
+    "Coverage does not certify a physical device or speech quality."
+  ]
+}

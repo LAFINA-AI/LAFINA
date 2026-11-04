@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "recordedAtUtc": "2026-11-04T10:08:05.301481+00:00",
+  "source": "scripts/emulator_qa.py",
+  "sourceSha256": "816e019e31d60ea366c64fbfa58d1615ca58abd6ac3bff291832e3f6c4b08096",
+  "method": "Python standard-library trace; exact same source hash; unit and actual native-integration execution union",
+  "executableLines": 603,
+  "coveredLines": 375,
+  "lineCoveragePercent": 62.19,
+  "unitOnlyLineCoveragePercent": 39.3,
+  "pythonUnitCases": 16,
+  "nativeIntegrationEvidence": "docs/reports/stt-emulator-verified-2026-11-04.json",
+  "generalThresholdPercent": 60,
+  "status": "PASS",
+  "limits": [
+    "Combined unit/integration line coverage, not unit-only or TypeScript coverage.",
+    "The earlier full UI trace is excluded because its source fingerprint predates the native-only CRLF parser fix.",
+    "Coverage does not certify a physical device or speech quality."
+  ]
+}

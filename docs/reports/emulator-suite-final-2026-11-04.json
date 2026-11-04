@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "recordedAtUtc": "2026-11-04T09:56:26.031975+00:00",
+  "runId": "rc2b9c2ac1ac1",
+  "scenario": "full",
+  "artifactSha256": "2f9f89ebcaa7e41828a426cf9ea134e96cc5ae866607a8149f2f8a745f9c8a4b",
+  "sourceSha256": "b1c448b60f6db8167def13997d550dc910b9abc33623f9e89790748c591f1d43",
+  "status": "PASS",
+  "checks": [
+    {
+      "name": "offline-calendar",
+      "status": "PASS"
+    },
+    {
+      "name": "offline-notes",
+      "status": "PASS"
+    },
+    {
+      "name": "offline-chat",
+      "status": "PASS"
+    },
+    {
+      "name": "offline-profile",
+      "status": "PASS"
+    },
+    {
+      "name": "installed-qa-controls-present",
+      "status": "PASS"
+    },
+    {
+      "name": "isolated-sql-14-pass-fixture-removed-1",
+      "status": "PASS"
+    },
+    {
+      "name": "isolated-sql-14-pass-fixture-removed-2",
+      "status": "PASS"
+    },
+    {
+      "name": "diagnostics-close-reopen",
+      "status": "PASS"
+    },
+    {
+      "name": "cancel-review-keeps-owned-draft",
+      "status": "PASS"
+    },
+    {
+      "name": "cancelled-task-not-found-by-exact-lookup",
+      "status": "PASS"
+    },
+    {
+      "name": "confirmed-untimed-task-saved",
+      "status": "PASS"
+    },
+    {
+      "name": "exact-fixture-deleted-and-not-found",
+      "status": "PASS"
+    }
+  ],
+  "cleanupConfirmed": true,
+  "limits": [
+    "Emulator UI regressions, not physical-phone/audio/battery certification.",
+    "Only synthetic owned tasks may be changed with explicit fixture-write opt-in.",
+    "Any synthetic Chat messages are retained; history is never bulk-cleared.",
+    "No radio/permission/time changes, database dumps, uninstall or data clear."
+  ],
+  "environment": {
+    "kind": "Android emulator",
+    "api": 37,
+    "abi": "x86_64",
+    "pageSizeBytes": 16384,
+    "airplaneMode": true
+  }
+}

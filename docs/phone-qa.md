@@ -116,3 +116,8 @@ Runners: `npm run test:golden`, `npm run benchmark:intents`, `npm run benchmark:
 `-- --output docs/reports/new-name.json`. Frozen hashes live in
 `evaluation/fixture-manifest-v1.json`. Reports record the Node version, real UTC run
 time captured before simulated command clocks, fixture/source hashes and limits.
+
+The repeatable offline UI runner and opt-in direct synthetic PCM collection are
+documented in [emulator-qa.md](emulator-qa.md). Scoring definitions are in
+[stt-evaluation.md](stt-evaluation.md). Emulator speech observations do not change
+any physical case from NOT RUN to PASS; complete PH01-PH14 on actual hardware.

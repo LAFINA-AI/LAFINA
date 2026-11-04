@@ -88,9 +88,10 @@ old-client event metadata, distinguishing omission from explicit null. First run
 pure backend/tests/test_event_time_contract_isolated.py without settings/env imports.
 Prepare a deployment/rollback and read-only version/health verification guide using
 existing public deployment configuration only. Never deploy to a guessed service.
-Discover an existing configured Render capability if available. Exact service,
+Owner update: Render was cancelled; Neon is the database and Vercel is the possible
+API host. Discover the actual configured API project before changing a URL. Exact service,
 accessible authorization and safe staging/test-account validation are required.
-If unavailable, record owner input: Render service/public URL and deployment access.
+If unavailable, record owner input: API project/public URL and deployment access.
 Avoid mutating live student data; use explicitly authorized synthetic staging rows
 for old-client title edits, timezone preservation and explicit clear tests.
 
@@ -122,9 +123,25 @@ Implement as many stages as available access/tooling permits; each requires its 
 gates/evidence. Update a progress report with exact commands/outcomes and remaining
 items. Push focused commits to original LAFINA-USTP normally. Keep this plan updated.
 Owner/device dependencies: physical Android phone; any required library upgrade
-approval; Render service/access and staging verification; optional synthetic/consented
+approval; confirmed API project/access and staging verification; optional synthetic/consented
 English recordings for genuine speech evaluation. Local emulator/SDK and donor
 working tree disappear when the PC is off; cloud work cannot claim access to them.
 The cloud continuation must first verify GitHub access and exact baseline. If it
 cannot edit the private repo, request repository connection and continue designing
 portable artifacts rather than claiming implementation is complete.
+
+## Local delivery status, 2026-11-04
+
+All six feasible tooling/preparation workstreams are implemented on USTP. The
+owner-approved ONNX 1.22.0 correction was built for both ABIs and verified by ELF/
+ZIP inspection plus actual Silero/Kokoro inference. Offline UI passed 12 checks,
+and actual direct synthetic Whisper collection returned 12 results with 11.11%
+WER. Final ordered gates passed: TypeScript, 143 Jest suites / 1,100 tests with
+coverage, and ESLint zero errors. Detailed evidence and limitations are in
+../reports/remaining-validation-progress.md. No successful cloud execution is
+claimed; local execution is authoritative and the emulator has been stopped.
+
+External acceptance remains open: PH01-PH14 on a real phone and confirmation of
+the actual API host/project plus authorized staging verification. Render is
+retired; no replacement mobile URL or deployment was guessed. Physical acceptance
+and production distribution are not marked complete by these development QA runs.

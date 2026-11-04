@@ -2,7 +2,8 @@
 
 Date: 2026-11-04, Asia/Manila. Base: USTP b248cf8. The owner resumed local
 implementation; no successful cloud execution is claimed. See the associated
-remaining-validation-and-tooling plan. No new packages/models are authorized.
+remaining-validation-and-tooling plan. The owner explicitly approved the existing
+ONNX Runtime upgrade below; no additional packages/models were introduced.
 
 ## 1 - physical acceptance preparation
 
@@ -96,3 +97,73 @@ Actual host receipt: READY, 11 checks; Node 24.19.0, Java 25.0.2, SDK34/build-to
 NDK27.1 and CMake3.22.1 present. This is setup evidence, not a device certificate.
 Stage 6 gates: TypeScript PASS; 141 suites / 1,096 tests with coverage PASS; ESLint
 zero errors (267 warnings).
+
+## 5 - repeatable emulator scenarios and actual synthetic speech
+
+Added an explicit standard-library ADB runner with emulator/installed-APK/offline
+gates, fresh reports, draft/review preservation, exact synthetic task ownership and
+scoped cleanup. No data clear, uninstall, OS setting change, private database dump,
+microphone or playback. The final full UI observation passed all 12 checks: four
+offline screens, native QA gate, 14 SQL checks twice with removed fixtures and
+close/reopen, cancelled retained draft with no saved task, confirmed untimed task,
+reviewed deletion and exact no-match verification. Cleanup confirmed. Earlier
+blocked/failed runs and the separate owned-fixture recovery remain unaltered.
+
+The test-APK-only collector uses production Kokoro synthesis and actual bundled
+English Whisper decoding. It hashes six generated source WAVs, validates/resamples
+PCM, removes the sources, and collects six fresh-context plus six shared-context
+observations under the pipeline lease. No parser, schedule, student DB or playback
+is invoked. Three native PCM parser checks PASS; all 12 requests returned text.
+Measured WER: 8 edits / 72 words = 11.11%, normalized exact 6/12, verbatim exact 0/12.
+Fresh-context median/p95: 6,946.92/7,443.51 ms; shared: 6,934.43/7,150.44 ms.
+Six observations per condition, synthetic PCM and x86_64 emulator only; this does
+not establish microphone/accent/noise/Android-recognizer/physical-phone performance.
+Raw synthetic hypotheses stay ignored; committed reports contain fingerprints and
+scores. The first native result reader rejected CRLF cleanup fields; its failed
+report is retained. LF/CRLF regression checks and a fresh successful retry verified
+source removal, not a relabelled success. Native harness build and 17 legacy
+regression groups also passed; main APK hashes remain the approved ONNX receipt.
+
+Seventeen Python fake-transport safety cases run through Jest. A real command-session
+test verifies quoted literal titles, including the word cancel, propose untimed
+tasks without saving. Added actual CLI/report contract regressions rather than
+relying only on subprocess coverage. Final review added a failing partial-input
+regression: uncertain input is preserved and cleanup cannot be falsely confirmed.
+The corrected final runner passed a fresh actual STT collection (again 12 text
+results, 11.11% WER and cleanup confirmed). Final runner line coverage is 67.50%
+combined unit/native-integration with exact source fingerprints; unit-only 44.61%
+is exposed separately, and all earlier-source traces are excluded. No app TypeScript behavior,
+speech defaults, frozen NLU schema or donor files were changed by this stage.
+
+Evidence: emulator-suite-final-2026-11-04.json; emulator-suite-owned-cleanup-2026-11-04.json;
+stt-emulator-verified-2026-11-04.json; stt-sba04186ad432.json;
+emulator-runner-final-coverage-2026-11-04.json; stt-emulator-final-2026-11-04.json;
+stt-sef280d0051fe.json. Earlier coverage/cohorts remain historical. Final fresh/shared
+context median/p95 were 7,093.13/7,317.23 ms and 6,795.07/7,004.13 ms respectively.
+Runbooks: ../emulator-qa.md and
+../stt-evaluation.md. Emulator stopped after verification, saved data retained.
+
+Stage 5 final ordered gates: TypeScript PASS; 143 suites / 1,100 tests with coverage
+PASS; ESLint zero errors (267 existing warnings). Yarn is not installed; the
+existing npm test command ran the same Jest/Istanbul coverage toolchain without
+installing another package manager. General helper line coverage: STT metrics
+95.71%, scorer CLI 87.09%, evidence helper 100%, architecture checker 96.87%.
+Architecture: 268 modules, zero violations/cycles. Final new Python files are Ruff
+clean; isolated backend/probe tests pass 4 + 4. All 15 donor fingerprints, four
+working/committed frozen corpora, both main APK receipts and the instrumentation
+APK/runner fingerprints still match. No private data, audio or APKs are committed.
+The pure backend identity helper and health probe measured 84.62% and 60.00% line
+coverage respectively under standard-library tracing, without settings or a network.
+
+## Remaining external acceptance
+
+- Physical PH01-PH14 remain NOT RUN: real microphone/accent/noise, audible speech,
+  focus/interruption/concurrent capture, installed Android engines, locked/reboot/
+  Doze alarm delivery, permission recovery, battery/RAM and ARM64 update/runtime/
+  RELRO qualification. Use the blank phone template; do not infer PASS from host QA.
+- Confirm the API's actual Vercel dashboard/public HTTPS address and an authorized
+  synthetic staging/test-account flow. Render is retired; Neon alone is a database,
+  not an API address. Deployment, mobile host replacement and live sync verification
+  remain pending that input. No guessed host or unrelated wiki project was modified.
+- Production signing/distribution and pilot acceptance remain separate from the
+  development-signed QA APKs. No real student audio or records were used.

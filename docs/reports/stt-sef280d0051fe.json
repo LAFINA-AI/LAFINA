@@ -1,0 +1,264 @@
+{
+  "version": 1,
+  "classification": "OBSERVED_STT_COHORT_NOT_PHONE_CERTIFICATION",
+  "recordedAtUtc": "2026-11-04T10:17:01.580Z",
+  "corpusSha256": "db0aeb55b00b6e265673d696e4600ac0fa0b6018fb66ea2e8c5deb9b8b64708e",
+  "artifactSha256": "2f9f89ebcaa7e41828a426cf9ea134e96cc5ae866607a8149f2f8a745f9c8a4b",
+  "sourceSha256": "998d6a28036b6d4eb0e97d3334460b3b5ae7e46b55dc267be354c3f7f5245fe4",
+  "engine": {
+    "name": "Whisper.cpp",
+    "version": "bundled-two-threads",
+    "model": "ggml-tiny.en-q5_1.bin",
+    "modelSha256": "c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b"
+  },
+  "provenance": "DIRECT_SYNTHETIC_PCM",
+  "metrics": {
+    "samples": 12,
+    "result": 12,
+    "empty": 0,
+    "error": 0,
+    "referenceWords": 72,
+    "errors": 8,
+    "werIncludingFailures": 0.1111111111111111,
+    "normalizedExactMatches": 6,
+    "verbatimExactMatches": 0,
+    "cold": {
+      "n": 6,
+      "p50Ms": 7093.13205,
+      "p95Ms": 7317.2257,
+      "maxMs": 7317.2257
+    },
+    "warm": {
+      "n": 6,
+      "p50Ms": 6795.07015,
+      "p95Ms": 7004.1308,
+      "maxMs": 7004.1308
+    }
+  },
+  "cases": [
+    {
+      "caseId": "assignment",
+      "condition": "cold",
+      "iteration": 0,
+      "outcome": "RESULT",
+      "hypothesisSha256": "0804cca4db691888757ab2b16014ad2b2bc878f01c27cb7b58a64f8d1db645b3",
+      "score": {
+        "referenceWords": 7,
+        "hypothesisWords": 7,
+        "substitutions": 0,
+        "deletions": 0,
+        "insertions": 0,
+        "errors": 0,
+        "wer": 0,
+        "normalizedExactMatch": true,
+        "verbatimExactMatch": false
+      }
+    },
+    {
+      "caseId": "biology",
+      "condition": "cold",
+      "iteration": 0,
+      "outcome": "RESULT",
+      "hypothesisSha256": "5ecfd8f296434ee42cc4c364d44b078951293a1c263134fa302d38c64fdbe9be",
+      "score": {
+        "referenceWords": 8,
+        "hypothesisWords": 8,
+        "substitutions": 1,
+        "deletions": 0,
+        "insertions": 0,
+        "errors": 1,
+        "wer": 0.125,
+        "normalizedExactMatch": false,
+        "verbatimExactMatch": false
+      }
+    },
+    {
+      "caseId": "today",
+      "condition": "cold",
+      "iteration": 0,
+      "outcome": "RESULT",
+      "hypothesisSha256": "b6d7f231a08596b09341cc942d1bd4e1935b50a854bdefecbb1086ad54b9531c",
+      "score": {
+        "referenceWords": 5,
+        "hypothesisWords": 5,
+        "substitutions": 0,
+        "deletions": 0,
+        "insertions": 0,
+        "errors": 0,
+        "wer": 0,
+        "normalizedExactMatch": true,
+        "verbatimExactMatch": false
+      }
+    },
+    {
+      "caseId": "calculus",
+      "condition": "cold",
+      "iteration": 0,
+      "outcome": "RESULT",
+      "hypothesisSha256": "821604a9e190e015a462a6e31f82b9a8a161a13a4325806c54988324990afb60",
+      "score": {
+        "referenceWords": 7,
+        "hypothesisWords": 8,
+        "substitutions": 1,
+        "deletions": 0,
+        "insertions": 1,
+        "errors": 2,
+        "wer": 0.2857142857142857,
+        "normalizedExactMatch": false,
+        "verbatimExactMatch": false
+      }
+    },
+    {
+      "caseId": "cancel",
+      "condition": "cold",
+      "iteration": 0,
+      "outcome": "RESULT",
+      "hypothesisSha256": "18fc18b4d5f382477d0ca0c5fad5af39af4070a95dc52a344b6d6200ba00f7fa",
+      "score": {
+        "referenceWords": 4,
+        "hypothesisWords": 4,
+        "substitutions": 0,
+        "deletions": 0,
+        "insertions": 0,
+        "errors": 0,
+        "wer": 0,
+        "normalizedExactMatch": true,
+        "verbatimExactMatch": false
+      }
+    },
+    {
+      "caseId": "complete",
+      "condition": "cold",
+      "iteration": 0,
+      "outcome": "RESULT",
+      "hypothesisSha256": "9a7bdc5bead0f4d87c2b893ab14645d5fe42a831ec7eba8ff0eb8cd1d7a23f13",
+      "score": {
+        "referenceWords": 5,
+        "hypothesisWords": 5,
+        "substitutions": 1,
+        "deletions": 0,
+        "insertions": 0,
+        "errors": 1,
+        "wer": 0.2,
+        "normalizedExactMatch": false,
+        "verbatimExactMatch": false
+      }
+    },
+    {
+      "caseId": "assignment",
+      "condition": "warm",
+      "iteration": 0,
+      "outcome": "RESULT",
+      "hypothesisSha256": "0804cca4db691888757ab2b16014ad2b2bc878f01c27cb7b58a64f8d1db645b3",
+      "score": {
+        "referenceWords": 7,
+        "hypothesisWords": 7,
+        "substitutions": 0,
+        "deletions": 0,
+        "insertions": 0,
+        "errors": 0,
+        "wer": 0,
+        "normalizedExactMatch": true,
+        "verbatimExactMatch": false
+      }
+    },
+    {
+      "caseId": "biology",
+      "condition": "warm",
+      "iteration": 0,
+      "outcome": "RESULT",
+      "hypothesisSha256": "5ecfd8f296434ee42cc4c364d44b078951293a1c263134fa302d38c64fdbe9be",
+      "score": {
+        "referenceWords": 8,
+        "hypothesisWords": 8,
+        "substitutions": 1,
+        "deletions": 0,
+        "insertions": 0,
+        "errors": 1,
+        "wer": 0.125,
+        "normalizedExactMatch": false,
+        "verbatimExactMatch": false
+      }
+    },
+    {
+      "caseId": "today",
+      "condition": "warm",
+      "iteration": 0,
+      "outcome": "RESULT",
+      "hypothesisSha256": "b6d7f231a08596b09341cc942d1bd4e1935b50a854bdefecbb1086ad54b9531c",
+      "score": {
+        "referenceWords": 5,
+        "hypothesisWords": 5,
+        "substitutions": 0,
+        "deletions": 0,
+        "insertions": 0,
+        "errors": 0,
+        "wer": 0,
+        "normalizedExactMatch": true,
+        "verbatimExactMatch": false
+      }
+    },
+    {
+      "caseId": "calculus",
+      "condition": "warm",
+      "iteration": 0,
+      "outcome": "RESULT",
+      "hypothesisSha256": "821604a9e190e015a462a6e31f82b9a8a161a13a4325806c54988324990afb60",
+      "score": {
+        "referenceWords": 7,
+        "hypothesisWords": 8,
+        "substitutions": 1,
+        "deletions": 0,
+        "insertions": 1,
+        "errors": 2,
+        "wer": 0.2857142857142857,
+        "normalizedExactMatch": false,
+        "verbatimExactMatch": false
+      }
+    },
+    {
+      "caseId": "cancel",
+      "condition": "warm",
+      "iteration": 0,
+      "outcome": "RESULT",
+      "hypothesisSha256": "18fc18b4d5f382477d0ca0c5fad5af39af4070a95dc52a344b6d6200ba00f7fa",
+      "score": {
+        "referenceWords": 4,
+        "hypothesisWords": 4,
+        "substitutions": 0,
+        "deletions": 0,
+        "insertions": 0,
+        "errors": 0,
+        "wer": 0,
+        "normalizedExactMatch": true,
+        "verbatimExactMatch": false
+      }
+    },
+    {
+      "caseId": "complete",
+      "condition": "warm",
+      "iteration": 0,
+      "outcome": "RESULT",
+      "hypothesisSha256": "9a7bdc5bead0f4d87c2b893ab14645d5fe42a831ec7eba8ff0eb8cd1d7a23f13",
+      "score": {
+        "referenceWords": 5,
+        "hypothesisWords": 5,
+        "substitutions": 1,
+        "deletions": 0,
+        "insertions": 0,
+        "errors": 1,
+        "wer": 0.2,
+        "normalizedExactMatch": false,
+        "verbatimExactMatch": false
+      }
+    }
+  ],
+  "limits": [
+    "WER is word transcription error, not intent accuracy or scheduling safety.",
+    "Empty/error requests count as missing reference words; failures are not discarded.",
+    "Times include failed requests and do not measure acoustic audibility.",
+    "Synthetic PCM does not establish microphone, accent, noise, battery or phone performance.",
+    "Provenance is supplied by the collector; this scorer cannot authenticate recording origin.",
+    "No raw hypotheses are exported; transcript hashes are fingerprints, not anonymization."
+  ]
+}

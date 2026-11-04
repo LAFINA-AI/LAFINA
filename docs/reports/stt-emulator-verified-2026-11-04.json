@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "recordedAtUtc": "2026-11-04T10:04:40.097827+00:00",
+  "runId": "sba04186ad432",
+  "scenario": "stt",
+  "artifactSha256": "2f9f89ebcaa7e41828a426cf9ea134e96cc5ae866607a8149f2f8a745f9c8a4b",
+  "sourceSha256": "816e019e31d60ea366c64fbfa58d1615ca58abd6ac3bff291832e3f6c4b08096",
+  "status": "PASS",
+  "checks": [
+    {
+      "name": "actual-whisper-cold-warm-cohort-collected",
+      "status": "PASS"
+    },
+    {
+      "name": "synthetic-source-files-removed",
+      "status": "PASS"
+    }
+  ],
+  "cleanupConfirmed": true,
+  "limits": [
+    "Emulator UI regressions, not physical-phone/audio/battery certification.",
+    "Only synthetic owned tasks may be changed with explicit fixture-write opt-in.",
+    "Any synthetic Chat messages are retained; history is never bulk-cleared.",
+    "No radio/permission/time changes, database dumps, uninstall or data clear."
+  ],
+  "environment": {
+    "kind": "Android emulator",
+    "api": 37,
+    "abi": "x86_64",
+    "pageSizeBytes": 16384,
+    "airplaneMode": true
+  },
+  "testArtifactSha256": "fbffe3d0ebdf3cda640f4ccbb73c0f0ac1dfbb3892cbad9145707021a1636069",
+  "nativeGeneratedFilesRemoved": true,
+  "syntheticAudio": [
+    {
+      "caseId": "assignment",
+      "sha256": "5e5ea6bde7679dd038127dc557153a764f6a15fdf8577d58b994ebaa98b5ff9e",
+      "bytes": 171644
+    },
+    {
+      "caseId": "biology",
+      "sha256": "ed2399e819439e4cf37de7f7807c5107f118993422e6f00589d50f4c6162e99d",
+      "bytes": 163244
+    },
+    {
+      "caseId": "today",
+      "sha256": "66a4525228bd24a4d9a4ac4731837ad41299e578feecc0fcdab57b707da608bb",
+      "bytes": 102044
+    },
+    {
+      "caseId": "calculus",
+      "sha256": "6ca201203f938ae732b836fdfab59bb41530e73c46f7f37edc4a7491351ae0f6",
+      "bytes": 157244
+    },
+    {
+      "caseId": "cancel",
+      "sha256": "45ecbae339bf3c0edbb5979235abb33b87bd6e73e22b33951289a74fea8ff4a1",
+      "bytes": 129644
+    },
+    {
+      "caseId": "complete",
+      "sha256": "58c127e87d0c0865989511b41a7dcd20cf52731c6174b98eeda4d2877e6d9bc4",
+      "bytes": 120044
+    }
+  ],
+  "sttScoreReport": "docs/reports/stt-sba04186ad432.json",
+  "sttMetrics": {
+    "samples": 12,
+    "result": 12,
+    "empty": 0,
+    "error": 0,
+    "referenceWords": 72,
+    "errors": 8,
+    "werIncludingFailures": 0.1111111111111111,
+    "normalizedExactMatches": 6,
+    "verbatimExactMatches": 0,
+    "cold": {
+      "n": 6,
+      "p50Ms": 6946.92195,
+      "p95Ms": 7443.5107,
+      "maxMs": 7443.5107
+    },
+    "warm": {
+      "n": 6,
+      "p50Ms": 6934.43365,
+      "p95Ms": 7150.4414,
+      "maxMs": 7150.4414
+    }
+  },
+  "pcmParserChecks": 3,
+  "method": "Kokoro af_bella PCM16 mono 24k; linear resample to 16k plus 1s tail; actual Whisper two threads. Cold includes context load; warm excludes it. Generation/resampling/free excluded."
+}

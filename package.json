@@ -21,7 +21,8 @@
     "benchmark:notes": "node scripts/run-evaluation.cjs notes",
     "benchmark:speech": "node scripts/run-evaluation.cjs speech",
     "evaluate:stt": "node scripts/evaluate-stt.cjs",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "qa:emulator": "python scripts/emulator_qa.py"
   },
   "dependencies": {
     "@op-engineering/op-sqlite": "^16.2.0",
