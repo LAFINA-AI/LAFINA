@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "recordedAtUtc": "2026-11-04T08:53:57.002Z",
+  "status": "READY",
+  "sourceSha256": "8cc9a93f18a3ef5e7914cb5455ac893f4f310632255bd98fac65addcd2ba0fa6",
+  "requirements": {
+    "nodeMinimum": "22.11.0",
+    "javaMinimum": 17,
+    "compileSdk": "34",
+    "buildTools": "36.0.0",
+    "ndk": "27.1.12297006",
+    "cmake": "3.22.1",
+    "gradle": "9.3.1"
+  },
+  "checks": [
+    {
+      "id": "node",
+      "status": "PASS",
+      "expected": ">=22.11.0",
+      "observed": "24.19.0"
+    },
+    {
+      "id": "java",
+      "status": "PASS",
+      "expected": ">=17",
+      "observed": "25.0.2"
+    },
+    {
+      "id": "sdk-platform",
+      "status": "PASS",
+      "expected": "android-34",
+      "observed": "present"
+    },
+    {
+      "id": "sdk-build-tools",
+      "status": "PASS",
+      "expected": "36.0.0",
+      "observed": "present"
+    },
+    {
+      "id": "sdk-ndk",
+      "status": "PASS",
+      "expected": "27.1.12297006",
+      "observed": "present"
+    },
+    {
+      "id": "sdk-cmake",
+      "status": "PASS",
+      "expected": "3.22.1",
+      "observed": "present"
+    },
+    {
+      "id": "adb",
+      "status": "PASS",
+      "expected": "installed platform-tools",
+      "observed": "present"
+    },
+    {
+      "id": "gradle-wrapper",
+      "status": "PASS",
+      "expected": "9.3.1",
+      "observed": "present"
+    },
+    {
+      "id": "dependency-typescript",
+      "status": "PASS",
+      "expected": "existing project dependency",
+      "observed": "present"
+    },
+    {
+      "id": "dependency-jest",
+      "status": "PASS",
+      "expected": "existing project dependency",
+      "observed": "present"
+    },
+    {
+      "id": "dependency-sqlite",
+      "status": "PASS",
+      "expected": "existing project dependency",
+      "observed": "present"
+    }
+  ],
+  "limits": [
+    "Read-only version/presence checks, not compilation, emulator or physical-device certification.",
+    "No package installation, environment-file access, signing inspection or full environment/path output."
+  ]
+}

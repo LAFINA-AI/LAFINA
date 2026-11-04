@@ -82,3 +82,17 @@ zero errors (267 warnings). Actual deployment and live sync remain pending input
 
 Resource-aware execution: finish the read-only setup checker before the emulator
 scenario runner so heavy host checks finish before the final device boot.
+
+
+## 6 - read-only development setup checker (before final emulator work)
+
+Added npm run doctor and public JSON output from actual USTP Node/Android/CMake/
+Gradle requirements, including the installed React Native Java toolchain policy.
+Only Java version is executed, with timeout/bounded capture. Named SDK/JDK path
+variables are used internally; no environment files, signing material, absolute
+paths or raw command output are exposed. Missing tools/config stay missing/unknown;
+no installation or network occurs. Four fake-inventory Node cases run through Jest.
+Actual host receipt: READY, 11 checks; Node 24.19.0, Java 25.0.2, SDK34/build-tools36,
+NDK27.1 and CMake3.22.1 present. This is setup evidence, not a device certificate.
+Stage 6 gates: TypeScript PASS; 141 suites / 1,096 tests with coverage PASS; ESLint
+zero errors (267 warnings).

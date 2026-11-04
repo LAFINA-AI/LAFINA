@@ -20,7 +20,8 @@
     "benchmark:intents": "node scripts/run-evaluation.cjs intents",
     "benchmark:notes": "node scripts/run-evaluation.cjs notes",
     "benchmark:speech": "node scripts/run-evaluation.cjs speech",
-    "evaluate:stt": "node scripts/evaluate-stt.cjs"
+    "evaluate:stt": "node scripts/evaluate-stt.cjs",
+    "doctor": "node scripts/doctor.mjs"
   },
   "dependencies": {
     "@op-engineering/op-sqlite": "^16.2.0",
