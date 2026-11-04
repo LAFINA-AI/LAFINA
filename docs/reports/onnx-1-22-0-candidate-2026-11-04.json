@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "recordedAtUtc": "2026-11-04T08:05:00.046172+00:00",
+  "purpose": "READ_ONLY_CANDIDATE_AUDIT_NOT_INSTALLED",
+  "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.22.0",
+  "sourceUrl": "https://repo.maven.apache.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.22.0/onnxruntime-android-1.22.0.aar",
+  "sha256": "04a4617a9c797cf49225595e45b5546081cb34c86ac817581141577d3b7dbfe2",
+  "libraries": [
+    {
+      "path": "jni/arm64-v8a/libonnxruntime.so",
+      "status": "PASS",
+      "elfClass": 64,
+      "machine": 183,
+      "byteOrder": "little",
+      "loadSegments": [
+        {
+          "offset": 0,
+          "virtualAddress": 0,
+          "fileSize": 17789488,
+          "memorySize": 17789488,
+          "alignment": 16384,
+          "pageCongruent": true
+        },
+        {
+          "offset": 17789488,
+          "virtualAddress": 17805872,
+          "fileSize": 415416,
+          "memorySize": 417232,
+          "alignment": 16384,
+          "pageCongruent": true
+        },
+        {
+          "offset": 18204904,
+          "virtualAddress": 18237672,
+          "fileSize": 6792,
+          "memorySize": 54072,
+          "alignment": 16384,
+          "pageCongruent": true
+        }
+      ],
+      "relroEndRemainders": [
+        4096
+      ]
+    },
+    {
+      "path": "jni/arm64-v8a/libonnxruntime4j_jni.so",
+      "status": "PASS",
+      "elfClass": 64,
+      "machine": 183,
+      "byteOrder": "little",
+      "loadSegments": [
+        {
+          "offset": 0,
+          "virtualAddress": 0,
+          "fileSize": 73056,
+          "memorySize": 73056,
+          "alignment": 16384,
+          "pageCongruent": true
+        },
+        {
+          "offset": 73056,
+          "virtualAddress": 89440,
+          "fileSize": 816,
+          "memorySize": 4768,
+          "alignment": 16384,
+          "pageCongruent": true
+        }
+      ],
+      "relroEndRemainders": [
+        12288
+      ]
+    },
+    {
+      "path": "jni/x86_64/libonnxruntime.so",
+      "status": "PASS",
+      "elfClass": 64,
+      "machine": 62,
+      "byteOrder": "little",
+      "loadSegments": [
+        {
+          "offset": 0,
+          "virtualAddress": 0,
+          "fileSize": 21462048,
+          "memorySize": 21462048,
+          "alignment": 16384,
+          "pageCongruent": true
+        },
+        {
+          "offset": 21462048,
+          "virtualAddress": 21478432,
+          "fileSize": 408512,
+          "memorySize": 410592,
+          "alignment": 16384,
+          "pageCongruent": true
+        },
+        {
+          "offset": 21870560,
+          "virtualAddress": 21903328,
+          "fileSize": 6928,
+          "memorySize": 44736,
+          "alignment": 16384,
+          "pageCongruent": true
+        }
+      ],
+      "relroEndRemainders": [
+        0
+      ]
+    },
+    {
+      "path": "jni/x86_64/libonnxruntime4j_jni.so",
+      "status": "PASS",
+      "elfClass": 64,
+      "machine": 62,
+      "byteOrder": "little",
+      "loadSegments": [
+        {
+          "offset": 0,
+          "virtualAddress": 0,
+          "fileSize": 70848,
+          "memorySize": 70848,
+          "alignment": 16384,
+          "pageCongruent": true
+        },
+        {
+          "offset": 70848,
+          "virtualAddress": 87232,
+          "fileSize": 736,
+          "memorySize": 2880,
+          "alignment": 16384,
+          "pageCongruent": true
+        }
+      ],
+      "relroEndRemainders": [
+        8192
+      ]
+    }
+  ],
+  "limits": [
+    "Not installed or used by LAFINA.",
+    "Model/runtime/RELRO/device compatibility not established.",
+    "Dependency change requires owner approval."
+  ]
+}
