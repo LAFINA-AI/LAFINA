@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "classification": "PUBLIC_SYNTHETIC_ENGLISH_TEXT",
+  "samples": [
+    {
+      "id": "assignment",
+      "reference": "remind me to submit the assignment tomorrow"
+    },
+    {
+      "id": "biology",
+      "reference": "add a study session for biology on friday"
+    },
+    {
+      "id": "today",
+      "reference": "show my tasks for today"
+    },
+    {
+      "id": "calculus",
+      "reference": "move the calculus lecture to monday morning"
+    },
+    {
+      "id": "cancel",
+      "reference": "cancel my library reminder"
+    },
+    {
+      "id": "complete",
+      "reference": "mark the reading task complete"
+    }
+  ]
+}

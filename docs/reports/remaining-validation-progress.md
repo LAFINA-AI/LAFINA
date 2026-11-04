@@ -31,3 +31,9 @@ AGENTS.md. Until approval and runtime/model validation, the compatibility fix re
 pending. RELRO observations, ZIP alignment and physical-device results stay separate.
 
 Stage 2 final gates: TypeScript PASS; 138 suites / 1,085 Jest tests with coverage PASS (including 11 Python auditor cases); ESLint zero errors (267 warnings). Both recorded APK findings match the corrected final auditor.
+
+## 3 - speech accuracy evaluation tools
+
+Added typed cohort/report contracts, bounded word-level edit scoring, cold/warm summaries, fixed public six-command corpus/hash manifest and a strict explicit CLI. Empty/error attempts are included; malformed, incomplete and duplicate cohorts are rejected. Raw transcript inputs stay in ignored .local/stt; reports contain scores and fingerprints, not hypotheses. Fresh canonical report paths prevent overwrite/symlink escape. Eight Jest cases cover metrics, invalid inputs, provenance, CLI and filesystem behavior. A clearly labelled 12-pair scorer self-test ran without a model or audio; it is not recognition accuracy evidence. Actual native PCM collection is a separate follow-up.
+
+Stage 3 gates: TypeScript PASS; 139 suites / 1,093 tests with coverage PASS; ESLint zero errors (267 warnings). No application scheduling or speech defaults changed.

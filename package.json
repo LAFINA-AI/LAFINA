@@ -19,7 +19,8 @@
     "test:golden": "jest --runInBand --runTestsByPath __tests__/evaluation/intentGolden.test.ts",
     "benchmark:intents": "node scripts/run-evaluation.cjs intents",
     "benchmark:notes": "node scripts/run-evaluation.cjs notes",
-    "benchmark:speech": "node scripts/run-evaluation.cjs speech"
+    "benchmark:speech": "node scripts/run-evaluation.cjs speech",
+    "evaluate:stt": "node scripts/evaluate-stt.cjs"
   },
   "dependencies": {
     "@op-engineering/op-sqlite": "^16.2.0",
