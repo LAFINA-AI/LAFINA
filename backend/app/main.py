@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response, status, Depends
 from fastapi.responses import JSONResponse
@@ -9,6 +10,7 @@ import backend.app.models  # noqa: F401
 from backend.app.api.v1 import auth, sync, ai, businesses, business_sync, business_chat, meetings, gmail, meeting_notes
 from backend.app.database import get_db
 from backend.app.services.capabilities import resolve_account_capabilities
+from backend.app.services.deployment_health import deployment_identity
 from backend.app.admin import setup_admin
 from backend.app.clients.deepseek import DeepSeekClient
 from backend.app.clients.gemini_tts import GeminiTtsClient
@@ -152,5 +154,7 @@ async def get_me_top_level(
     )
 
 @app.get("/healthz", status_code=status.HTTP_200_OK)
-async def healthz():
-    return {"status": "ok", "environment": settings.ENVIRONMENT, "version": "1.0.0"}
+async def healthz() -> dict[str, object]:
+    """Report liveness and public build identity without exposing configuration."""
+    return {"status": "ok", "environment": settings.ENVIRONMENT, "version": "1.0.0",
+            **deployment_identity(os.environ.get("VERCEL_GIT_COMMIT_SHA"), os.environ.get("VERCEL"))}

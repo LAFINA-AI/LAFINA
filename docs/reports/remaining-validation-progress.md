@@ -60,3 +60,25 @@ Physical ARM64/audio/RELRO-device qualification remains NOT RUN.
 Deployment steering: owner reports Render was cancelled and the database moved to
 Neon, possibly hosted through Vercel. Do not deploy to Render or guess an API URL.
 Discover actual Vercel project/host before deployment or changing the mobile URL.
+
+
+## 4 - deployment identity and verification preparation
+
+Owner clarified Render is cancelled and Neon/Vercel may be the replacement. The
+connected Vercel team has a lafina-wiki project by name, no original-repository
+filter match, and no local .vercel/project.json in root/backend. The API host and
+its authorized staging flow remain unconfirmed. No guessed deployment, new cloud
+resource, database mutation or mobile URL change was made; the old Render URL is
+explicitly documented as needing replacement once the API is verified.
+
+Added backward-compatible public health identity (validated Vercel Git SHA or null,
+provider and event-contract version), a read-only bounded TLS/identity probe with
+safe offline/old-version states, and deployment/rollback/test-account instructions.
+Four isolated backend cases (including the previous event contract) and four fake
+transport probe cases PASS without settings, credentials, database or real network.
+New Python modules/tests are Ruff clean; whole legacy backend style is not claimed.
+Stage 4 gates: TypeScript PASS; 140 suites / 1,095 tests with coverage PASS; ESLint
+zero errors (267 warnings). Actual deployment and live sync remain pending input.
+
+Resource-aware execution: finish the read-only setup checker before the emulator
+scenario runner so heavy host checks finish before the final device boot.
