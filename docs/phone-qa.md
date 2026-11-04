@@ -1,5 +1,42 @@
 # Physical Android acceptance checklist
 
+## Recording a physical run
+
+Copy [the result template](templates/phone-acceptance-v1.json) to a new report name;
+never overwrite an earlier run. Every case starts as NOT RUN. PASS requires actual
+observation, FAIL requires an observed failure, and BLOCKED identifies a prerequisite.
+Record UTC timestamps, the exact APK SHA-256 and public signer fingerprint. Use an
+anonymous device tier/vendor/model (no serial, IMEI, account address or student data).
+Do not commit audio, screen images containing real records, or private log dumps.
+
+Use a unique `LAFINA-QA-<run>-<case>` title for each synthetic record. Record created
+IDs privately during the run, then remove only the exact fixtures through normal
+reviewed UI actions. Never clean by a partial title match or clear app data. Record
+original settings before changing them and restore them explicitly afterward.
+An interrupted run retains NOT RUN/BLOCKED cases and an unconfirmed cleanup result.
+The template is preparation, not a completed phone evaluation.
+
+| Case ID | Synthetic scenario and observation required |
+| --- | --- |
+| PH01 | Matching-signature ARM64 update retains existing records and preferences. |
+| PH02 | Airplane-mode cold launch; create/cancel/confirm an item, then exact cleanup. |
+| PH03 | Locked reminder rings; record scheduled/observed UTC and presentation/access state. |
+| PH04 | Reminder survives ordinary process death and reboot/unlock; distinguish force-stop. |
+| PH05 | Doze/battery restrictions; record actual delivery and missed/delayed alarms. |
+| PH06 | Notification/exact/full-screen permission revoked and restored; health recovery. |
+| PH07 | Whisper, optional Android recognition and meeting capture contend safely; Stop works. |
+| PH08 | English recognition works offline; silence/noise and missing-language recovery. |
+| PH09 | Kokoro and explicit optional English system voice are audible; Preview/Stop, speed/pitch. |
+| PH10 | Incoming audio interruption/background/account switch retires owned speech work. |
+| PH11 | Overnight/timezone reminder, stale Note edits and two-account isolation. |
+| PH12 | Cold/warm latency, peak memory and battery measured on the named device tier. |
+| PH13 | QA screen: 14/14 isolated SQLite checks and fixture removal after reopen. |
+| PH14 | Per-library ELF audit and actual device page-size compatibility; record failures. |
+
+Report speech word-error rate only from a fixed synthetic/consented reference set
+with actual hypotheses. Callback timings are separate from first audible sound.
+Do not convert a missing measurement into zero or mark a test PASS from a build.
+
 Implementation/host checks do not certify a phone or a production release. Record
 the date, device/Android version, ABI, APK SHA-256, certificate, model assets, page
 size, battery state and permission state for each run. Use synthetic named items

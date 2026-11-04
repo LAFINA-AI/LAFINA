@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "classification": "TEMPLATE_ONLY_NOT_DEVICE_EVIDENCE",
+  "runId": null,
+  "recordedAtUtc": null,
+  "artifact": {"sha256": null, "certificateSha256": null, "commit": null, "buildType": null},
+  "device": {"anonymousTier": null, "vendorModel": null, "androidApi": null, "abi": null, "pageSizeBytes": null},
+  "conditions": {"airplaneMode": null, "batteryPolicy": null, "permissionState": null, "speechEngines": null},
+  "cases": [
+    {"id": "PH01", "status": "NOT RUN", "evidence": null},
+    {"id": "PH02", "status": "NOT RUN", "evidence": null},
+    {"id": "PH03", "status": "NOT RUN", "evidence": null},
+    {"id": "PH04", "status": "NOT RUN", "evidence": null},
+    {"id": "PH05", "status": "NOT RUN", "evidence": null},
+    {"id": "PH06", "status": "NOT RUN", "evidence": null},
+    {"id": "PH07", "status": "NOT RUN", "evidence": null},
+    {"id": "PH08", "status": "NOT RUN", "evidence": null},
+    {"id": "PH09", "status": "NOT RUN", "evidence": null},
+    {"id": "PH10", "status": "NOT RUN", "evidence": null},
+    {"id": "PH11", "status": "NOT RUN", "evidence": null},
+    {"id": "PH12", "status": "NOT RUN", "evidence": null},
+    {"id": "PH13", "status": "NOT RUN", "evidence": null},
+    {"id": "PH14", "status": "NOT RUN", "evidence": null}
+  ],
+  "metrics": {"alarmDriftMs": null, "firstAudibleMs": null, "sttWer": null, "peakPssMb": null, "batteryDeltaPercent": null},
+  "cleanup": {"syntheticRecordsRemoved": null, "alarmsRetired": null, "preferencesRestored": null, "settingsRestored": null},
+  "limits": ["All physical cases remain NOT RUN until measured on an actual phone."]
+}
