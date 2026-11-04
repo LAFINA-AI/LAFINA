@@ -17,8 +17,7 @@ The two 2026-11-04 QA artifacts each contain 16 native libraries. Fourteen per A
 pass the PT_LOAD gate. `libonnxruntime.so` and `libonnxruntime4j_jni.so` use 4096-byte
 load alignment on both ARM64 and x86_64, confirming the known vendor issue. The
 first-party Whisper library already uses 16384-byte alignment, so adding first-party
-linker flags cannot repair the prebuilt ONNX binaries. No build/library change has
-been made. See apk-elf-arm64-2026-11-04.json and apk-elf-x86_64-2026-11-04.json.
+linker flags cannot repair the prebuilt ONNX binaries. This was the pre-upgrade baseline; the approved upgrade evidence follows below. See apk-elf-arm64-2026-11-04.json and apk-elf-x86_64-2026-11-04.json.
 
 RELRO end remainders are recorded as separate observations for loader review; a
 PT_LOAD PASS does not certify RELRO correctness, native code page-size assumptions,
@@ -35,3 +34,25 @@ This is candidate evidence, not proof of LAFINA model compatibility. AGENTS.md r
 before changing the dependency. Any approved upgrade needs both ABI rebuilds, repeat
 ELF/ZIP inspection, real Silero/Kokoro model initialization/inference and existing
 native/UI checks. Preserve the old artifact and saved app data for forward recovery.
+
+
+## Approved ONNX 1.22.0 upgrade
+
+The owner explicitly approved 1.19.2 -> 1.22.0 on 2026-11-04. Both rebuilt QA APKs
+pass 16/16 PT_LOAD checks and SDK ZIP alignment, with the expected signing identity,
+ABI, JS and six assets. See onnx-122-apk-elf-*-2026-11-04.json and the new artifact
+receipt. Historical failed baseline/candidate reports remain unchanged.
+
+The exact x86_64 APK updated the saved emulator app in place. Seventeen native
+delivery groups pass. An explicit QA-only instrumentation operation also verified
+the actual runtime version, two Silero frames with finite probability/state, and
+production Kokoro synthesis to a non-silent WAV, removed afterward. No microphone
+or playback was used. See onnx-122-model-smoke-2026-11-04.json. These are emulator
+inference checks; physical audio, ARM64 installation and broad runtime/RELRO device
+qualification remain open. Previous APKs remain under ignored .local/artifacts.
+
+Repeat model inference explicitly (the installed app must be the dedicated QA build):
+
+```powershell
+adb -s emulator-5554 shell am instrument -w -r -e qaOperation onnx-model-smoke com.lafina.test/com.lafina.LafinaDeliveryInstrumentation
+```

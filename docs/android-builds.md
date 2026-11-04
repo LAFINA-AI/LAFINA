@@ -40,3 +40,15 @@ See [artifact receipt](reports/capstone-eight-qa-artifacts-2026-11-04.json) and
 Both artifacts are development-signed QA builds; only x86_64 was installed and
 exercised. Profile diagnostics are gated to this QA variant. The existing ONNX ELF
 16 KiB warning and physical-device/audio checks remain open.
+
+
+## Approved native runtime update
+
+The later ONNX 1.22.0 QA artifacts supersede the eight-follow-up APKs above. See
+[updated receipt](reports/onnx-122-qa-artifacts-2026-11-04.json) and
+[model smoke evidence](reports/onnx-122-model-smoke-2026-11-04.json). Both ABI load/ZIP
+audits pass; x86_64 native delivery and Silero/Kokoro inference pass without data
+clear, microphone capture or playback. Historical 1.19.2 warnings describe the old
+artifacts. Physical-phone acceptance remains required. On this memory-constrained
+host the successful offline rebuild used --max-workers=1 after caching the approved
+Maven dependency; no repository/signing credentials were inspected.

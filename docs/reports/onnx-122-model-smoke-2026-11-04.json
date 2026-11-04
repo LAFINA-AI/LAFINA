@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "recordedAtUtc": "2026-11-04T08:40:54.436480+00:00",
+  "artifactSha256": "2f9f89ebcaa7e41828a426cf9ea134e96cc5ae866607a8149f2f8a745f9c8a4b",
+  "environment": {
+    "kind": "Android emulator",
+    "abi": "x86_64",
+    "api": 37,
+    "ramMb": 2048,
+    "physicalPhone": false
+  },
+  "inPlaceUpdate": true,
+  "appDataCleared": false,
+  "nativeDeliveryGroups": 17,
+  "modelChecks": {
+    "runtimeVersion": "1.22.0",
+    "sileroFrames": 2,
+    "sileroObservedMs": 193,
+    "kokoroGeneratedBytes": 132044,
+    "kokoroPcmPeak": 17059,
+    "kokoroObservedMs": 11428,
+    "generatedFileRemoved": true,
+    "microphoneOpened": false,
+    "audioPlayed": false
+  },
+  "limits": [
+    "Synthetic inference only; no acoustic, speech-recognition, phone-speed or battery certification.",
+    "Emulator observations are not performance targets.",
+    "ARM64 built and inspected; physical install remains NOT RUN."
+  ]
+}

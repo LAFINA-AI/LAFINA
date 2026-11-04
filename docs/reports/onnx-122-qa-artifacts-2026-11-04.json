@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "recordedAtUtc": "2026-11-04T08:37:38.932445+00:00",
+  "approvedDependency": "com.microsoft.onnxruntime:onnxruntime-android:1.22.0",
+  "buildType": "qa",
+  "developmentSigned": true,
+  "artifacts": [
+    {
+      "path": "android/app/build/outputs/apk/qa/app-arm64-v8a-qa.apk",
+      "bytes": 571699184,
+      "sha256": "1171f3ba3542ee1bf7007c95f66025de64a37563e521ecceb988cd090db5c014",
+      "nativeAbis": [
+        "arm64-v8a"
+      ],
+      "models": [
+        "assets/models/SmolLM2-135M-Instruct.gguf",
+        "assets/models/af_bella.bin",
+        "assets/models/cmudict.txt",
+        "assets/models/ggml-tiny.en-q5_1.bin",
+        "assets/models/kokoro-v0_19.onnx",
+        "assets/models/silero_vad.onnx"
+      ],
+      "bundledJavaScript": true,
+      "certificateSha256": "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c",
+      "signatureV2Verified": true,
+      "zip16KiBAlignmentVerified": true,
+      "elfLoad16KiBAlignedLibraries": 16,
+      "applicationId": "com.lafina",
+      "versionCode": 9,
+      "versionName": "1.3.4",
+      "debuggable": false
+    },
+    {
+      "path": "android/app/build/outputs/apk/qa/app-x86_64-qa.apk",
+      "bytes": 576087920,
+      "sha256": "2f9f89ebcaa7e41828a426cf9ea134e96cc5ae866607a8149f2f8a745f9c8a4b",
+      "nativeAbis": [
+        "x86_64"
+      ],
+      "models": [
+        "assets/models/SmolLM2-135M-Instruct.gguf",
+        "assets/models/af_bella.bin",
+        "assets/models/cmudict.txt",
+        "assets/models/ggml-tiny.en-q5_1.bin",
+        "assets/models/kokoro-v0_19.onnx",
+        "assets/models/silero_vad.onnx"
+      ],
+      "bundledJavaScript": true,
+      "certificateSha256": "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c",
+      "signatureV2Verified": true,
+      "zip16KiBAlignmentVerified": true,
+      "elfLoad16KiBAlignedLibraries": 16,
+      "applicationId": "com.lafina",
+      "versionCode": 9,
+      "versionName": "1.3.4",
+      "debuggable": false
+    }
+  ],
+  "limits": [
+    "Not a production release or physical-phone certification.",
+    "PT_LOAD and ZIP checks do not establish RELRO/runtime behavior on every device.",
+    "Old QA artifacts retained under ignored .local/artifacts/ebf646c."
+  ]
+}

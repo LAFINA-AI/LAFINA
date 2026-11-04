@@ -75,7 +75,7 @@ and remove only those fixtures afterward; preserve all existing app data.
 10. Switch two accounts and check Chat, attachments, pages, agenda and statistics.
     Voice uses shows Not tracked; note flags or text containing “voice” are not proof.
 11. Inspect vendor 16 KiB native-library alignment and test on required page sizes.
-    The existing ONNX Runtime warning is unresolved; do not claim broad compatibility.
+    The approved ONNX 1.22.0 APKs pass host load/ZIP checks; do not claim broad device compatibility.
 12. Record crashes, audio quality, cold/warm latency, memory/battery and exact alarm
     evidence. Verify no synthetic alarm, task or preference change remains afterward.
 
@@ -105,7 +105,7 @@ separate. Emulator policy checks do not establish microphone or speaker quality.
 | DST gap/fold, recurrence span, legacy sync and ICS | Resolver/UI/backend contract/import tests | NOT RUN: travel/series flow |
 | Native timing diagnostics | Redacted process-local callback intervals | NOT RUN: WER/NIEA, first audibility and quality |
 | QA-only isolated SQL screen | Final QA diagnostics stage | NOT RUN: physical QA screen |
-| Vendor ONNX Runtime 16 KiB alignment | Existing warning remains | UNRESOLVED: vendor binary compatibility |
+| Vendor ONNX Runtime 16 KiB alignment | Approved 1.22.0: both ABI load/ZIP gates and emulator model inference PASS | NOT RUN: physical runtime/RELRO qualification |
 
 Native request-to-ready/start/done intervals are callbacks, not acoustic measures.
 Null means no observation in this process; do not substitute zero. Host performance

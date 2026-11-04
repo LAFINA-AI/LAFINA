@@ -17,10 +17,23 @@ import java.time.Instant
 
 /** Framework-only native SQLite checks against an isolated synthetic file, never user data. */
 class LafinaDeliveryInstrumentation : Instrumentation() {
+  private var qaOperation: String? = null
   private fun openFixture(file: File): SQLiteDatabase = SQLiteDatabase.openDatabase(file,
     SQLiteDatabase.OpenParams.Builder().setOpenFlags(SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.CREATE_IF_NECESSARY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).setJournalMode("DELETE").build())
-  override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
+  override fun onCreate(arguments: Bundle?) {
+    qaOperation = arguments?.getString("qaOperation")
+    super.onCreate(arguments); start()
+  }
   override fun onStart() {
+    if (qaOperation != null) {
+      try {
+        check(qaOperation == "onnx-model-smoke")
+        finish(Activity.RESULT_OK,LafinaModelSmoke.run(targetContext))
+      } catch (error: Throwable) {
+        finish(Activity.RESULT_CANCELED,Bundle().apply { putString("stream","FAIL: explicit QA model smoke (${error.javaClass.simpleName}).\n") })
+      }
+      return
+    }
     val results = Bundle()
     val file = File(targetContext.cacheDir, "delivery-qa-${System.nanoTime()}.sqlite")
     try {
