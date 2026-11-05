@@ -1,3 +1,4 @@
+import { refreshOccurrenceReminders } from './recurringReminders';
 import { DeviceEventEmitter, NativeModules } from 'react-native';
 import { remindersStore, businessTasksStore } from '../storage';
 import { getReminderPreferences } from './userPreferences';
@@ -220,6 +221,7 @@ export const startSchedulerDaemon = (userId: string): void => {
 
   activeUserId = userId;
   console.log(`[Scheduler] Daemon started for user ${userId}`);
+  refreshOccurrenceReminders(userId);
 
   // Run immediately on start, recovering anything the previous process left behind.
   void recoverOrphanedReminderCalls(userId).catch((error: unknown) => {

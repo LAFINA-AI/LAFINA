@@ -4,13 +4,14 @@
  */
 import { Colors } from './colors';
 
-export type Category = 'work' | 'personal' | 'health' | 'learning';
+export type Category = 'work' | 'personal' | 'health' | 'learning' | 'class';
 
 const CATEGORY_COLOR_MAP: Record<string, string> = {
   work: Colors.blue,
   personal: Colors.yellow,
   health: Colors.success,
   learning: '#9B59B6',
+  class: Colors.red,
 };
 
 const DEFAULT_CATEGORY_COLOR = '#9E9E9E';

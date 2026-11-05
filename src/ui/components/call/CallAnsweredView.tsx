@@ -16,6 +16,7 @@ import {
   Mic,
   PhoneOff,
   PhoneCall,
+  PhoneForwarded,
   Volume2,
 } from 'lucide-react-native';
 import type { CallResolution, CallState } from '../../../scheduler';
@@ -30,6 +31,7 @@ interface CallAnsweredViewProps {
   resolution: CallResolution | null;
   snoozeMinutes: number;
   onSnooze: (minutes: number) => void;
+  onCallBack: () => void;
   onAcknowledge: () => void;
   onDecline: () => void;
   transcript: string;
@@ -51,6 +53,7 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
   resolution,
   snoozeMinutes,
   onSnooze,
+  onCallBack,
   onAcknowledge,
   onDecline,
   transcript,
@@ -277,7 +280,7 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
           <PhoneCall size={38} color={colors.blue} />
         </View>
         <Text style={[styles.statusLabel, themed.secondaryText]}>
-          Say Acknowledge or Snooze at any time
+          Say Acknowledge, Snooze or Call me back
         </Text>
       </View>
     );
@@ -400,6 +403,25 @@ export const CallAnsweredView: React.FC<CallAnsweredViewProps> = ({
             <Clock size={18} color={colors.yellow} />
             <Text style={[styles.compactActionText, themed.primaryText]}>
               Snooze {snoozeMinutes}m
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.75}
+            disabled={!controlsEnabled}
+            onPress={onCallBack}
+            style={[
+              styles.compactAction,
+              themed.compactAction,
+              !controlsEnabled && styles.disabledControl,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Call me back later"
+            accessibilityState={{ disabled: !controlsEnabled }}
+          >
+            <PhoneForwarded size={18} color={colors.blue} />
+            <Text style={[styles.compactActionText, themed.primaryText]}>
+              Call back
             </Text>
           </TouchableOpacity>
         </View>

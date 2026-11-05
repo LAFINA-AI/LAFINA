@@ -5,9 +5,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   Modal,
+  Alert,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Plus, ChevronLeft, ChevronRight, ChevronDown, Upload, Download, Layers, Clock, CheckSquare, FileText } from 'lucide-react-native';
+import { Plus, ChevronLeft, ChevronRight, ChevronDown, Upload, Download, Layers, Clock, CheckSquare, FileText, GraduationCap } from 'lucide-react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Colors, Shadows } from '../../theme';
 import { getCategoryColor, registerCustomCategoryColor } from '../../theme/categoryColors';
@@ -16,15 +17,19 @@ import { useTimeBlockModal } from './hooks/useTimeBlockModal';
 import { useScheduleItemModal } from './hooks/useScheduleItemModal';
 import { WeekView, MonthView, AddBlockModal, AddTaskEventModal } from './components';
 import { NoteEditor } from '../notes/components/NoteEditor';
-import { getHeaderTitle } from './utils/calendarHelpers';
+import { baseOccurrenceId, getHeaderTitle } from './utils/calendarHelpers';
 import { CalendarScreenProps, ViewMode } from './types';
 import { tasksStore, notesStore } from '../../../storage';
+import { checkScheduleConflicts, markTaskDone, requestTaskCall, rescheduleTask } from '../../../scheduler';
+import { UndoSnackbar, useUndoOffer } from '../../components/UndoSnackbar';
 import type { Task } from '../../../storage';
 import {
   applyNoteFormat,
   continueListOnNewline,
+  deriveNoteTitle,
   generateId,
   toggleChecklistItem,
+  describeConflicts,
 } from '../../../utils';
 import { CalendarLayersModal } from '../../components/calendar/CalendarLayersModal';
 import {UndatedTasks} from '../../components/UndatedTasks';
@@ -40,7 +45,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
   const { colors } = useTheme();
 
   const [fabMenuVisible, setFabMenuVisible] = useState(false);
-  const [undatedVisible,setUndatedVisible]=useState(false);
   const [noteModalVisible, setNoteModalVisible] = useState(false);
   const [noteTitle, setNoteTitle] = useState('');
   const [noteBody, setNoteBody] = useState('');
@@ -129,7 +133,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
     notesStore.insert({
       id: generateId('note'),
       userId,
-      title: noteTitle.trim() || 'Untitled Note',
+      title: noteTitle.trim() || deriveNoteTitle(noteBody),
       body: noteBody,
       category: noteCategory,
       isPinned: isPinned,
@@ -145,9 +149,63 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
     onRefresh();
   };
 
+  const undoOffer = useUndoOffer();
+  const handleUndone = () => {
+    calendar.loadScheduleData();
+    onRefresh();
+  };
+
+  const handleMarkOverdueDone = (task: Task) => {
+    const result = markTaskDone(baseOccurrenceId(task.id), userId);
+    if (!result.ok) Alert.alert('Task not changed', result.message);
+    undoOffer.offerUndo(result.undo);
+    calendar.loadScheduleData();
+    onRefresh();
+  };
+
   const toggleTaskCompletion = (task: Task) => {
     tasksStore.updateTask({ id: task.id, isCompleted: !task.isCompleted });
     calendar.loadScheduleData();
+    onRefresh();
+  };
+
+  const handleRescheduleTask = async (task: Task, date: string, time: string | null) => {
+    const warning = time
+      ? describeConflicts(checkScheduleConflicts(userId, new Date(`${date}T${time}:00`).getTime(), null, { id: baseOccurrenceId(task.id) }))
+      : null;
+    if (warning) {
+      Alert.alert('Time overlap', warning, [
+        { text: 'Go back', style: 'cancel' },
+        { text: 'Move anyway', onPress: () => { void moveTask(task, date, time); } },
+      ]);
+      return;
+    }
+    await moveTask(task, date, time);
+  };
+
+  const moveTask = async (task: Task, date: string, time: string | null) => {
+    const result = await rescheduleTask(baseOccurrenceId(task.id), userId, date, time);
+    if (!result.ok || result.alarmNotAccepted) {
+      Alert.alert(result.ok ? 'Task moved' : 'Task not moved', result.message);
+    }
+    undoOffer.offerUndo(result.undo);
+    calendar.loadScheduleData();
+    onRefresh();
+  };
+
+  const handleEditTaskSeries = (task: Task) => {
+    const series = tasksStore.getTaskById(baseOccurrenceId(task.id), userId);
+    if (series) {
+      scheduleModal.openEdit(series, 'task');
+    } else {
+      Alert.alert('Task unavailable', 'This task changed or was deleted.');
+    }
+  };
+
+  const handleCallAboutTask = async (task: Task) => {
+    const result = await requestTaskCall(baseOccurrenceId(task.id), userId);
+    if (result.undo) undoOffer.offerUndo(result.undo, 'Call requested');
+    else Alert.alert(result.ok ? 'Call requested' : 'Call not requested', result.message);
     onRefresh();
   };
 
@@ -291,8 +349,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       </View>
 
       {/* Body */}
-      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Tasks without a date" onPress={()=>setUndatedVisible(true)} style={{padding:10}}><Text style={{color:colors.textPrimary}}>Tasks without a date</Text></TouchableOpacity>
-      <UndatedTasks key={userId} userId={userId} visible={undatedVisible} onClose={()=>setUndatedVisible(false)} onEdit={task=>scheduleModal.openEdit(task,'task')}/>
+      <UndatedTasks key={userId} userId={userId} refreshTrigger={refreshTrigger} onEdit={task=>scheduleModal.openEdit(task,'task')}/>
       <View style={styles.body}>
         {calendar.viewMode === 'month' && (
           <MonthView
@@ -320,7 +377,11 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             onEditEvent={(event) => scheduleModal.openEdit(event, 'event')}
             onEditBlock={(block) => blockModal.openEditBlock(block)}
             onToggleTask={toggleTaskCompletion}
+            onMarkOverdueDone={handleMarkOverdueDone}
             onAddBlock={blockModal.openNewBlock}
+            onRescheduleTask={(task, date, time) => { void handleRescheduleTask(task, date, time); }}
+            onEditTaskSeries={handleEditTaskSeries}
+            onCallAboutTask={(task) => { void handleCallAboutTask(task); }}
             getCategoryColor={getCategoryColor}
           />
         )}
@@ -333,6 +394,8 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
       >
         <Plus size={24} color={colors.white} />
       </TouchableOpacity>
+
+      <UndoSnackbar offer={undoOffer.offer} onDismiss={undoOffer.dismissUndo} onUndone={handleUndone} />
 
       {/* Modals */}
       <AddBlockModal state={blockModal} timeFormat24h={calendar.timeFormat24h} />
@@ -372,6 +435,17 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({
             >
               <Clock size={20} color={colors.blue} style={styles.fabMenuItemIcon} />
               <Text style={[styles.fabMenuItemText, { color: colors.textPrimary }]}>Time Block</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.fabMenuItem, { borderBottomColor: colors.divider }]}
+              onPress={() => {
+                setFabMenuVisible(false);
+                blockModal.openNewClass();
+              }}
+            >
+              <GraduationCap size={20} color={colors.red} style={styles.fabMenuItemIcon} />
+              <Text style={[styles.fabMenuItemText, { color: colors.textPrimary }]}>Class</Text>
             </TouchableOpacity>
 
             <TouchableOpacity

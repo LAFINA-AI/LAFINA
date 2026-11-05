@@ -201,7 +201,7 @@ class UiRunner:
             time.sleep(0.5)
         raise QaFailure("expected-ui-state-timeout")
 
-    def tap(self, label: str, scroll: bool = False) -> None:
+    def tap(self, label: str, scroll: bool = False, repeat: int = 1) -> None:
         """Tap a visible observed target; optional bounded upward scrolling."""
         for attempt in range(5 if scroll else 1):
             state = self.snapshot()
@@ -222,7 +222,8 @@ class UiRunner:
                     "300",
                 )
                 continue
-            self.adb.run("shell", "input", "tap", str(x), str(y))
+            for _ in range(repeat):
+                self.adb.run("shell", "input", "tap", str(x), str(y))
             return
 
     def record(self, name: str) -> None:
@@ -263,6 +264,8 @@ class UiRunner:
             self.tap(tab)
             self.wait_for(lambda value, label=expected[tab]: value.has(label))
             self.record("offline-" + tab.split()[0].lower())
+        # Developer tools stay hidden until seven taps on App Version; repeating them is harmless.
+        self.tap("App Version", scroll=True, repeat=7)
         self.wait_for(lambda value: value.has("QA diagnostics"))
         self.record("installed-qa-controls-present")
 
@@ -361,10 +364,15 @@ class UiRunner:
             if outcome == "create"
             else f"Deleted “{title}”."
         )
-        state = self.wait_for(lambda value: value.has("OK"))
-        if not state.has(message):
-            raise QaFailure("unexpected-result-dialog-preserved", True)
-        self.tap("OK")
+        if outcome == "absent":
+            state = self.wait_for(lambda value: value.has("OK"))
+            if not state.has(message):
+                raise QaFailure("unexpected-result-dialog-preserved", True)
+            self.tap("OK")
+        else:
+            # A saved change adds its reply to the conversation and offers Undo for
+            # about 5 seconds. The reply stays, so it is the reliable thing to wait for.
+            self.wait_for(lambda value: value.has(message))
         state = self.wait_for(
             lambda value: value.has("Send message") and value.has_editor()
         )
@@ -465,9 +473,9 @@ class UiRunner:
                 action, kind = owned[0]
                 state = self.snapshot()
                 if state.has("OK"):
-                    self.acknowledge_result(
-                        "absent" if state.has(REFUSAL) else action, kind
-                    )
+                    if not state.has(REFUSAL):
+                        raise QaFailure("unexpected-result-dialog-preserved", True)
+                    self.acknowledge_result("absent", kind)
                 elif state.has("Review before saving"):
                     title = f"LAFINA-QA-{self.run_id}-{kind}"
                     prefix = (

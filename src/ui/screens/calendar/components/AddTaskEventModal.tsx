@@ -15,6 +15,8 @@ import { timeStringToDate, dateToTimeString, formatTimeForDisplay } from '../uti
 import { ScheduleItemModalState } from '../types';
 import { Shadows } from '../../../theme';
 import { parseRrule } from '../../../../storage/rruleHelper';
+import type { Task } from '../../../../storage';
+import { TaskRiskBanner } from './TaskRiskBanner';
 
 interface AddTaskEventModalProps {
   state: ScheduleItemModalState;
@@ -104,6 +106,7 @@ export const AddTaskEventModal: React.FC<AddTaskEventModalProps> = ({ state, tim
             value={state.form.title}
             onChangeText={(v) => state.updateField('title', v)}
           />
+          {state.modalType==='task' && state.editingItem && <TaskRiskBanner task={state.editingItem as Task}/>}
           {state.modalType==='event' && !state.editingItem && state.memoryOffer && <TouchableOpacity accessibilityRole="button" onPress={state.applyMemory}><Text style={{color:colors.textPrimary}}>Apply saved event preferences: {state.memoryOffer.value.startTime??'current start'}, {state.memoryOffer.value.durationMinutes??60} min</Text></TouchableOpacity>}
 
           {state.modalType==='event'&&<>

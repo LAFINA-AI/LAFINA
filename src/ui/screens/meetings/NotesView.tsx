@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { CheckSquare, Pencil, Plus, Square, Trash2 } from 'lucide-react-native';
 import { deadlinesOf, normalizeNotes } from '../../../meetings';
+import { deadlinesFromEntries, extractDeadlines } from '../../../utils';
+import type { DeadlineCandidate } from '../../../utils';
+import { DeadlineSuggestions } from '../../components/DeadlineSuggestions';
 import type { ActionItem, KeyTopic, MeetingNotes } from '../../../meetings';
 import { ToolSheet } from '../../components/tools';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -55,11 +58,19 @@ export const NotesView: React.FC<{
   notes: MeetingNotes;
   edited: boolean;
   onSave: (notes: MeetingNotes) => void;
-}> = ({ notes, edited, onSave }) => {
+  /** With these, deadlines the notes state can be offered as reminders. */
+  userId?: string;
+  recordedAt?: string;
+}> = ({ notes, edited, onSave, userId, recordedAt }) => {
   const { colors } = useTheme();
   const themed = useThemedStyles(getMeetingThemedStyles);
   const [editing, setEditing] = useState(false);
   const deadlines = deadlinesOf(notes);
+  const [suggested, setSuggested] = useState<DeadlineCandidate[]>([]);
+  const reference = recordedAt && Number.isFinite(Date.parse(recordedAt)) ? new Date(recordedAt) : new Date();
+  const reminderCandidates = userId
+    ? [...deadlinesFromEntries(deadlines, reference), ...extractDeadlines(notes.important_dates.join('\n'), reference)]
+    : [];
 
   const toggleItem = (index: number): void => {
     onSave(
@@ -144,6 +155,17 @@ export const NotesView: React.FC<{
           <Bullets items={deadlines.map((entry) => `${entry.deadline} — ${entry.task}`)} />
         </Section>
       )}
+
+      {reminderCandidates.length > 0 && (
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Suggest reminders from these notes"
+          onPress={() => setSuggested(reminderCandidates)}
+        >
+          <Text style={themed.accent}>Suggest reminders ({reminderCandidates.length})</Text>
+        </TouchableOpacity>
+      )}
+      {userId ? <DeadlineSuggestions userId={userId} candidates={suggested} onClose={() => setSuggested([])} /> : null}
 
       {LIST_SECTIONS.filter((section) => section.key !== 'decisions' && notes[section.key].length > 0).map(
         (section) => (

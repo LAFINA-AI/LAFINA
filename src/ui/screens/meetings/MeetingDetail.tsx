@@ -319,7 +319,7 @@ export const MeetingDetail: React.FC<{ meeting: RecordedMeeting; onNotesSaved?: 
 
       {tab === 'notes' ? (
         meeting.notes ? (
-          <NotesView notes={meeting.notes} edited={meeting.notesEdited} onSave={(notes) => saveNotes(meeting.id, notes)} />
+          <NotesView notes={meeting.notes} edited={meeting.notesEdited} userId={meeting.userId} recordedAt={meeting.startedAt} onSave={(notes) => saveNotes(meeting.id, notes)} />
         ) : (
           <Text style={[meetingStyles.body, styles.empty, themed.textSecondary]}>
             {!hasTranscript

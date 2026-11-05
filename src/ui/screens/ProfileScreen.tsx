@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Image,
 } from 'react-native';
 import { Colors, Fonts, Layout, Shadows } from '../theme';
-import { preferencesStore, tasksStore, notesStore, userStore } from '../../storage';
+import { callLogStore, isDemoUser, localSettingsStore, preferencesStore, remindersStore, tasksStore, notesStore, userStore } from '../../storage';
 import type { UserPreferences } from '../../storage';
 import type { User } from '../../storage';
 import { useTheme } from '../contexts/ThemeContext';
@@ -32,11 +32,19 @@ import { StudentProTag } from '../components/profile/StudentProTag';
 import { AppUpdateItem } from '../components/profile/AppUpdateItem';
 import { PreferencesSettingsScreen } from './PreferencesSettingsScreen';
 import {ReminderHealth} from '../components/profile/ReminderHealth';
+import {CallLog} from '../components/profile/CallLog';
+import {readWeeklyRecap} from '../../ml';
+import type {WeeklyRecap} from '../../ml';
 import {PersonalMemory} from '../components/profile/PersonalMemory';
 import {QaDiagnostics} from '../components/profile/QaDiagnostics';
 import {isQaDiagnosticsAvailable} from '../../storage/qaSqlChecks';
 import {SpeechEngines} from '../components/profile/SpeechEngines';
 import {profileStatisticsStore} from '../../storage/profileStatisticsStore';
+
+/** Per-device flag that shows developer tools; QA builds only, off by default. */
+export const DEVELOPER_MODE_SETTING = 'developer_mode';
+const DEVELOPER_MODE_TAPS = 7;
+const DEVELOPER_TAP_WINDOW_MS = 3000;
 
 function getInitials(username: string | null | undefined): string {
   if (!username || username.trim().length === 0) {
@@ -85,7 +93,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   // Stats
   const [completedTasksCount, setCompletedTasksCount] = useState<number|null>(null);
   const [notesCount, setNotesCount] = useState<number|null>(null);
-  const [voiceCommandsCount, setVoiceCommandsCount] = useState<number|null>(null);
+  const [onTimeRate, setOnTimeRate] = useState<number|null>(null);
+  const [finishedRemindersCount, setFinishedRemindersCount] = useState<number|null>(null);
 
   // Settings states
   const [timeFormat24h, setTimeFormat24h] = useState(false);
@@ -96,9 +105,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [preferenceSummary, setPreferenceSummary] = useState('15 min, Snooze once');
   const [preferencesVisible, setPreferencesVisible] = useState(false);
   const [healthVisible,setHealthVisible]=useState(false);
+  const [callLogVisible,setCallLogVisible]=useState(false);
+  const [weeklyRecap,setWeeklyRecap]=useState<WeeklyRecap|null>(null);
   const [memoryVisible,setMemoryVisible]=useState(false);
   const [speechVisible,setSpeechVisible]=useState(false);
   const [qaVisible,setQaVisible]=useState(false);
+  const [developerMode,setDeveloperMode]=useState(false);
+  const versionTaps=useRef({count:0,at:0});
 
   // Privacy Modal state
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
@@ -107,6 +120,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const themed = useThemedStyles(getProfileThemedStyles);
 
   const isGuest = userId === GUEST_USER_ID;
+  // The native gate is what keeps these tools out of production builds; the flag only hides them further.
+  const qaBuild = isQaDiagnosticsAvailable();
+  const showDeveloperTools = qaBuild && developerMode;
   const photoSource = avatarSource(currentUser?.avatarUri ?? null);
   // Read on every render with the user above: a sign-in that upgrades the
   // plan reloads `currentUser`, and the tag follows without its own state.
@@ -120,6 +136,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
   const loadSettings = () => {
     setCurrentUser(userStore.getUserById(userId));
+    setDeveloperMode(localSettingsStore.get(userId, DEVELOPER_MODE_SETTING) === '1');
 
     const is24h = userStore.get24HourFormat(userId);
     setTimeFormat24h(is24h);
@@ -132,6 +149,23 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       `${preferences.reminderLeadMinutes} min, ${getSnoozePreferenceLabel(preferences)}`
     );
   };
+  const handleVersionTap = () => {
+    const now = Date.now();
+    const taps = versionTaps.current;
+    taps.count = now - taps.at > DEVELOPER_TAP_WINDOW_MS ? 1 : taps.count + 1;
+    taps.at = now;
+    if (taps.count < DEVELOPER_MODE_TAPS || developerMode) return;
+    localSettingsStore.set(userId, DEVELOPER_MODE_SETTING, '1');
+    setDeveloperMode(true);
+  };
+
+  const handleDisableDeveloperMode = () => {
+    localSettingsStore.set(userId, DEVELOPER_MODE_SETTING, '0');
+    versionTaps.current = { count: 0, at: 0 };
+    setQaVisible(false);
+    setDeveloperMode(false);
+  };
+
   const handleToggleTimeFormat = (value: boolean) => {
     setTimeFormat24h(value);
     userStore.set24HourFormat(userId, value);
@@ -184,7 +218,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     const evidence=profileStatisticsStore.read(userId);
     setCompletedTasksCount(evidence.completedTasksCount);
     setNotesCount(evidence.notesCount);
-    setVoiceCommandsCount(evidence.voiceCommandsCount);
+    setOnTimeRate(evidence.onTimeRate);
+    setFinishedRemindersCount(evidence.finishedRemindersCount);
+    setWeeklyRecap(readWeeklyRecap(userId));
   };
 
   const choosePhoto = async () => {
@@ -235,7 +271,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const handleClearData = () => {
     Alert.alert(
       'Clear All Data',
-      'This will delete all your notes, tasks, events, and calendar blocks. This action cannot be undone.',
+      'This will delete all your notes, tasks, events, and calendar blocks, plus your call log and spoken replies. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -246,6 +282,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             allNotes.forEach((n) => notesStore.delete(n.id));
             const allTasks = tasksStore.getAllTasks(userId);
             allTasks.forEach((t) => tasksStore.deleteTask(t.id));
+            // Finished reminders are the history predictions learn from, so they go with the log.
+            remindersStore.getAllReminders(userId)
+              .filter((r) => r.status === 'acknowledged' || r.status === 'missed')
+              .forEach((r) => remindersStore.deleteReminder(r.id));
+            callLogStore.clear(userId);
             
             Alert.alert('Data Cleared', 'All personal scheduling data has been deleted.');
             loadStats();
@@ -355,7 +396,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         <ProfileStats
           completedTasksCount={completedTasksCount}
           notesCount={notesCount}
-          voiceCommandsCount={voiceCommandsCount}
+          onTimeRate={onTimeRate}
+          finishedRemindersCount={finishedRemindersCount}
+          recap={weeklyRecap}
+          recapIsSample={isDemoUser(userId)}
+          timeFormat24h={timeFormat24h}
         />
 
         {/* Settings Grouped List */}
@@ -363,9 +408,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           {/* Preferences Group */}
           <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>Preferences</Text>
           <SettingItem text="Reminder health" onPress={()=>setHealthVisible(true)}/>
+          <SettingItem text="Call log" onPress={()=>setCallLogVisible(true)}/>
           <SettingItem text="Personal event preferences" onPress={()=>setMemoryVisible(true)}/>
           <SettingItem text="Speech engines" onPress={()=>setSpeechVisible(true)}/>
-          {isQaDiagnosticsAvailable()&&<SettingItem text="QA diagnostics" onPress={()=>setQaVisible(true)}/>}
           <View style={[styles.settingsGroupCard, Shadows.card, themed.settingsGroupCard]}>
             <SettingItem
               text="Scheduling & Reminder Preferences"
@@ -449,12 +494,34 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           {/* About Group */}
           <Text style={[styles.settingsGroupHeader, themed.settingsGroupHeader]}>About</Text>
           <View style={[styles.settingsGroupCard, themed.settingsGroupCard]}>
-            <SettingItem
-              text="App Version"
-              type="value"
-              valueText={`${APP_VERSION} (Mobile)`}
-            />
+            {qaBuild ? (
+              <TouchableOpacity
+                activeOpacity={1}
+                onPress={handleVersionTap}
+                accessibilityLabel="App Version"
+              >
+                <SettingItem
+                  text="App Version"
+                  type="value"
+                  valueText={`${APP_VERSION} (Mobile)`}
+                />
+              </TouchableOpacity>
+            ) : (
+              <SettingItem
+                text="App Version"
+                type="value"
+                valueText={`${APP_VERSION} (Mobile)`}
+              />
+            )}
             <View style={[styles.settingDivider, themed.settingDivider]} />
+            {showDeveloperTools && (
+              <>
+                <SettingItem text="QA diagnostics" onPress={()=>setQaVisible(true)}/>
+                <View style={[styles.settingDivider, themed.settingDivider]} />
+                <SettingItem text="Turn off developer mode" type="clickable" onPress={handleDisableDeveloperMode}/>
+                <View style={[styles.settingDivider, themed.settingDivider]} />
+              </>
+            )}
             <AppUpdateItem />
             <View style={[styles.settingDivider, themed.settingDivider]} />
             {onReplayTour && (
@@ -496,9 +563,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
       {/* Privacy Policy Modal [Fix #1] */}
       <ReminderHealth key={userId} userId={userId} visible={healthVisible} onClose={()=>setHealthVisible(false)}/>
+      <CallLog key={`call-log-${userId}`} userId={userId} visible={callLogVisible} onClose={()=>setCallLogVisible(false)} timeFormat24h={timeFormat24h}/>
       <PersonalMemory key={`memory-${userId}`} userId={userId} visible={memoryVisible} onClose={()=>setMemoryVisible(false)}/>
       <SpeechEngines key={`speech-${userId}`} userId={userId} visible={speechVisible} onClose={()=>setSpeechVisible(false)}/>
-      {isQaDiagnosticsAvailable()&&<QaDiagnostics key={`qa-${userId}`} userId={userId} visible={qaVisible} onClose={()=>setQaVisible(false)}/>}
+      {showDeveloperTools&&<QaDiagnostics key={`qa-${userId}`} userId={userId} visible={qaVisible} onClose={()=>setQaVisible(false)}/>}
       <PrivacyModal
         visible={privacyModalVisible}
         onClose={() => setPrivacyModalVisible(false)}

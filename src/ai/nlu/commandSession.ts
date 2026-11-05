@@ -12,19 +12,35 @@ import {validatePlannerDate} from '../../storage/plannerQueries';
 import {getReminderPreferences} from '../../scheduler/userPreferences';
 import {scheduleReminderAlarm,cancelReminderAlarm,finishNativeIncomingCall} from '../../scheduler/reminderAlarm';
 import {preCacheReminderAudio} from '../tts/ttsService';
-import {generateId} from '../../utils';
+import {checkScheduleConflicts,findFreeTime} from '../../scheduler/availability';
+import {captureForUndo,createdUndo,sealUndo} from '../../scheduler/undo';
+import type {UndoToken} from '../../scheduler/undo';
+import {userStore} from '../../storage/userStore';
+import {deriveNoteTitle,describeConflicts,formatSlotLabel,generateId} from '../../utils';
 import {DEFAULT_BLOCK_CATEGORY,DEFAULT_TASK_CATEGORY,DEFAULT_TASK_PRIORITY,DEFAULT_NOTE_CATEGORY,DEFAULT_NOTE_TITLE} from '../../constants';
 import {createFallbackNluResult,normalizeTranscript} from './parser';
+import {isSearchableDuration,parseFindTimeRequest} from './findTime';
+import type {FindTimeRequest} from './findTime';
 import type {NluResult} from './types';
 
-export interface CommandReview {readonly id: string; readonly summary: string; readonly expiresAt: string;}
-export interface CommandProposal {readonly review: CommandReview | null; readonly reply: string;}
+export interface CommandReview {readonly id: string; readonly summary: string; readonly expiresAt: string; readonly warning?: string;}
+/** One offered free time. Picking it only prepares a review, and nothing is saved until Confirm. */
+export interface FreeTimeChoice {readonly id: string; readonly label: string; readonly startMs: number; readonly endMs: number;}
+export interface CommandProposal {
+  readonly review: CommandReview | null; readonly reply: string;
+  readonly choices?: readonly FreeTimeChoice[]; readonly choicesExpireAt?: string;
+}
 export interface CommandExecutionResult {
   status: 'saved' | 'invalid' | 'failed'; reply: string; itemId?: string; reminderId?: string;
   delivery?: 'queued' | 'none';
+  /** Puts this change back. Absent when it cannot be undone, such as a finished call. */
+  undo?: UndoToken;
+  /** The words of a saved note, so they can be checked for deadlines. */
+  noteBody?: string;
 }
 export interface CommandSession {
   propose: (text: string) => CommandProposal;
+  choose: (choiceId: string) => CommandProposal;
   confirm: (reviewId: string) => CommandExecutionResult;
   cancel: () => void;
   dispose: () => void;
@@ -74,7 +90,7 @@ const destination=(text:string,now:Date):{date:string;time:string;atMs:number}|n
   if(!Number.isFinite(start.getTime())||start.getTime()<=now.getTime()||localStamp(start)!==`${parsed.date} ${parsed.time}`)return null;
   return {date:parsed.date,time:parsed.time,atMs:start.getTime()};
 };
-const parseSourceAction=(text:string,userId:string,now:Date):{action:Action|null;reply:string}|undefined=>{
+const parseSourceAction=(text:string,userId:string,now:Date):{action:Action|null;reply:string;warning?:string}|undefined=>{
   const change=/^(move|reschedule|delete|remove) (task|event|block|time block) "([^"\n]+)"(?: to (.+))?$/i.exec(text);
   const reminder=/^(acknowledge|snooze) reminder for (task|event|block|time block) "([^"\n]+)"(?: (\d+) minutes?)?$/i.exec(text);
   const match=change??reminder;if(!match)return undefined;
@@ -100,22 +116,63 @@ const parseSourceAction=(text:string,userId:string,now:Date):{action:Action|null
   }
   if(!match[4]||row.is_completed===1)return {action:null,reply:'Choose an incomplete item and a valid future date/time.'};
   const at=destination(match[4],now);if(!at)return {action:null,reply:'Specify a valid future date and exact time.'};
-  let endTime:string|undefined;let eventTime:EventTimeMetadata|undefined;
+  let endTime:string|undefined;let eventTime:EventTimeMetadata|undefined;let endMs:number|null=null;
   if(type!=='task'){
     const minutes=(value:unknown):number=>{const parts=String(value).split(':').map(Number);return parts[0]*60+parts[1];};
     const duration=type==='event'&&row.start_at&&row.end_at?(Date.parse(String(row.end_at))-Date.parse(String(row.start_at)))/60000:((minutes(row.end_time)-minutes(row.start_time)+1440)%1440)||1440;
     if(!Number.isFinite(duration))return {action:null,reply:'This item has an invalid duration. Inspect it in Calendar.'};
-    const end=new Date(at.atMs+duration*60000);endTime=localStamp(end).slice(-5);
+    const end=new Date(at.atMs+duration*60000);endTime=localStamp(end).slice(-5);endMs=end.getTime();
     if(type==='event')eventTime=resolveEventTime({date:at.date,startTime:at.time,endDate:localStamp(end).slice(0,10),endTime,timeZone:timezone()});
   }
-  return {action:{kind:'source_change',operation,target,...at,endTime,eventTime},reply:`Move ${type.replace('_',' ')} “${target.title}”\nTo ${at.date} ${at.time}${endTime?` → ${eventTime?.endDate??at.date} ${endTime}`:''} (${timezone()})\nExisting linked reminders move with the item; no extra reminder is created.`};
+  return {action:{kind:'source_change',operation,target,...at,endTime,eventTime},warning:conflictWarning(userId,at.atMs,endMs,target.id),reply:`Move ${type.replace('_',' ')} “${target.title}”\nTo ${at.date} ${at.time}${endTime?` → ${eventTime?.endDate??at.date} ${endTime}`:''} (${timezone()})\nExisting linked reminders move with the item; no extra reminder is created.`};
 };
-const buildAction=(text:string,userId:string):{action:Action|null;reply:string}=>{
+interface BuiltAction {action:Action|null;reply:string;warning?:string;}
+const conflictWarning=(userId:string,startMs:number,endMs:number|null,excludeId?:string):string|undefined=>
+  describeConflicts(checkScheduleConflicts(userId,startMs,endMs,excludeId?{id:excludeId}:undefined))??undefined;
+/** Builds a reviewed schedule from a date and time the person already gave or picked. */
+const buildScheduleAction=(item:{title:string;date:string;time:string;duration:number|null;recurrence:string|null;explicitEvent:boolean},userId:string,now:Date):BuiltAction=>{
+  const {title,date,time,duration,recurrence,explicitEvent}=item;
+  const start=new Date(localToUtc(date,time,timezone()));
+  if(!Number.isFinite(start.getTime()) || localStamp(start)!==`${date} ${time}` || start.getTime()<=now.getTime()) return {action:null,reply:'Choose a valid future date and time.'};
+  if(duration!==null && (!Number.isInteger(duration) || duration<=0 || duration>1440)) return {action:null,reply:'Please use a duration between 1 and 1440 minutes.'};
+  const lead=getReminderPreferences(userId).leadTimeMinutes;
+  if(!Number.isFinite(lead) || lead<0) throw new Error('Reminder preferences are unavailable.');
+  const preferred=start.getTime()-lead*60000;
+  const immediate=preferred<=now.getTime();
+  const action:Action={kind:'schedule',title,date,time,duration,recurrence,lead,scheduledMs:start.getTime(),triggerMs:preferred,immediate,...(explicitEvent?{itemType:'event' as const}:{})};
+  const endMs=duration!==null?start.getTime()+duration*60000:null;
+  const end=endMs!==null?` → ${localStamp(new Date(endMs))}`:'';
+  return {action,warning:conflictWarning(userId,start.getTime(),endMs),reply:`${explicitEvent?'Create event':duration===null?'Create task':'Create time block'} “${title}”\n${localStamp(start)}${end} (${timezone()})\nRepeat: ${recurrence??'none'}\nReminder: ${lead} minutes before; ${immediate?'immediately after confirmation':localStamp(new Date(preferred))}`};
+};
+const durationWords=(minutes:number):string=>{
+  const hours=Math.floor(minutes/60),rest=minutes%60;
+  const parts=[hours?`${hours} ${hours===1?'hour':'hours'}`:'',rest?`${rest} ${rest===1?'minute':'minutes'}`:''].filter(Boolean);
+  return parts.join(' ');
+};
+const OFFER_LIFETIME_MS=300000;
+interface FreeTimeOffer {title:string;durationMinutes:number;choices:readonly FreeTimeChoice[];expiresMs:number;timezone:string;offset:number;}
+/** Answers a "find me time" request with choices. It reads only and never saves. */
+const offerFreeTime=(request:FindTimeRequest,userId:string,now:Date):{reply:string;offer:FreeTimeOffer|null}=>{
+  if(!request.title)return {offer:null,reply:'What is the time for? For example: find me 2 hours to study for Calculus this week.'};
+  if(!isSearchableDuration(request.durationMinutes))return {offer:null,reply:'Choose a length between 15 minutes and 8 hours.'};
+  const {slots,usedHabits}=findFreeTime(userId,request.fromMs,request.toMs,request.durationMinutes);
+  const length=durationWords(request.durationMinutes);
+  if(!slots.length)return {offer:null,reply:`I could not find ${length} free ${request.windowLabel}. Try a shorter time or a different day.`};
+  const use24h=userStore.getUserById(userId)?.timeFormat24h===true;
+  const choices=slots.map(slot=>Object.freeze({id:generateId('slot'),label:formatSlotLabel(slot.startMs,slot.endMs,use24h),startMs:slot.startMs,endMs:slot.endMs}));
+  const order=usedHabits?'Times that match your usual hours come first.':'The earliest free times come first.';
+  const assumed=request.durationStated?'':' You did not say how long, so I looked for 1 hour.';
+  return {
+    reply:`Free times ${request.windowLabel} for “${request.title}” (${length}). ${order}${assumed}`,
+    offer:{title:request.title,durationMinutes:request.durationMinutes,choices,expiresMs:now.getTime()+OFFER_LIFETIME_MS,timezone:timezone(),offset:now.getTimezoneOffset()},
+  };
+};
+const buildAction=(text:string,userId:string):BuiltAction=>{
   const now=new Date();
   if(/^note:?(?:\s|$)/i.test(text)){
     const body=text.replace(/^note:?\s*/i,'').trim();
     if(!body) return {action:null,reply:'What should the note say?'};
-    return {action:{kind:'note',body},reply:`Create note “${DEFAULT_NOTE_TITLE}”\n${body}`};
+    return {action:{kind:'note',body},reply:`Create note “${deriveNoteTitle(body,DEFAULT_NOTE_TITLE)}”\n${body}`};
   }
   const outsideQuotes=text.replace(/"[^"\n]*"|“[^”\n]*”/g,'');
   if(/\byesterday\b/i.test(outsideQuotes))return {action:null,reply:'Choose a future date and time.'};
@@ -149,18 +206,7 @@ const buildAction=(text:string,userId:string):{action:Action|null;reply:string}=
   if(explicitEvent&&nlu.duration_minutes===null)return {action:null,reply:'Give the event a start time and duration, or a start/end range.'};
   if(nlu.intent!=='schedule' || nlu.status!=='success') return {action:null,reply:nlu.reply};
   if(!nlu.task?.trim() || !nlu.date || !/^\d{4}-\d{2}-\d{2}$/.test(nlu.date) || !nlu.time || !/^([01]\d|2[0-3]):[0-5]\d$/.test(nlu.time)) return {action:null,reply:'Please give a title, date and exact time before preparing this schedule.'};
-  const start=new Date(localToUtc(nlu.date,nlu.time,timezone()));
-  if(!Number.isFinite(start.getTime()) || localStamp(start)!==`${nlu.date} ${nlu.time}` || start.getTime()<=now.getTime()) return {action:null,reply:'Choose a valid future date and time.'};
-  const duration=nlu.duration_minutes;
-  if(duration!==null && (!Number.isInteger(duration) || duration<=0 || duration>1440)) return {action:null,reply:'Please use a duration between 1 and 1440 minutes.'};
-  const lead=getReminderPreferences(userId).leadTimeMinutes;
-  if(!Number.isFinite(lead) || lead<0) throw new Error('Reminder preferences are unavailable.');
-  const recurrence=recurrenceRule(nlu.recurrence);
-  const preferred=start.getTime()-lead*60000;
-  const immediate=preferred<=now.getTime();
-  const action:Action={kind:'schedule',title:nlu.task.trim(),date:nlu.date,time:nlu.time,duration,recurrence,lead,scheduledMs:start.getTime(),triggerMs:preferred,immediate,...(explicitEvent?{itemType:'event' as const}:{})};
-  const end=duration!==null?` → ${localStamp(new Date(start.getTime()+duration*60000))}`:'';
-  return {action,reply:`${explicitEvent?'Create event':duration===null?'Create task':'Create time block'} “${action.title}”\n${localStamp(start)}${end} (${timezone()})\nRepeat: ${recurrence??'none'}\nReminder: ${lead} minutes before; ${immediate?'immediately after confirmation':localStamp(new Date(preferred))}`};
+  return buildScheduleAction({title:nlu.task.trim(),date:nlu.date,time:nlu.time,duration:nlu.duration_minutes,recurrence:recurrenceRule(nlu.recurrence),explicitEvent},userId,now);
 };
 const execute=(action:Action,userId:string,tx:DatabaseTransaction):{itemId:string;reminderId?:string}=>{
   if(action.kind==='complete'){
@@ -205,7 +251,7 @@ const execute=(action:Action,userId:string,tx:DatabaseTransaction):{itemId:strin
   }
   const itemId=generateId(action.kind==='note'?'note':action.itemType==='event'?'event':action.duration===null?'task':'block');
   if(action.kind==='note'){
-    notesStore.insert({id:itemId,userId,title:DEFAULT_NOTE_TITLE,body:action.body,isPinned:false,tags:['AI Transcribed'],category:DEFAULT_NOTE_CATEGORY,isVoiceTranscribed:true},tx);
+    notesStore.insert({id:itemId,userId,title:deriveNoteTitle(action.body,DEFAULT_NOTE_TITLE),body:action.body,isPinned:false,tags:['AI Transcribed'],category:DEFAULT_NOTE_CATEGORY,isVoiceTranscribed:true},tx);
     return {itemId};
   }
   if(action.itemType==='event'){
@@ -223,7 +269,7 @@ const execute=(action:Action,userId:string,tx:DatabaseTransaction):{itemId:strin
   tx.afterCommit?.(()=>{
     try {
       void scheduleReminderAlarm(reminderId,action.title,triggerAt).catch(()=>{/* Durable job remains queued. */});
-      void preCacheReminderAudio(reminderId,`Hey! This is LAFINA. Your scheduled reminder is "${action.title}". Choose one of the two responses shown on screen at any time.`).catch(()=>{/* Audio can be regenerated. */});
+      void preCacheReminderAudio(reminderId,`Hey! This is LAFINA. Your scheduled reminder is "${action.title}". Choose one of the responses shown on screen at any time.`).catch(()=>{/* Audio can be regenerated. */});
     } catch {/* The committed item and job remain available for recovery. */}
   });
   return {itemId,reminderId};
@@ -232,9 +278,16 @@ const execute=(action:Action,userId:string,tx:DatabaseTransaction):{itemId:strin
 /** Owns one private, expiring review; inference has no reference to the mutation executor. */
 export const createCommandSession=(userId:string):CommandSession=>{
   let pending:Pending|null=null;
+  let offer:FreeTimeOffer|null=null;
   let disposed=false;
   let completed:{id:string;result:CommandExecutionResult}|null=null;
-  const cancel=():void=>{pending=null;completed=null;};
+  const cancel=():void=>{pending=null;completed=null;offer=null;};
+  const startReview=(built:BuiltAction&{action:Action}):CommandProposal=>{
+    const createdMs=Date.now();
+    const review=Object.freeze({id:generateId('review'),summary:built.reply,expiresAt:new Date(createdMs+300000).toISOString(),...(built.warning?{warning:built.warning}:{})});
+    pending={review,action:built.action,createdMs,timezone:timezone(),offset:new Date().getTimezoneOffset()};
+    return {review,reply:'Review these details. Nothing has been saved yet.'};
+  };
   return {
     propose:(text)=>{
       cancel();
@@ -244,13 +297,37 @@ export const createCommandSession=(userId:string):CommandSession=>{
         const normalized=normalizePlannerRequest(text);
         const conversationReply=getPlannerReply(normalized,userId);
         if(conversationReply!==null)return {review:null,reply:conversationReply};
-        const {action,reply}=buildAction(normalized,userId);
-        if(!action) return {review:null,reply};
-        const createdMs=Date.now();
-        const review=Object.freeze({id:generateId('review'),summary:reply,expiresAt:new Date(createdMs+300000).toISOString()});
-        pending={review,action,createdMs,timezone:timezone(),offset:new Date().getTimezoneOffset()};
-        return {review,reply:'Review these details. Nothing has been saved yet.'};
+        const now=new Date();
+        const findTime=parseFindTimeRequest(normalized,now,userStore.getWeekStartsMonday(userId));
+        if(findTime){
+          if(/\byesterday\b/i.test(normalized))return {review:null,reply:'Choose a future date and time.'};
+          if(/\b(?:not|never|don['’]t|except)\b/i.test(normalized.replace(/"[^"\n]*"|“[^”\n]*”/g,'')))return {review:null,reply:'Please ask for one positive time range, such as this week or tomorrow.'};
+          const found=offerFreeTime(findTime,userId,now);
+          offer=found.offer;
+          if(!found.offer)return {review:null,reply:found.reply};
+          return {review:null,reply:found.reply,choices:found.offer.choices,choicesExpireAt:new Date(found.offer.expiresMs).toISOString()};
+        }
+        const built=buildAction(normalized,userId);
+        if(!built.action) return {review:null,reply:built.reply};
+        return startReview({...built,action:built.action});
       } catch {return {review:null,reply:'Local storage or command details are unavailable. Nothing was saved.'};}
+    },
+    choose:(choiceId)=>{
+      const capture=offer;
+      const stale={review:null,reply:'These times expired. Ask again for new choices.'};
+      try {
+        const now=new Date();
+        if(disposed || !capture || !activeOwner(userId) || now.getTime()>capture.expiresMs || timezone()!==capture.timezone || now.getTimezoneOffset()!==capture.offset){offer=null;return stale;}
+        const choice=capture.choices.find(item=>item.id===choiceId);
+        if(!choice){offer=null;return stale;}
+        offer=null;
+        // The plan can change while the choices are open, including from a reminder call.
+        if(checkScheduleConflicts(userId,choice.startMs,choice.endMs).length>0)return {review:null,reply:'That time is no longer free. Ask again for new choices.'};
+        const stamp=localStamp(new Date(choice.startMs));
+        const built=buildScheduleAction({title:capture.title,date:stamp.slice(0,10),time:stamp.slice(-5),duration:capture.durationMinutes,recurrence:null,explicitEvent:false},userId,now);
+        if(!built.action)return {review:null,reply:built.reply};
+        return startReview({...built,action:built.action});
+      } catch {offer=null;return {review:null,reply:'Local storage or command details are unavailable. Nothing was saved.'};}
     },
     confirm:(id)=>{
       try {
@@ -263,14 +340,19 @@ export const createCommandSession=(userId:string):CommandSession=>{
         const ids=db.transactionSync(tx=>{
           if(!activeOwner(userId,tx) || (action.kind==='schedule' && getReminderPreferences(userId).leadTimeMinutes!==action.lead)) throw new Error('REVIEW_INVALID');
           const receipt=tx.executeSync('SELECT entity_id,reminder_id FROM command_operation_receipts WHERE id=? AND user_id=?',[id,userId]).rows?.[0];
-          if(receipt) return {itemId:String(receipt.entity_id),reminderId:receipt.reminder_id?String(receipt.reminder_id):undefined};
-          const result=execute(action,userId,tx);
+          if(receipt) return {itemId:String(receipt.entity_id),reminderId:receipt.reminder_id?String(receipt.reminder_id):undefined} as {itemId:string;reminderId?:string;undo?:UndoToken};
+          const before=action.kind==='complete'?captureForUndo('task',action.id,userId,tx):action.kind==='source_change'?captureForUndo(action.target.type,action.target.id,userId,tx):null;
+          const result:{itemId:string;reminderId?:string;undo?:UndoToken}=execute(action,userId,tx);
+          if(before)result.undo=sealUndo(before,userId,tx);
+          else if(action.kind==='note')result.undo=createdUndo('note',result.itemId,userId,tx);
+          else if(action.kind==='untimed_task')result.undo=createdUndo('task',result.itemId,userId,tx);
+          else if(action.kind==='schedule')result.undo=createdUndo(action.itemType??(action.duration===null?'task':'time_block'),result.itemId,userId,tx);
           const now=new Date().toISOString();
           tx.executeSync('INSERT INTO command_operation_receipts(id,user_id,kind,entity_id,reminder_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',[id,userId,action.kind,result.itemId,result.reminderId??null,now,now]);
-          return result;
+          return result as {itemId:string;reminderId?:string;undo?:UndoToken};
         });
         const reply=action.kind==='source_change'?`${action.operation==='move'?'Moved':'Deleted'} “${action.target.title}”.`:action.kind==='reminder_action'?action.operation==='ack'?'Reminder acknowledged. The task remains open.':`Snoozed for ${action.minutes} minutes. Delivery is queued.`:ids.reminderId?'Saved on this phone. Reminder delivery is queued; notification and alarm permissions still apply.':action.kind==='complete'?`Marked “${action.title}” as completed.`:action.kind==='untimed_task'?'Saved the task without a reminder.':'Saved the note on this phone.';
-        const result:CommandExecutionResult={status:'saved',...ids,delivery:ids.reminderId && !(action.kind==='reminder_action'&&action.operation==='ack')?'queued':'none',reply};
+        const result:CommandExecutionResult={status:'saved',...ids,delivery:ids.reminderId && !(action.kind==='reminder_action'&&action.operation==='ack')?'queued':'none',reply,...(action.kind==='note'?{noteBody:action.body}:{})};
         completed={id,result};pending=null;return result;
       } catch(error){
         if(error instanceof Error && error.message==='REVIEW_INVALID'){pending=null;return invalid();}

@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,16 +8,20 @@ import {
   ScrollView,
   FlatList,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { pick } from '@react-native-documents/picker';
 import { FileText, Plus, Search, Grid, List, X } from 'lucide-react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Colors, Shadows } from '../../theme';
 import { useNotesData } from './hooks/useNotesData';
+import { DeadlineSuggestions } from '../../components/DeadlineSuggestions';
 import { NoteFilters, NoteCardWithDrag } from './components';
 import { NoteEditor } from './components/NoteEditor';
 import { NotesScreenProps } from './types';
 import type { Note } from '../../../storage';
+
+const PULL_REFRESH_FEEDBACK_MS = 400;
 
 export const NotesScreen: React.FC<NotesScreenProps> = ({
   userId,
@@ -28,6 +32,31 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
   const data = useNotesData({ userId, refreshTrigger, onRefresh });
 
   const keyExtractor = useCallback((item: Note) => item.id, []);
+
+  // Reads are synchronous, so the spinner is held briefly: a pull with no visible answer looks broken.
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+  }, []);
+  const handlePullRefresh = () => {
+    setRefreshing(true);
+    data.loadNotes();
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => setRefreshing(false), PULL_REFRESH_FEEDBACK_MS);
+  };
+
+  // A drag owns the gesture, so a pull cannot start during one.
+  const refreshControl = (
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={handlePullRefresh}
+      enabled={!data.isDragging}
+      colors={[colors.red]}
+      tintColor={colors.red}
+      progressBackgroundColor={colors.cardBg}
+    />
+  );
 
   const renderItem = useCallback(({ item, index }: { item: Note; index: number }) => {
     const isItemPinned = item.isPinned;
@@ -113,24 +142,29 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
 
       <View>
         {data.indexing&&<Text accessibilityLiveRegion="polite">Updating search results…</Text>}
-        {data.loadError&&<Text accessibilityLiveRegion="polite">Notes could not be loaded. Try refreshing.</Text>}
-        <TouchableOpacity accessibilityRole="button" onPress={()=>data.loadNotes()}><Text style={{color:colors.textPrimary}}>Refresh notes</Text></TouchableOpacity>
+        {data.loadError&&<Text accessibilityLiveRegion="polite">Notes could not be loaded. Pull down to try again.</Text>}
         {!!data.nextCursor&&!data.indexing&&!data.loadError&&<TouchableOpacity accessibilityRole="button" onPress={data.loadMore}><Text style={{color:colors.textPrimary}}>Load more notes</Text></TouchableOpacity>}
       </View>
       {/* Content */}
       {data.filtered.length === 0 ? (
-        <View style={styles.emptyState}>
+        <ScrollView
+          contentContainerStyle={styles.emptyState}
+          refreshControl={refreshControl}
+          testID="notes-empty-scroll"
+        >
           <FileText size={48} color={colors.red} style={{ marginBottom: 16 }} />
           <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>{data.indexing?'Searching notes…':data.loadError?'Notes unavailable':'No notes found'}</Text>
           <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
             Tap the + button below to write a new note, or use the voice assistant.
           </Text>
-        </View>
+        </ScrollView>
       ) : data.isGridView ? (
         <ScrollView
           style={styles.notesListScroll}
           contentContainerStyle={[styles.notesList, styles.gridContainer]}
           scrollEnabled={!data.isDragging}
+          refreshControl={refreshControl}
+          testID="notes-grid-scroll"
         >
           {data.filtered.map((item, index) => renderItem({ item, index }))}
         </ScrollView>
@@ -142,6 +176,8 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.notesList}
           scrollEnabled={!data.isDragging}
+          refreshControl={refreshControl}
+          testID="notes-list"
           extraData={data.renderGen}
           renderItem={renderItem}
           removeClippedSubviews={false}
@@ -155,6 +191,13 @@ export const NotesScreen: React.FC<NotesScreenProps> = ({
       </TouchableOpacity>
 
       {/* Editor Modal */}
+      <DeadlineSuggestions
+        userId={userId}
+        candidates={data.deadlineCandidates}
+        onClose={data.clearDeadlineCandidates}
+        onChanged={onRefresh}
+      />
+
       <NoteEditor
         visible={data.editorVisible}
         editingNote={data.editingNote}
@@ -241,7 +284,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   emptyState: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,

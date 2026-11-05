@@ -12,7 +12,9 @@ closed if absent. Do not interact with the emulator while a scenario is running.
 python scripts/emulator_qa.py --adb PATH-TO-ADB --serial emulator-5554 --run-id NEW-UNIQUE-ID --apk android/app/build/outputs/apk/qa/app-x86_64-qa.apk --scenario full --allow-fixture-writes --output docs/reports/new-emulator-run.json
 ```
 
-`baseline` opens Calendar/Notes/Chat/Profile and checks the native-gated QA controls.
+`baseline` opens Calendar/Notes/Chat/Profile, turns on developer mode (seven taps on
+App Version, which leaves the flag on for that account) and checks the native-gated
+QA controls.
 `diagnostics` additionally runs the 14 isolated SQL checks twice with close/reopen,
 requiring explicit fixture-removal evidence. `roundtrip`/`full` additionally need
 `--allow-fixture-writes`: exact synthetic task preflight, create-review cancellation,

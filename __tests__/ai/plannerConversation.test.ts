@@ -1,5 +1,5 @@
 import {db,initDatabase,tasksStore,timeBlocksStore} from '../../src/storage';
-import {getPlannerReply,normalizePlannerRequest,COMMAND_GUIDE} from '../../src/ai/nlu/plannerConversation';
+import {getPlannerReply,normalizePlannerRequest,COMMAND_GUIDE,STARTER_COMMANDS} from '../../src/ai/nlu/plannerConversation';
 import {createCommandSession} from '../../src/ai/nlu/commandSession';
 describe('offline planner conversation',()=>{
   beforeAll(async()=>{await initDatabase();});
@@ -11,6 +11,16 @@ describe('offline planner conversation',()=>{
   });
   afterEach(()=>{jest.useRealTimers();jest.restoreAllMocks();});
   const add=(id:string,date:string|null,done=false,userId='conversation-a')=>tasksStore.insertTask({id,userId,title:id,dueDate:date,dueTime:'09:00',isCompleted:done,priority:'Medium',category:'Work'});
+  it('offers starter commands that are real guide commands and route as promised',()=>{
+    const guide=COMMAND_GUIDE.map(example=>example.command);
+    expect(STARTER_COMMANDS).toEqual(['What are my tasks today?','Show agenda tomorrow','Schedule study tomorrow at 7pm','Add task Read chapter 5']);
+    for(const command of STARTER_COMMANDS)expect(guide).toContain(command);
+    expect(getPlannerReply('What are my tasks today?','conversation-a')).not.toBeNull();
+    expect(getPlannerReply('Show agenda tomorrow','conversation-a')).not.toBeNull();
+    expect(createCommandSession('conversation-a').propose('Schedule study tomorrow at 7pm').review).toBeTruthy();
+    expect(createCommandSession('conversation-a').propose('Add task Read chapter 5').review).toBeTruthy();
+    expect(tasksStore.getAllTasks('conversation-a')).toHaveLength(0);
+  });
   it('answers from saved owner data and never writes planner records',()=>{
     add('Calculus','2026-11-03');add('Foreign','2026-11-03',false,'conversation-b');add('Done','2026-11-03',true);
     expect(getPlannerReply('What are my tasks today?','conversation-a')).toContain('Calculus');
@@ -56,7 +66,11 @@ describe('offline planner conversation',()=>{
     for(const example of COMMAND_GUIDE){
       const reply=getPlannerReply(example.command,'conversation-a');
       if(example.readOnly)expect(reply).not.toBeNull();
-      else expect(createCommandSession('conversation-a').propose(example.command).review).not.toBeNull();
+      else{
+        const proposal=createCommandSession('conversation-a').propose(example.command);
+        // A free-time search offers choices first. The pick then opens the same review.
+        expect(proposal.review??proposal.choices?.[0]).toBeTruthy();
+      }
     }
   });
 });

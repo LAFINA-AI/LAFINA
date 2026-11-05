@@ -118,7 +118,7 @@ const runFixture = (
   executor: NotesQueryExecutor,
   checks: QaSqlCheck[],
 ): void => {
-  if (SCHEMA_VERSION !== 23) throw new Error('QA_SCHEMA_REVIEW_REQUIRED');
+  if (SCHEMA_VERSION !== 24) throw new Error('QA_SCHEMA_REVIEW_REQUIRED');
   const now = new Date().toISOString();
   const check = (name: string, accepted: boolean): void => {
     checks.push({ name, passed: accepted });
@@ -158,12 +158,12 @@ const runFixture = (
     initializeCommandSchema(tx);
     initializeNotesSearchSchema(tx);
     initializeEventTimeSchema(tx);
-    tx.executeSync('PRAGMA user_version=23');
+    tx.executeSync('PRAGMA user_version=24');
   });
   check(
     'Reviewed schema version',
     Number(executor.executeSync('PRAGMA user_version').rows[0].user_version) ===
-      23,
+      24,
   );
   check(
     'Legacy event preserved',

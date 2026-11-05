@@ -1,7 +1,24 @@
 import type {DatabaseTransaction} from './database';
 import {deliveryStore} from './deliveryStore';
+import {getOccurrences} from './rruleHelper';
 import type {ReminderSourceType} from './deliveryStore';
 import {syncOutboxStore} from './syncOutboxStore';
+
+const localDay=(iso:unknown):string=>{
+  const at=new Date(String(iso));
+  return `${at.getFullYear()}-${String(at.getMonth()+1).padStart(2,'0')}-${String(at.getDate()).padStart(2,'0')}`;
+};
+
+/** The date a reminder belongs to now, or null when the series no longer has that date. */
+const occurrenceDateOf=(reminder:Record<string,unknown>,date:string,rule:string|null):string|null=>{
+  const day=localDay(reminder.scheduled_at);
+  if(!rule){
+    // A series turned into a single item keeps at most the reminder on that item's date.
+    const wasSeries=typeof reminder.source_snapshot==='string'&&/"recurrence_rule":"/.test(reminder.source_snapshot);
+    return wasSeries&&day!==date?null:date;
+  }
+  return getOccurrences(date,rule,new Date(`${day}T00:00:00`),new Date(`${day}T23:59:59`)).includes(day)?day:null;
+};
 
 /** Refreshes explicitly linked work inside its source transaction; legacy standalone rows stay independent. */
 export const refreshLinkedReminders=(type:ReminderSourceType,id:string,tx:DatabaseTransaction):void=>{
@@ -14,8 +31,12 @@ export const refreshLinkedReminders=(type:ReminderSourceType,id:string,tx:Databa
     const userId=String(reminder.user_id),reminderId=String(reminder.id),now=new Date().toISOString();
     const date=source?.[type==='task'?'due_date':'date'];
     const time=source?.[type==='task'?'due_time':'start_time'];
-    const scheduled=new Date(type==='event'&&typeof source?.start_at==='string'?source.start_at:`${date}T${time}:00`);
-    const retired=!source || source.deleted_at!=null || source.user_id!==userId || source.is_completed===1 || !date || !time || !Number.isFinite(scheduled.getTime());
+    const rule=typeof source?.recurrence_rule==='string'&&source.recurrence_rule?source.recurrence_rule:null;
+    const wasSeries=typeof reminder.source_snapshot==='string'&&/"recurrence_rule":"/.test(reminder.source_snapshot);
+    // Each reminder of a series belongs to one date, so an edit must not pull them all onto the first.
+    const occurrence=(rule||wasSeries)&&typeof date==='string'?occurrenceDateOf(reminder,date,rule):undefined;
+    const scheduled=new Date(occurrence!==undefined?`${occurrence}T${time}:00`:type==='event'&&typeof source?.start_at==='string'?source.start_at:`${date}T${time}:00`);
+    const retired=occurrence===null || !source || source.deleted_at!=null || source.user_id!==userId || source.is_completed===1 || !date || !time || !Number.isFinite(scheduled.getTime());
     if(retired){
       tx.executeSync('UPDATE reminders SET deleted_at=?,updated_at=? WHERE id=?',[now,now,reminderId]);
       syncOutboxStore.enqueueMutation(userId,'reminder',reminderId,'delete',{},'account',userId,tx);

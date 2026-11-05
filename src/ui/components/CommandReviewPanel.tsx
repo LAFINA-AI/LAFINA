@@ -11,6 +11,7 @@ export const CommandReviewPanel=({review,onConfirm,onCancel}:Props):React.JSX.El
       <View style={[styles.card,{backgroundColor:colors.cardBg}]} accessibilityViewIsModal>
         <Text accessibilityRole="header" style={[styles.title,{color:colors.textPrimary}]}>Review before saving</Text>
         <ScrollView style={styles.scroll}><Text testID="command-review-summary" style={[styles.summary,{color:colors.textPrimary}]}>{review?.summary}</Text></ScrollView>
+        {review?.warning?<Text testID="command-review-warning" accessibilityLiveRegion="polite" style={[styles.warning,{color:colors.red}]}>{review.warning}</Text>:null}
         <Text style={{color:colors.textSecondary}}>Nothing has been saved. This review expires in five minutes.</Text>
         <View style={styles.buttons}>
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cancel review" onPress={onCancel} style={styles.button}><Text style={{color:colors.textPrimary}}>Edit draft</Text></TouchableOpacity>
@@ -20,4 +21,4 @@ export const CommandReviewPanel=({review,onConfirm,onCancel}:Props):React.JSX.El
     </View>
   </Modal>;
 };
-const styles=StyleSheet.create({overlay:{flex:1,justifyContent:'center',padding:24,backgroundColor:'rgba(0,0,0,0.65)'},card:{padding:22,borderRadius:20,maxHeight:'85%',gap:18},title:{fontSize:21,fontWeight:'700'},scroll:{flexGrow:0},summary:{fontSize:17,lineHeight:26},buttons:{flexDirection:'row',justifyContent:'flex-end',gap:12},button:{paddingHorizontal:20,paddingVertical:14,borderRadius:12,minHeight:48}});
+const styles=StyleSheet.create({overlay:{flex:1,justifyContent:'center',padding:24,backgroundColor:'rgba(0,0,0,0.65)'},card:{padding:22,borderRadius:20,maxHeight:'85%',gap:18},title:{fontSize:21,fontWeight:'700'},scroll:{flexGrow:0},summary:{fontSize:17,lineHeight:26},warning:{fontSize:16,lineHeight:23,fontWeight:'700'},buttons:{flexDirection:'row',justifyContent:'flex-end',gap:12},button:{paddingHorizontal:20,paddingVertical:14,borderRadius:12,minHeight:48}});

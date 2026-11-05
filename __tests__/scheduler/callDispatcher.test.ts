@@ -294,6 +294,22 @@ describe('callDispatcher hands-free controller', () => {
     },
   );
 
+  it.each([
+    ['call me back', null],
+    ['Call back please', null],
+    ['call me back in 20 minutes', 20],
+    ['please call me back after 30 mins', 30],
+  ])('hears %s as a call-back request', (transcript, minutes) => {
+    expect(detectCallKeyword(transcript)).toEqual({ intent: 'call_back', minutes });
+  });
+
+  it.each(['do not call me back', "don't call me back", 'call me back in 500 minutes', 'acknowledge and call me back', 'snooze or call back', 'call me'])(
+    'does not guess a call-back from %s',
+    transcript => {
+      expect(detectCallKeyword(transcript)?.intent ?? null).not.toBe('call_back');
+    },
+  );
+
   it.each(['got it', 'dismiss', 'later', 'acknowledge or snooze'])(
     'does not activate an unsupported or ambiguous command: %s',
     transcript => {

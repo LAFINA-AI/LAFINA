@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "clock": "2026-11-05T12:00:00 device-local (a Thursday)",
+  "scope": "Deterministic rule regression for find-time requests, not model accuracy",
+  "cases": [
+    {"id": "brief-example", "command": "find me 2 hours to study for Calculus this week", "match": true, "title": "Study for Calculus", "minutes": 120, "stated": true, "window": "this week"},
+    {"id": "capitalised", "command": "Find me 2 hours to study for Calculus this week", "match": true, "title": "Study for Calculus", "minutes": 120, "stated": true, "window": "this week"},
+    {"id": "an-hour", "command": "find me an hour for reading tomorrow", "match": true, "title": "Reading", "minutes": 60, "stated": true, "window": "tomorrow"},
+    {"id": "half-hour", "command": "find me half an hour to call mom today", "match": true, "title": "Call mom", "minutes": 30, "stated": true, "window": "today"},
+    {"id": "minutes", "command": "find 45 minutes for flashcards tomorrow", "match": true, "title": "Flashcards", "minutes": 45, "stated": true, "window": "tomorrow"},
+    {"id": "hours-minutes", "command": "get me 1 hour 30 minutes for lab report next week", "match": true, "title": "Lab report", "minutes": 90, "stated": true, "window": "next week"},
+    {"id": "number-word", "command": "find me three hours for my thesis this weekend", "match": true, "title": "My thesis", "minutes": 180, "stated": true, "window": "this weekend"},
+    {"id": "no-length", "command": "find me time to review Physics", "match": true, "title": "Review Physics", "minutes": 60, "stated": false, "window": "in the next 7 days"},
+    {"id": "some-free-time", "command": "find me some free time to read on Friday", "match": true, "title": "Read", "minutes": 60, "stated": false, "window": "on Friday"},
+    {"id": "no-title", "command": "find me 2 hours this week", "match": true, "title": null, "minutes": 120, "stated": true, "window": "this week"},
+    {"id": "polite", "command": "could you find me 2 hours to study tomorrow", "match": true, "title": "Study", "minutes": 120, "stated": true, "window": "tomorrow"},
+    {"id": "when-with-length", "command": "when can I study for 2 hours tomorrow", "match": true, "minutes": 120, "stated": true, "window": "tomorrow"},
+    {"id": "when-fit", "command": "when can I fit in 2 hours of reading this week", "match": true, "title": "Reading", "minutes": 120, "stated": true, "window": "this week"},
+    {"id": "quoted-title", "command": "find me 2 hours for \"CS 101 review\" tomorrow", "match": true, "title": "CS 101 review", "minutes": 120, "stated": true, "window": "tomorrow"},
+    {"id": "not-books", "command": "find me 2 books", "match": false},
+    {"id": "not-a-handbook", "command": "when can I drop a subject?", "match": false},
+    {"id": "not-a-schedule", "command": "schedule study tomorrow at 7pm", "match": false},
+    {"id": "not-a-question", "command": "what are my tasks today?", "match": false},
+    {"id": "not-a-note", "command": "Note: find me 2 hours later", "match": false},
+    {"id": "not-a-find", "command": "find my notes", "match": false}
+  ]
+}

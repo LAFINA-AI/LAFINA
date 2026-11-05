@@ -21,6 +21,10 @@ export type { TimeBlock } from './timeBlocksStore';
 export { chatStore } from './chatStore';
 export type { ChatAttachment, ChatMessage, ChatSession } from './chatStore';
 export { behaviorStore } from './behaviorStore';
+export { callLogStore } from './callLogStore';
+export type { CallLogEntry, CallOutcome, RecapRows } from './callLogStore';
+export { mlPredictionsStore } from './mlPredictionsStore';
+export type { ReminderHistoryRow, SavedPrediction } from './mlPredictionsStore';
 export type { BehaviorLog, FeatureSnapshot } from './behaviorStore';
 export { completeUserOnboarding } from './onboardingStore';
 export {
@@ -94,6 +98,7 @@ export { gmailStore } from './gmailStore';
 export type { CacheThreadInput, CacheMessageInput, SaveDraftInput } from './gmailStore';
 export {
   seedLocalDemoAccounts,
+  isDemoUser,
   DEMO_IDS,
   DEMO_CREDENTIALS,
 } from './demoSeed';
@@ -144,4 +149,5 @@ export type { RecordedMeeting, MeetingPatch } from './recordedMeetingStore';
 export type { StudySummaryRecord, SaveSummaryInput } from './studyNoteStore';
 export type { FlashcardDeck, SaveDeckInput } from './flashcardStore';
 export { localSettingsStore } from './localSettingsStore';
+export { applySemesterEnd, semesterStore } from './semesterStore';
 export { productTourStore, PRODUCT_TOUR_VERSION } from './productTourStore';

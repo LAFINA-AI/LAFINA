@@ -67,6 +67,10 @@ export const guestMigration = {
       tx.executeSync(`UPDATE chat_sessions SET user_id = ? WHERE user_id = ?`, [cloudUserId, GUEST_USER_ID]);
       tx.executeSync(`UPDATE user_behavior_logs SET user_id = ? WHERE user_id = ?`, [cloudUserId, GUEST_USER_ID]);
       tx.executeSync(`UPDATE ml_feature_snapshots SET user_id = ? WHERE user_id = ?`, [cloudUserId, GUEST_USER_ID]);
+      // Call history and transcripts moved with user_behavior_logs above. A prediction the
+      // account already holds for the same subject wins.
+      tx.executeSync(`UPDATE OR IGNORE ml_predictions SET user_id = ? WHERE user_id = ?`, [cloudUserId, GUEST_USER_ID]);
+      tx.executeSync(`DELETE FROM ml_predictions WHERE user_id = ? AND user_id <> ?`, [GUEST_USER_ID, cloudUserId]);
 
       // 2b. Study tools. The Pomodoro log moves with the guest; one-row-per-user
       // tables keep the account's own row when it already has one here.

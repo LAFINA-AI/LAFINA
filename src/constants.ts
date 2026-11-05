@@ -49,6 +49,9 @@ export const DEFAULT_BLOCK_END_TIME = '16:00';
 /** Default title for voice-created time blocks */
 export const DEFAULT_BLOCK_TITLE = 'Deep Work';
 
+/** Time-block category that marks a recurring class. */
+export const CLASS_BLOCK_CATEGORY = 'Class';
+
 /** Default title for voice-created notes */
 export const DEFAULT_NOTE_TITLE = 'Quick Note';
 

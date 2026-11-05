@@ -73,7 +73,7 @@ and remove only those fixtures afterward; preserve all existing app data.
    must fail. Existing events remain unchanged. Sign in from guest, then start a
    fresh guest; no old facts or engine choices appear in the fresh guest account.
 10. Switch two accounts and check Chat, attachments, pages, agenda and statistics.
-    Voice uses shows Not tracked; note flags or text containing “voice” are not proof.
+    On-Time Rate shows No data until a reminder is acknowledged or missed, then the share answered without a snooze.
 11. Inspect vendor 16 KiB native-library alignment and test on required page sizes.
     The approved ONNX 1.22.0 APKs pass host load/ZIP checks; do not claim broad device compatibility.
 12. Record crashes, audio quality, cold/warm latency, memory/battery and exact alarm

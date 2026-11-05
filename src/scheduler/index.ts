@@ -1,4 +1,8 @@
 export { getReminderPreferences } from './userPreferences';
+export { checkScheduleConflicts, findFreeTime } from './availability';
+export { OCCURRENCE_WINDOW_DAYS, ensureOccurrenceReminders, refreshOccurrenceReminders } from './recurringReminders';
+export { UNDO_WINDOW_MS, undoChange } from './undo';
+export type { UndoResult, UndoToken } from './undo';
 export type { ReminderPreferences } from './userPreferences';
 export {
   startSchedulerDaemon,
@@ -13,6 +17,7 @@ export {
   disconnectCall,
   speakText,
   autoSnoozeCall,
+  manualCallBackCall,
   manualSnoozeCall,
   manualAcknowledgeCall,
   prepareCallSpeech,
@@ -37,6 +42,15 @@ export {
   acknowledgeReminderAction,
   autoSnoozeReminderAction,
 } from './reminderActions';
+export {
+  CALL_EARLIER_MINUTES,
+  moveTaskCallEarlier,
+  readWaitingTaskCall,
+  markTaskDone,
+  requestTaskCall,
+  rescheduleTask,
+} from './taskActions';
+export type { TaskActionResult, WaitingTaskCall } from './taskActions';
 export type {
   ReminderActionOutcome,
   ReminderActionResult,

@@ -5,6 +5,7 @@
  */
 
 import type { Event, Task, TimeBlock } from '../../../../storage';
+import { CLASS_BLOCK_CATEGORY } from '../../../../constants';
 import { formatTimeForDisplay } from './calendarHelpers';
 
 /** Height of one hour, in dp. The desktop uses the same 64. */
@@ -16,6 +17,17 @@ export const TASK_SLOT_MINUTES = 30;
 export const SHORT_ENTRY_MINUTES = 40;
 
 export const minutesToPixels = (minutes: number): number => (minutes * HOUR_HEIGHT) / 60;
+
+/** Where a day opens when nothing says otherwise: most days have nothing before 7 AM. */
+const DEFAULT_OPEN_MINUTES = 7 * 60;
+/** How much of the past stays in view above the current-time line. */
+const MINUTES_ABOVE_NOW = 60;
+
+/** The minute a day should open at: just above the current time today, otherwise the start of a normal day. */
+export const initialScrollMinutes = (date: Date, now: Date): number =>
+  formatLocalDate(date) === formatLocalDate(now)
+    ? Math.max(0, now.getHours() * 60 + now.getMinutes() - MINUTES_ABOVE_NOW)
+    : DEFAULT_OPEN_MINUTES;
 
 /** "HH:MM" to minutes after midnight; NaN for anything else. */
 export const timeToMinutes = (time: string): number => {
@@ -146,7 +158,7 @@ export const buildDayEntries = ({
         kind: 'block',
         title: block.title,
         color: block.color,
-        time: range(block.startTime, block.endTime),
+        time: `${block.category === CLASS_BLOCK_CATEGORY ? 'Class · ' : ''}${range(block.startTime, block.endTime)}`,
         block,
       },
       block.date,

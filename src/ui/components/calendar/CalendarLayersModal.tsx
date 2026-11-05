@@ -13,6 +13,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { Fonts, Colors, Shadows } from '../../theme';
 import { ImportBatch } from '../../../storage/importedBatchesStore';
 import { HOLIDAY_CALENDAR_ID, HOLIDAY_CALENDAR_NAME } from '../../screens/calendar/utils/philippineHolidays';
+import { ACADEMIC_CALENDAR, ACADEMIC_CALENDAR_ID, ACADEMIC_CALENDAR_NAME } from '../../../utils';
 import { formatStoredDate } from '../../../utils/dateFormat';
 
 interface CalendarLayersModalProps {
@@ -42,6 +43,8 @@ export const CalendarLayersModal: React.FC<CalendarLayersModalProps> = ({
   
   const mainVisible = visibilityMap.main !== false;
   const holidaysVisible = visibilityMap[HOLIDAY_CALENDAR_ID] !== false;
+  const hasAcademicDates = ACADEMIC_CALENDAR.length > 0;
+  const academicVisible = hasAcademicDates && visibilityMap[ACADEMIC_CALENDAR_ID] !== false;
 
   /**
    * Generates a stable color from the calendar filename to display next to the checkbox.
@@ -120,6 +123,31 @@ export const CalendarLayersModal: React.FC<CalendarLayersModalProps> = ({
                   <View style={styles.textContainer}>
                     <Text style={[styles.itemTitle, { color: colors.textPrimary }]}>{HOLIDAY_CALENDAR_NAME}</Text>
                     <Text style={[styles.itemSub, { color: colors.textSecondary }]}>Regular and special non-working days</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Bundled, so it works offline. It stays off until official dates are added. */}
+                <TouchableOpacity
+                  style={[styles.item, { borderBottomColor: colors.border }]}
+                  activeOpacity={0.7}
+                  disabled={!hasAcademicDates}
+                  onPress={() => onToggleVisibility(ACADEMIC_CALENDAR_ID, !academicVisible)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: academicVisible, disabled: !hasAcademicDates }}
+                  accessibilityLabel={ACADEMIC_CALENDAR_NAME}
+                >
+                  <View style={[
+                    styles.checkbox,
+                    { borderColor: colors.blue },
+                    academicVisible && { backgroundColor: colors.blue }
+                  ]}>
+                    {academicVisible && <Check size={12} color={colors.white} strokeWidth={3} />}
+                  </View>
+                  <View style={styles.textContainer}>
+                    <Text style={[styles.itemTitle, { color: colors.textPrimary }]}>{ACADEMIC_CALENDAR_NAME}</Text>
+                    <Text style={[styles.itemSub, { color: colors.textSecondary }]}>
+                      {hasAcademicDates ? 'Holidays, exam weeks and enrollment dates' : 'No dates added yet'}
+                    </Text>
                   </View>
                 </TouchableOpacity>
 

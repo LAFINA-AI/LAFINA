@@ -1,4 +1,4 @@
-export type NluIntent = 'schedule' | 'snooze' | 'cancel' | 'out_of_scope' | 'acknowledge';
+export type NluIntent = 'schedule' | 'snooze' | 'cancel' | 'out_of_scope' | 'acknowledge' | 'find_time';
 
 export type NluStatus = 'success' | 'rejected' | 'pending';
 

@@ -14,7 +14,7 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { Shadows } from '../../../theme';
 import { getCategoryColor } from '../../../theme/categoryColors';
 import type { Note } from '../../../../storage';
-import { checklistStats } from '../../../../utils';
+import { checklistStats, displayNoteTitle } from '../../../../utils';
 import { NoteBody } from './NoteBody';
 
 const lafinaDefaultLogo = require('../../../../assets/lafina_default_logo.png');
@@ -54,6 +54,7 @@ export const NoteCardBase: React.FC<NoteCardBaseProps> = ({
 }) => {
   const { colors } = useTheme();
   const checklist = checklistStats(item.body);
+  const title = displayNoteTitle(item.title, item.body);
   const toggle = (index: number) => onToggleChecklist(item, index);
 
   const progressBadge = checklist.total > 0 && (
@@ -100,7 +101,7 @@ export const NoteCardBase: React.FC<NoteCardBaseProps> = ({
           )}
           <View style={styles.cardPadding}>
             <View style={styles.titleRow}>
-              <Text style={[styles.noteCardTitle, { color: colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
+              <Text style={[styles.noteCardTitle, { color: colors.textPrimary }]} numberOfLines={1}>{title}</Text>
               {canDrag && <View {...panHandlers} style={dragHandleStyles.gridHandle}><GripVertical size={14} color={colors.iconMuted} /></View>}
               {item.isPinned && <Pin size={12} color={colors.red} style={{ transform: [{ rotate: '45deg' }] }} />}
             </View>
@@ -131,7 +132,7 @@ export const NoteCardBase: React.FC<NoteCardBaseProps> = ({
             <View style={{ flexDirection: 'row', padding: 12, alignItems: 'center' }}>
               <View style={{ flex: 1, marginRight: item.imageUri ? 12 : 0 }}>
                 <View style={styles.titleRow}>
-                  <Text style={[styles.noteCardTitle, { color: colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
+                  <Text style={[styles.noteCardTitle, { color: colors.textPrimary }]} numberOfLines={1}>{title}</Text>
                   {item.isPinned && <Pin size={12} color={colors.red} style={{ transform: [{ rotate: '45deg' }] }} />}
                 </View>
                 <View style={styles.noteCardBody}>

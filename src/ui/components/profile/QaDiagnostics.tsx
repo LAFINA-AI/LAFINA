@@ -105,7 +105,7 @@ export const QaDiagnostics = ({
           checks: [],
           cleanup: 'failed',
           durationMs: 0,
-          schemaVersion: 23,
+          schemaVersion: 24,
         });
     } finally {
       if (current(ticket)) setBusy(null);

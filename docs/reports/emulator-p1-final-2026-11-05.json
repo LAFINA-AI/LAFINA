@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "recordedAtUtc": "2026-11-04T21:53:08.593718+00:00",
+  "runId": "p1-final-20261105a",
+  "scenario": "full",
+  "artifactSha256": "6b92f27d5a38377c70485d28d45417d128bac0ba12451a9bd62e6855187c2baf",
+  "sourceSha256": "a48ee8ed84dc5558e9682097aed3fbfe8ad6bc74506977f579c3d6146dd28e61",
+  "status": "BLOCKED",
+  "checks": [
+    {
+      "name": "offline-calendar",
+      "status": "PASS"
+    },
+    {
+      "name": "offline-notes",
+      "status": "PASS"
+    },
+    {
+      "name": "offline-chat",
+      "status": "PASS"
+    },
+    {
+      "name": "offline-profile",
+      "status": "PASS"
+    },
+    {
+      "name": "installed-qa-controls-present",
+      "status": "PASS"
+    },
+    {
+      "name": "isolated-sql-14-pass-fixture-removed-1",
+      "status": "PASS"
+    },
+    {
+      "name": "isolated-sql-14-pass-fixture-removed-2",
+      "status": "PASS"
+    },
+    {
+      "name": "diagnostics-close-reopen",
+      "status": "PASS"
+    }
+  ],
+  "cleanupConfirmed": true,
+  "limits": [
+    "Emulator UI regressions, not physical-phone/audio/battery certification.",
+    "Only synthetic owned tasks may be changed with explicit fixture-write opt-in.",
+    "Any synthetic Chat messages are retained; history is never bulk-cleared.",
+    "No radio/permission/time changes, database dumps, uninstall or data clear."
+  ],
+  "environment": {
+    "kind": "Android emulator",
+    "api": 37,
+    "abi": "x86_64",
+    "pageSizeBytes": 16384,
+    "airplaneMode": true
+  },
+  "failureCode": "adb-unavailable-or-timeout"
+}

@@ -45,14 +45,15 @@ export const behaviorStore = {
    */
   getBehaviorLogs: (userId: string, eventType?: string): BehaviorLog[] => {
     try {
-      // In JS fallback db, the mock parser returns all user_behavior_logs. We filter by user_id and event_type in memory.
-      const result = db.executeSync(`SELECT * FROM user_behavior_logs`);
-      let rows = result.rows.filter((row: any) => row.user_id === userId);
-      if (eventType) {
-        rows = rows.filter((row: any) => row.event_type === eventType);
-      }
-      
-      return rows.map((row: any) => ({
+      // Call and task events make this table grow, so the owner and type are always filtered in SQL.
+      const result = eventType
+        ? db.executeSync(
+            'SELECT * FROM user_behavior_logs WHERE user_id=? AND event_type=? ORDER BY created_at ASC',
+            [userId, eventType],
+          )
+        : db.executeSync('SELECT * FROM user_behavior_logs WHERE user_id=? ORDER BY created_at ASC', [userId]);
+
+      return result.rows.map((row: any) => ({
         id: row.id,
         userId: row.user_id,
         eventType: row.event_type,
@@ -90,14 +91,12 @@ export const behaviorStore = {
    */
   getLatestFeatureSnapshot: (userId: string, featureType: string): FeatureSnapshot | null => {
     try {
-      // For fallback db compatibility, fetch all snapshots and filter/sort in memory
-      const result = db.executeSync(`SELECT * FROM ml_feature_snapshots`);
-      const filtered = result.rows
-        .filter((row: any) => row.user_id === userId && row.feature_type === featureType)
-        .sort((a: any, b: any) => b.computed_at.localeCompare(a.computed_at));
-
-      if (filtered.length > 0) {
-        const row = filtered[0];
+      const result = db.executeSync(
+        'SELECT * FROM ml_feature_snapshots WHERE user_id=? AND feature_type=? ORDER BY computed_at DESC LIMIT 1',
+        [userId, featureType],
+      );
+      const row = result.rows[0] as any;
+      if (row) {
         return {
           id: row.id,
           userId: row.user_id,

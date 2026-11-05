@@ -22,6 +22,7 @@ import {
   disconnectCall,
   getReminderPreferences,
   manualAcknowledgeCall,
+  manualCallBackCall,
   manualSnoozeCall,
   prepareCallSpeech,
 } from '../../scheduler';
@@ -246,7 +247,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
       else await answerCall(reminderId, userId, microphoneGranted, speechProvider);
       if (!microphoneGranted) {
         setReply(
-          'Microphone permission is unavailable. Use Acknowledge or Snooze below.',
+          'Microphone permission is unavailable. Use the buttons below.',
         );
       }
     } catch (error) {
@@ -280,6 +281,15 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
     },
     [reminderId, userId],
   );
+
+  const handleManualCallBack = useCallback(async (): Promise<void> => {
+    try {
+      await manualCallBackCall(reminderId, userId);
+    } catch (error) {
+      console.error('[CallScreen] Could not schedule the call back:', error);
+      setReply('LAFINA could not schedule the call back. Please try again.');
+    }
+  }, [reminderId, userId]);
 
   const handleManualAcknowledge = useCallback(async (): Promise<void> => {
     try {
@@ -446,6 +456,7 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
             resolution={resolution}
             snoozeMinutes={snoozeMinutes}
             onSnooze={handleManualSnooze}
+            onCallBack={handleManualCallBack}
             onAcknowledge={handleManualAcknowledge}
             onDecline={handleDecline}
             transcript={transcript}

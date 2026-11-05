@@ -142,6 +142,20 @@ export const tasksStore = {
     }
   },
 
+  /** Reads one live task owned by this account, or null when it is gone. */
+  getTaskById: (id: string, userId: string): Task | null => {
+    try {
+      const row = db.executeSync(
+        'SELECT * FROM tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL',
+        [id, userId],
+      ).rows?.[0];
+      return row ? mapRowToTask(row) : null;
+    } catch (error) {
+      console.error('Error fetching task:', error);
+      return null;
+    }
+  },
+
   insertTask: (
     task: Omit<Task, 'createdAt' | 'updatedAt' | 'deletedAt'>,
     executor?: DatabaseTransaction,

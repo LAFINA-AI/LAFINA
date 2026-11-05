@@ -8,10 +8,10 @@ import { Alert,AppState } from 'react-native';
 import type { Task, Event } from '../../../../storage';
 import { tasksStore, remindersStore } from '../../../../storage';
 import { ScheduleItemForm, ScheduleItemModalState } from '../types';
-import { generateId } from '../../../../utils';
+import { describeConflicts, generateId } from '../../../../utils';
 import {personalMemoryStore} from '../../../../storage/personalMemoryStore';
 import type {EventMemoryOffer} from '../../../../storage/personalMemoryStore';
-import { getReminderPreferences, scheduleReminderAlarm } from '../../../../scheduler';
+import { checkScheduleConflicts, getReminderPreferences, scheduleReminderAlarm } from '../../../../scheduler';
 
 interface UseScheduleItemModalOptions {
   userId: string;
@@ -153,6 +153,7 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
       }
     };
 
+    const persist = (): void => {
     try { db.transactionSync(tx=>{
     if (modalType === 'task') {
       if (editingItem) {
@@ -215,6 +216,33 @@ export const useScheduleItemModal = (options: UseScheduleItemModalOptions): Sche
     setVisible(false);
     onSaved();
     onRefresh();
+    };
+
+    // A new time, or a new item, is worth a warning. Renaming an item that already overlaps is not.
+    let warning: string | null = null;
+    if (modalType === 'task') {
+      const task = editingItem as Task | null;
+      const moved = !task || task.dueDate !== taskDate || task.dueTime !== taskTime;
+      if (moved && taskDate && taskTime && !task?.isCompleted) {
+        warning = describeConflicts(checkScheduleConflicts(userId, new Date(`${taskDate}T${taskTime}:00`).getTime(), null, task ? { id: task.id } : undefined));
+      }
+    } else {
+      const event = editingItem as Event | null;
+      const moved = !event || event.date !== dateStr || event.startTime !== form.time || event.endTime !== form.endTime;
+      if (moved) {
+        const startMs = eventTime?.startAt ? Date.parse(eventTime.startAt) : new Date(`${dateStr}T${form.time}:00`).getTime();
+        const endMs = eventTime?.endAt ? Date.parse(eventTime.endAt) : new Date(`${form.endDate || dateStr}T${form.endTime}:00`).getTime();
+        warning = describeConflicts(checkScheduleConflicts(userId, startMs, endMs, event ? { id: event.id } : undefined));
+      }
+    }
+    if (warning) {
+      Alert.alert('Time overlap', warning, [
+        { text: 'Go back', style: 'cancel' },
+        { text: 'Save anyway', onPress: persist },
+      ]);
+      return;
+    }
+    persist();
   }, [form, modalType, editingItem, selectedDate, userId, onSaved, onRefresh]);
 
   const handleDelete = useCallback((id: string, type: 'task' | 'event') => {

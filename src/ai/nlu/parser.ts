@@ -1,3 +1,4 @@
+import { parseFindTimeRequest } from './findTime';
 import type { NluResult } from './types';
 
 const TIME_24H_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -550,6 +551,19 @@ export const createFallbackNluResult = (
 ): NluResult => {
   const trimmedCommand = command.trim();
   const lowercaseCommand = trimmedCommand.toLowerCase();
+
+  const findTime = parseFindTimeRequest(trimmedCommand, referenceDate);
+  if (findTime) {
+    return {
+      intent: 'find_time',
+      task: findTime.title,
+      date: null,
+      time: null,
+      duration_minutes: findTime.durationStated ? findTime.durationMinutes : null,
+      status: 'pending',
+      reply: 'Let me look for free time.',
+    };
+  }
 
   const relativeTime = resolveRelativeTime(trimmedCommand, referenceDate);
   const singleTime = extractSingleTimeMatch(trimmedCommand);

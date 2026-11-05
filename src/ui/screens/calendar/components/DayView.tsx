@@ -11,10 +11,12 @@ import {
   buildDayEntries,
   formatLocalDate,
   hourLabel,
+  initialScrollMinutes,
   layoutIntervals,
   minutesToPixels,
 } from '../utils/timeGridLayout';
 import type { DayEntry } from '../utils/timeGridLayout';
+import { describeAcademicEntry, getAcademicEntriesOn } from '../../../../utils';
 import { describeHoliday, getHolidaysOn } from '../utils/philippineHolidays';
 import type { Holiday } from '../utils/philippineHolidays';
 import type { TimeBlock, Task, Event } from '../../../../storage';
@@ -33,6 +35,8 @@ interface DayViewProps {
   getCategoryColor: (cat: string) => string;
   /** The built-in "Holidays in the Philippines" layer, on unless hidden in My Calendars. */
   showHolidays?: boolean;
+  /** The bundled USTP calendar layer, on unless hidden in My Calendars. */
+  showAcademic?: boolean;
 }
 
 /** Room above midnight and below the next midnight, so their labels are not cut in half. */
@@ -40,8 +44,6 @@ const GRID_PADDING = 10;
 const AXIS_WIDTH = 56;
 const LABEL_HEIGHT = 14;
 const GRID_HEIGHT = 24 * HOUR_HEIGHT;
-/** Where the day opens, as on the desktop: most days have nothing before 7 AM. */
-const INITIAL_SCROLL_HOUR = 7;
 
 /** Item tint over the card colour, as on the desktop (`color-mix` 14% light, 25% dark). */
 const tintFor = (color: string, colors: ThemeColors, isDarkMode: boolean): string =>
@@ -65,6 +67,7 @@ export const DayView: React.FC<DayViewProps> = ({
   onAddBlock,
   getCategoryColor,
   showHolidays = true,
+  showAcademic = true,
 }) => {
   const { colors, isDarkMode } = useTheme();
   const scrollRef = useRef<ScrollView>(null);
@@ -76,17 +79,17 @@ export const DayView: React.FC<DayViewProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Open each day at the start of a normal day rather than at midnight.
+  // Open today at the current-time line and any other day at the start of a normal day.
   useEffect(() => {
-    const frame = requestAnimationFrame(() =>
-      scrollRef.current?.scrollTo({ y: minutesToPixels(INITIAL_SCROLL_HOUR * 60), animated: false }),
-    );
+    const y = minutesToPixels(initialScrollMinutes(new Date(`${dateStr}T00:00:00`), new Date()));
+    const frame = requestAnimationFrame(() => scrollRef.current?.scrollTo({ y, animated: false }));
     return () => cancelAnimationFrame(frame);
   }, [dateStr]);
 
   const isToday = dateStr === formatLocalDate(now);
   const allDayTasks = allTasks.filter((task) => task.dueDate === dateStr && !task.dueTime);
   const holidays = showHolidays ? getHolidaysOn(dateStr) : [];
+  const academicEntries = showAcademic ? getAcademicEntriesOn(dateStr) : [];
 
   const entries = useMemo(
     () =>
@@ -114,12 +117,22 @@ export const DayView: React.FC<DayViewProps> = ({
 
   return (
     <ScrollView ref={scrollRef} style={styles.container} testID="day-view">
-      {(holidays.length > 0 || allDayTasks.length > 0) && (
+      {(holidays.length > 0 || academicEntries.length > 0 || allDayTasks.length > 0) && (
         <View style={[styles.allDay, { borderBottomColor: colors.border }]}>
           <Text style={[styles.allDayLabel, { color: colors.textSecondary }]}>All-day</Text>
           <View style={styles.allDayList}>
             {holidays.map((holiday) => (
               <HolidayChip key={holiday.name} holiday={holiday} colors={colors} isDarkMode={isDarkMode} />
+            ))}
+            {academicEntries.map((entry) => (
+              <View
+                key={`${entry.kind}-${entry.startDate}-${entry.name}`}
+                style={[styles.holiday, { backgroundColor: colors.blue, borderColor: colors.blue }]}
+                accessibilityLabel={describeAcademicEntry(entry)}
+                testID="academic-chip"
+              >
+                <Text style={[styles.holidayText, { color: colors.white }]}>{describeAcademicEntry(entry)}</Text>
+              </View>
             ))}
             {allDayTasks.map((task) => {
               const color = getCategoryColor(task.category);

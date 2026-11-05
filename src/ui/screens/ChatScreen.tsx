@@ -1,4 +1,4 @@
-import {getPlannerReply,normalizePlannerRequest,PLANNER_INPUT_GUIDANCE} from '../../ai/nlu/plannerConversation';
+import {getPlannerReply,normalizePlannerRequest,PLANNER_INPUT_GUIDANCE,STARTER_COMMANDS} from '../../ai/nlu/plannerConversation';
 import {CommandGuide} from '../components/CommandGuide';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -29,9 +29,14 @@ import {
 import { useThemedStyles } from '../theme/createThemedStyles';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../contexts/ThemeContext';
-import { generateId } from '../../utils';
+import { extractDeadlines, generateId } from '../../utils';
+import type { DeadlineCandidate } from '../../utils';
 import {useCommandReview} from '../hooks/useCommandReview';
 import {CommandReviewPanel} from '../components/CommandReviewPanel';
+import {FreeTimeChoicesPanel} from '../components/FreeTimeChoicesPanel';
+import {DeadlineSuggestions} from '../components/DeadlineSuggestions';
+import {UndoSnackbar,useUndoOffer} from '../components/UndoSnackbar';
+import {SyncStatusLine} from '../components/chat/SyncStatusLine';
 import {useDraftProtection} from '../hooks/useDraftProtection';
 import type {DraftLeaveGuard,SpeechDraftRequest} from '../hooks/useDraftProtection';
 
@@ -94,6 +99,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   speechDraft,
 }) => {
   const commands=useCommandReview(userId);
+  const undoOffer=useUndoOffer();
+  const [deadlineCandidates,setDeadlineCandidates]=useState<DeadlineCandidate[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [olderCursor,setOlderCursor]=useState<string|null>(null);
   const loadingOlder=useRef(false);
@@ -340,11 +347,11 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     }
   };
 
-  const handleSend = async () => {
-    if (!inputText.trim() || isSending) return;
+  const handleSend = async (text: string = inputText) => {
+    if (!text.trim() || isSending) return;
 
     const epoch=requestEpoch.current;
-    const userText = inputText.trim();
+    const userText = text.trim();
     // A format picked in the composer always means a file. One only guessed
     // from the wording respects an explicit switch to Offline, since making
     // the file sends the conversation to the server.
@@ -353,9 +360,9 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     let request:string;try{request=normalizePlannerRequest(userText);}catch{Alert.alert('Command needs more detail',PLANNER_INPUT_GUIDANCE);return;}
     const nlu=createFallbackNluResult(normalizeTranscript(request));
     const localReply=fileFormat?null:getPlannerReply(request,userId);
-    if (!fileFormat && localReply===null && (nlu.intent==='schedule' || /^(?:note:?(?:\s|$)|complete(?:\s|$)|move\b|reschedule\b|delete\b|remove\b|acknowledge\b|snooze\b)/i.test(request))) {
+    if (!fileFormat && localReply===null && (nlu.intent==='schedule' || nlu.intent==='find_time' || /^(?:note:?(?:\s|$)|complete(?:\s|$)|move\b|reschedule\b|delete\b|remove\b|acknowledge\b|snooze\b)/i.test(request))) {
       const proposal=commands.prepare(userText);
-      if (!proposal.review) Alert.alert('Command needs more detail',proposal.reply);
+      if (!proposal.review && !proposal.choices?.length) Alert.alert('Command needs more detail',proposal.reply);
       Keyboard.dismiss();
       return;
     }
@@ -474,6 +481,21 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     onRefresh();
   };
 
+  /**
+   * Sends a starter command. A write still stops at Review, and any typed draft
+   * is only replaced with the student's say-so.
+   */
+  const handleStarterCommand = (command: string) => {
+    if (isSending) return;
+    acceptText(
+      command,
+      (accepted) => {
+        if (accepted) void handleSend(command);
+      },
+      {title:'Replace your draft?',message:'Keep your current text, or replace it and send this example.'},
+    );
+  };
+
   const handleClearChat = () => {
     Alert.alert(
       'Clear Chat History',
@@ -570,13 +592,26 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         </View>
       </View>
 
+      <SyncStatusLine userId={userId} refreshTrigger={refreshTrigger} />
+
       {/* Message List */}
       {messages.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={[styles.emptyText, themed.emptyText]}>Ask me to schedule events, create tasks, or save notes!</Text>
-          <Text style={[styles.exampleText, themed.exampleText]}>Try: "add task Submit paper by 9:00 PM"</Text>
-          <Text style={[styles.exampleText, themed.exampleText]}>Try: "block 13:00-15:00 for Exam Review"</Text>
-          <Text style={[styles.exampleText, themed.exampleText]}>Try: "note Remind me to call Mom"</Text>
+          <View style={styles.starterChips}>
+            {STARTER_COMMANDS.map((command) => (
+              <TouchableOpacity
+                key={command}
+                style={[styles.starterChip, themed.starterChip]}
+                onPress={() => handleStarterCommand(command)}
+                disabled={isSending}
+                accessibilityRole="button"
+                accessibilityLabel={`Send: ${command}`}
+              >
+                <Text style={[styles.starterChipText, themed.starterChipText]}>{command}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
           {studentPro ? (
             <Text style={[styles.exampleText, themed.exampleText]}>
               Try: "make me a PDF study guide on cell organelles"
@@ -602,6 +637,10 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         />
       )}
 
+      <FreeTimeChoicesPanel offer={commands.offer} onCancel={commands.cancel} onChoose={id=>{
+        const proposal=commands.choose(id);
+        if(!proposal.review) Alert.alert('Choose again',proposal.reply);
+      }} />
       <CommandReviewPanel review={commands.review} onCancel={commands.cancel} onConfirm={()=>{
         const result=commands.confirm();
         if(result.status==='saved') {
@@ -612,9 +651,20 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
             loadChatHistory();
           } catch { /* The command itself has already committed. */ }
           setInputText('');onRefresh();
+          undoOffer.offerUndo(result.undo);
+          if(result.noteBody)setDeadlineCandidates(extractDeadlines(result.noteBody));
         }
-        Alert.alert(result.status==='saved'?'Saved':'Command not saved',result.reply);
+        // A saved change shows its reply in the conversation and offers Undo instead of an alert.
+        if(result.status!=='saved'||!result.undo)Alert.alert(result.status==='saved'?'Saved':'Command not saved',result.reply);
       }} />
+      <UndoSnackbar offer={undoOffer.offer} onDismiss={undoOffer.dismissUndo} onUndone={()=>{
+        try {
+          chatStore.insertMessage({id:generateId('msg'),sessionId:chatStore.ensureDefaultSession(userId),sender:'assistant',content:'Undone.'}, userId);
+          loadChatHistory();
+        } catch { /* The undo itself has already committed. */ }
+        onRefresh();
+      }} />
+      <DeadlineSuggestions userId={userId} candidates={deadlineCandidates} onClose={()=>setDeadlineCandidates([])} onChanged={onRefresh} />
       <CommandGuide visible={guideOpen} onClose={()=>setGuideOpen(false)} onSelect={text=>{
         setGuideOpen(false);acceptText(text,()=>{});
       }}/>
@@ -622,7 +672,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       <ChatInput
         inputText={inputText}
         setInputText={(text)=>{commands.cancel();setInputText(text);}}
-        onSend={handleSend}
+        onSend={() => {void handleSend();}}
         isKeyboardVisible={isKeyboardVisible}
         onOpenFiles={handleOpenFiles}
         filesLocked={!studentPro}
@@ -683,6 +733,8 @@ const getChatThemedStyles = (colors: ThemeColors) => ({
   container: { backgroundColor: colors.background },
   emptyText: { color: colors.textSecondary },
   exampleText: { color: colors.textMuted },
+  starterChip: { backgroundColor: colors.cardBg, borderColor: colors.border },
+  starterChipText: { color: colors.textPrimary },
   assistantBubble: { backgroundColor: colors.cardBg, borderColor: colors.border },
   assistantText: { color: colors.textPrimary },
   assistantTime: { color: colors.textMuted },
@@ -768,6 +820,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 22,
+  },
+  starterChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  starterChip: {
+    minHeight: 40,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  starterChipText: {
+    fontSize: 13,
+    fontFamily: Fonts.body,
   },
   exampleText: {
     fontSize: 12,

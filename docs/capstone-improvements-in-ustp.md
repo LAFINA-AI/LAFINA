@@ -211,7 +211,9 @@ continue by typing instead of becoming stuck or silently switching engines.
 
 **Technical:** Removed fabricated voice totals and inference from note flags/text.
 Account-owned task/note totals use aggregate SQL; read failures remain unavailable.
-Historical voice use displays "Not tracked" rather than a guessed number.
+The third card shows an on-time rate from reminder outcomes (answered without a
+snooze, out of acknowledged plus missed), or "No data" before any reminder has
+finished. Voice use is still not counted, so no number is guessed for it.
 
 **Simple:** Profile statistics reflect recorded information rather than made-up
 activity.

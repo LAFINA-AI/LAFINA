@@ -29,13 +29,24 @@ describe('manual task deadline editing',()=>{
     act(()=>state.openEdit(saved,'task'));act(()=>state.updateField('hasDueDate',false));act(()=>state.save());
     saved=tasksStore.getAllTasks('untimed-owner')[0];expect(saved.dueDate).toBeNull();
   });
-  it('pages undated tasks and opens the exact selected record',()=>{
+  it('keeps undated tasks in a collapsed Inbox that pages and opens the exact record',()=>{
     for(let i=0;i<23;i++)tasksStore.insertTask({id:`u-${i.toString().padStart(2,'0')}`,userId:'untimed-owner',title:`Undated ${i}`,isCompleted:false,priority:'Medium',category:'Work'});
-    const edit=jest.fn(),close=jest.fn();act(()=>{tree.update(<ThemeProvider userId="untimed-owner"><UndatedTasks userId="untimed-owner" visible onClose={close} onEdit={edit}/></ThemeProvider>);});
-    expect(tree.root.findAllByType(TouchableOpacity).filter(b=>String(b.props.accessibilityLabel).startsWith('Edit undated'))).toHaveLength(20);
-    const next=tree.root.findAllByType(TouchableOpacity).find(b=>b.findAllByType(require('react-native').Text).some(t=>t.props.children==='Next tasks'))!;act(()=>next.props.onPress());
-    const buttons=tree.root.findAllByType(TouchableOpacity).filter(b=>String(b.props.accessibilityLabel).startsWith('Edit undated'));expect(buttons).toHaveLength(3);
-    act(()=>buttons[0].props.onPress());expect(edit.mock.calls[0][0].id).toBe('u-20');expect(close).toHaveBeenCalled();
+    const edit=jest.fn();act(()=>{tree.update(<ThemeProvider userId="untimed-owner"><UndatedTasks userId="untimed-owner" refreshTrigger={0} onEdit={edit}/></ThemeProvider>);});
+    const rows=()=>tree.root.findAllByType(TouchableOpacity).filter(b=>String(b.props.accessibilityLabel).startsWith('Edit undated'));
+    const header=()=>tree.root.findAllByType(TouchableOpacity).find(b=>String(b.props.accessibilityLabel).startsWith('Inbox'))!;
+    expect(rows()).toHaveLength(0);expect(header().props.accessibilityLabel).toBe('Inbox, 20+ tasks without a date');
+    act(()=>header().props.onPress());expect(rows()).toHaveLength(20);
+    const more=tree.root.findAllByType(TouchableOpacity).find(b=>b.findAllByType(require('react-native').Text).some(t=>t.props.children==='Show more tasks'))!;act(()=>more.props.onPress());
+    expect(rows()).toHaveLength(23);expect(header().props.accessibilityLabel).toBe('Inbox, 23 tasks without a date');
+    act(()=>rows()[20].props.onPress());expect(edit.mock.calls[0][0].id).toBe('u-20');
+    act(()=>header().props.onPress());expect(rows()).toHaveLength(0);
+  });
+  it('hides an empty Inbox and picks up a new task on refresh',()=>{
+    const render=(refreshTrigger:number)=><ThemeProvider userId="untimed-owner"><UndatedTasks userId="untimed-owner" refreshTrigger={refreshTrigger} onEdit={jest.fn()}/></ThemeProvider>;
+    act(()=>{tree.update(render(0));});expect(tree.root.findAll(n=>n.props.testID==='undated-inbox')).toHaveLength(0);
+    tasksStore.insertTask({id:'late',userId:'untimed-owner',title:'Late',isCompleted:false,priority:'Medium',category:'Work'});
+    act(()=>{tree.update(render(1));});expect(tree.root.findAll(n=>n.props.testID==='undated-inbox').length).toBeGreaterThan(0);
+    expect(tree.root.findAllByType(TouchableOpacity).find(b=>String(b.props.accessibilityLabel).startsWith('Inbox'))!.props.accessibilityLabel).toBe('Inbox, 1 task without a date');
   });
   it('retains explicit event creation, editing, deletion and form dismissal',()=>{
     const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});
@@ -56,7 +67,8 @@ describe('manual task deadline editing',()=>{
     act(()=>state.openNew('task'));expect(state.memoryOffer).toBeNull();
   });
   it('saves an explicit overnight range and rejects nonexistent or ambiguous zone times',()=>{
-    const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});
+    // An overnight event lands in quiet hours, so the person is warned and chooses to save it.
+    const alert=jest.spyOn(Alert,'alert').mockImplementation((_title,_message,buttons)=>{buttons?.find(button=>button.text==='Save anyway')?.onPress?.();});
     act(()=>state.openNew('event'));act(()=>{state.updateField('title','Night event');state.updateField('time','23:00');state.updateField('endTime','01:00');state.updateField('endDate','2026-11-04');state.updateField('timeZone','Asia/Manila');});act(()=>state.save());
     const event=tasksStore.getAllEvents('untimed-owner').find(item=>item.title==='Night event')!;expect(event.endDate).toBe('2026-11-04');expect(event.startAt).toBe('2026-11-03T15:00:00.000Z');
     act(()=>state.openNew('event'));act(()=>{state.updateField('title','Gap');state.updateField('startDate','2026-03-08');state.updateField('time','02:30');state.updateField('endDate','2026-03-08');state.updateField('endTime','04:00');state.updateField('timeZone','America/New_York');});act(()=>state.save());expect(state.visible).toBe(true);expect(alert).toHaveBeenLastCalledWith('Check event time',expect.stringMatching(/does not exist/));alert.mockRestore();

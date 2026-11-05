@@ -4,6 +4,7 @@ import {initializeCommandSchema} from './commandSchema';
 import {initializeEventTimeSchema} from './eventTimeSchema';
 import {initializeNotesSearchSchema} from './notesSearchSchema';
 import { seedLocalDemoAccounts } from './demoSeed';
+import { initializeBehaviorSchema } from './behaviorSchema';
 import { buildProfileSyncPayload } from './profileSyncPayload';
 import type {
   SyncEntityType,
@@ -18,7 +19,7 @@ import { generateId } from '../utils';
  * entity-type negotiation for sync.
  * 18: scheduling-only AI guardrail preference on `user_preferences`.
  */
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 type LegacySyncRow = Record<string, unknown>;
 
@@ -368,6 +369,7 @@ const SCHEMA_INDEXES: readonly string[] = [
   'CREATE INDEX IF NOT EXISTS idx_messages_session_created ON messages (session_id, created_at)',
   // ML training data: WHERE user_id = ? AND created_at >= ?
   'CREATE INDEX IF NOT EXISTS idx_user_behavior_logs_user_created ON user_behavior_logs (user_id, created_at)',
+  'CREATE INDEX IF NOT EXISTS idx_user_behavior_logs_user_type_created ON user_behavior_logs (user_id, event_type, created_at)',
   // ML feature vectors: WHERE user_id = ? AND feature_type = ?
   'CREATE INDEX IF NOT EXISTS idx_ml_feature_snapshots_user_type ON ml_feature_snapshots (user_id, feature_type)',
   // Sync outbox drain: WHERE status = 'pending' ORDER BY created_at
@@ -1612,6 +1614,10 @@ export const initDatabase = async (): Promise<void> => {
           // Profile photo: a path under the app's own storage, not the
           // picker's temporary one, so it survives a restart.
           try { tx.executeSync('ALTER TABLE users ADD COLUMN avatar_uri TEXT'); } catch {}
+        }
+
+        if (currentVersion < 24) {
+          initializeBehaviorSchema(tx);
         }
 
         // Indexes are created after the tables so an existing database that predates

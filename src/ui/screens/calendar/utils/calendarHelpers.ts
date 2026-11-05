@@ -52,6 +52,30 @@ export const getHeaderTitle = (
   return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 };
 
+/**
+ * The seven days of the week holding `date`, in display order.
+ *
+ * @param date Any day in the wanted week.
+ * @param weekStartsMonday The student's week-start setting; otherwise weeks start on Sunday.
+ * @returns Seven local midnights, from the first day of that week.
+ */
+export const getWeekDays = (date: Date, weekStartsMonday: boolean): Date[] => {
+  const offset = weekStartsMonday ? (date.getDay() + 6) % 7 : date.getDay();
+  return Array.from(
+    { length: 7 },
+    (_, index) => new Date(date.getFullYear(), date.getMonth(), date.getDate() - offset + index),
+  );
+};
+
+/** Marks the calendar's generated ID for one occurrence of a recurring item. */
+const OCCURRENCE_ID_SEPARATOR = '_occur_';
+
+/**
+ * The stored row behind a calendar item. Occurrences of a recurring item have a
+ * generated ID that matches no row, so a write must use this instead.
+ */
+export const baseOccurrenceId = (id: string): string => id.split(OCCURRENCE_ID_SEPARATOR)[0];
+
 /** Get days in month with the index of the first day. */
 export const getDaysInMonth = (date: Date, weekStartsMonday: boolean) => {
   const year = date.getFullYear();

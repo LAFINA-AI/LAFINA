@@ -1,4 +1,4 @@
-import { remindersStore } from '../storage';
+import { callLogStore, remindersStore } from '../storage';
 import {db} from '../storage/database';
 import type {DatabaseTransaction} from '../storage/database';
 import {deliveryStore, deliveryIdentityKey} from '../storage/deliveryStore';
@@ -46,7 +46,10 @@ export const snoozeReminderAction = async (
   userId: string,
   minutes: number,
   expectedDeliveryKey?: string,
+  options?: {callBack?: boolean},
 ): Promise<ReminderActionResult> => {
+  const callBack = options?.callBack === true;
+  const said = callBack ? `I will call you back in ${minutes} minutes.` : `Snoozed for ${minutes} minutes.`;
   const reminder = remindersStore.getReminderById(reminderId);
   if (!reminder || reminder.userId !== userId) {
     return rejection('Reminder was not found.');
@@ -65,6 +68,7 @@ export const snoozeReminderAction = async (
     try {
       db.transactionSync(tx => {
         assertCurrentDelivery(reminderId,userId,expectedDeliveryKey,tx);
+        if (callBack) callLogStore.markCallBack(reminderId,userId,tx);
         remindersStore.snoozeReminderAt(reminderId,triggerAt,tx);
       });
     } catch { return rejection('This reminder could not be changed. Open its current alert or retry.'); }
@@ -72,11 +76,12 @@ export const snoozeReminderAction = async (
     try { await scheduleReminderAlarm(reminderId,reminder.task,triggerAt); }
     catch { deliveryPending=true; }
     try { await finishNativeIncomingCall(reminderId,expectedDeliveryKey); } catch { /* Durable retry retains cleanup metadata. */ }
-    return {ok:true,outcome:'snoozed',triggerAt,message:deliveryPending ? `Snoozed for ${minutes} minutes. Android delivery needs recovery; reopen LAFINA to retry.` : `Snoozed for ${minutes} minutes.`, ...(deliveryPending ? {deliveryPending:true} : {})};
+    return {ok:true,outcome:'snoozed',triggerAt,message:deliveryPending ? `${said} Android delivery needs recovery; reopen LAFINA to retry.` : said, ...(deliveryPending ? {deliveryPending:true} : {})};
   }
   try {
     await scheduleReminderAlarm(reminder.id, reminder.task, triggerAt);
     try {
+      if (callBack) callLogStore.markCallBack(reminder.id, userId);
       remindersStore.snoozeReminderAt(reminder.id, triggerAt);
     } catch (databaseError) {
       await cancelReminderAlarm(reminder.id);
@@ -97,7 +102,7 @@ export const snoozeReminderAction = async (
     ok: true,
     outcome: 'snoozed',
     triggerAt,
-    message: `Snoozed for ${minutes} minutes.`,
+    message: said,
   };
 };
 

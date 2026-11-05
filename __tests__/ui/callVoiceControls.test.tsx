@@ -68,6 +68,7 @@ const renderCallView = (
     resolution={resolution}
     snoozeMinutes={10}
     onSnooze={onSnooze}
+    onCallBack={jest.fn()}
     onAcknowledge={jest.fn()}
     onDecline={jest.fn()}
     transcript=""
@@ -93,7 +94,7 @@ describe('answered call voice controls', () => {
     });
 
     expect(getRenderedText(renderer)).toContain(
-      'Say Acknowledge or Snooze at any time',
+      'Say Acknowledge, Snooze or Call me back',
     );
     expect(
       renderer.root.findAll(

@@ -19,6 +19,11 @@ import { Fonts, Shadows } from '../theme';
 import { X, Check, ArrowRight, Mic, CircleAlert } from 'lucide-react-native';
 import {useCommandReview} from '../hooks/useCommandReview';
 import {CommandReviewPanel} from './CommandReviewPanel';
+import {FreeTimeChoicesPanel} from './FreeTimeChoicesPanel';
+import {DeadlineSuggestions} from './DeadlineSuggestions';
+import {UndoSnackbar,useUndoOffer} from './UndoSnackbar';
+import {extractDeadlines} from '../../utils';
+import type {DeadlineCandidate} from '../../utils';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../theme/createThemedStyles';
 import type { ThemeColors } from '../contexts/ThemeContext';
@@ -57,6 +62,8 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   onUseInChat,
 }) => {
   const commands=useCommandReview(userId,visible);
+  const undoOffer=useUndoOffer();
+  const [deadlineCandidates,setDeadlineCandidates]=useState<DeadlineCandidate[]>([]);
   const {cancel:cancelReview}=commands;
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   /** What was heard, live while talking and final once the mic is let go. */
@@ -359,7 +366,9 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
 
   return (
     <>
-    <CommandReviewPanel review={commands.review} onCancel={cancelReview} onConfirm={()=>{const result=commands.confirm();setAiReply(result.reply);if(result.status==='saved'){savedRef.current=true;inputRef.current='';setInputText('');setTranscript('');setVoiceState('success');onSaved?.();} }} />
+    <FreeTimeChoicesPanel offer={commands.offer} onCancel={cancelReview} onChoose={id=>{setAiReply(commands.choose(id).reply);}} />
+    <CommandReviewPanel review={commands.review} onCancel={cancelReview} onConfirm={()=>{const result=commands.confirm();setAiReply(result.reply);if(result.status==='saved'){savedRef.current=true;inputRef.current='';setInputText('');setTranscript('');setVoiceState('success');onSaved?.();undoOffer.offerUndo(result.undo);if(result.noteBody)setDeadlineCandidates(extractDeadlines(result.noteBody));} }} />
+    <DeadlineSuggestions userId={userId} candidates={deadlineCandidates} onClose={()=>setDeadlineCandidates([])} onChanged={onSaved} />
     <Modal
       transparent
       animationType="fade"
@@ -524,6 +533,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
           }}><Text style={{color:colors.blue}}>Use draft in Chat</Text></TouchableOpacity>:null}
         </TouchableOpacity>
       </TouchableOpacity>
+      <UndoSnackbar offer={undoOffer.offer} onDismiss={undoOffer.dismissUndo} onUndone={()=>{setAiReply('Undone. Nothing from that command is kept.');setVoiceState('idle');onSaved?.();}} />
     </Modal>
     </>
   );

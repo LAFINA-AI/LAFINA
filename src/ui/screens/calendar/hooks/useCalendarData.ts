@@ -13,6 +13,7 @@ import { pick, isErrorWithCode, errorCodes } from '@react-native-documents/picke
 import RNFS from 'react-native-fs';
 import Share from 'react-native-share';
 import { formatStoredDate } from '../../../../utils/dateFormat';
+import { getWeekDays } from '../utils/calendarHelpers';
 import { Alert } from 'react-native';
 import {
   persistImportedCalendarBatch,
@@ -57,15 +58,8 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
   activeUserIdRef.current = userId;
 
   const generateWeekDays = useCallback(() => {
-    const days: Date[] = [];
-    const base = new Date(selectedDate);
-    for (let i = -3; i <= 3; i++) {
-      const d = new Date(base);
-      d.setDate(base.getDate() + i);
-      days.push(d);
-    }
-    setWeekDays(days);
-  }, [selectedDate]);
+    setWeekDays(getWeekDays(selectedDate, weekStartsMonday));
+  }, [selectedDate, weekStartsMonday]);
 
   const loadSettings = useCallback(() => {
     const is24h = userStore.get24HourFormat(userId);
@@ -94,11 +88,10 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
 
   const getViewRange = useCallback((): { start: Date; end: Date } => {
     if (viewMode === 'week') {
-      const start = new Date(selectedDate);
-      start.setDate(selectedDate.getDate() - 3);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(selectedDate);
-      end.setDate(selectedDate.getDate() + 3);
+      // Must match the strip above, or a visible day could have no data.
+      const days = getWeekDays(selectedDate, weekStartsMonday);
+      const start = days[0];
+      const end = new Date(days[6]);
       end.setHours(23, 59, 59, 999);
       return { start, end };
     } else {
@@ -109,7 +102,7 @@ export const useCalendarData = (options: UseCalendarDataOptions): CalendarData &
       end.setHours(23, 59, 59, 999);
       return { start, end };
     }
-  }, [viewMode, selectedDate, currentDate]);
+  }, [viewMode, selectedDate, currentDate, weekStartsMonday]);
 
   const readWindow=useCallback(()=>{
     const range=getViewRange();

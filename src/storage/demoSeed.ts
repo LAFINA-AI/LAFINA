@@ -1,12 +1,15 @@
 import { db } from './database';
 import { hashPassword, normalizeEmail } from './authUtils';
 import { businessStore } from './businessStore';
+import { deliveryStore } from './deliveryStore';
 
 export const DEMO_IDS = {
   BIZ_ID: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   MANAGER_ID: '11111111-1111-4111-a111-111111111111',
   ALICE_ID: '22222222-2222-4222-a222-222222222222',
   BOB_ID: '33333333-3333-4333-a333-333333333333',
+  /** A plain student account, so the sample history can be seen on the student screens. */
+  STUDENT_ID: '66666666-6666-4666-a666-666666666666',
 };
 
 export const DEMO_CREDENTIALS = {
@@ -14,6 +17,7 @@ export const DEMO_CREDENTIALS = {
   MANAGER_EMAIL: 'manager@lafina.ph',
   ALICE_EMAIL: 'alice@lafina.ph',
   BOB_EMAIL: 'bob@lafina.ph',
+  STUDENT_EMAIL: 'demo.student@lafina.ph',
 };
 
 /**
@@ -41,6 +45,12 @@ export const seedLocalDemoAccounts = async (): Promise<void> => {
       id: DEMO_IDS.BOB_ID,
       username: 'Bob Santos (Hardware Specialist)',
       email: DEMO_CREDENTIALS.BOB_EMAIL,
+      role: 'student',
+    },
+    {
+      id: DEMO_IDS.STUDENT_ID,
+      username: 'Demo Student (sample data)',
+      email: DEMO_CREDENTIALS.STUDENT_EMAIL,
       role: 'student',
     },
   ];
@@ -347,4 +357,110 @@ export const seedLocalDemoAccounts = async (): Promise<void> => {
       now,
     ]
   );
+
+  // 6. Labelled sample call history, only while the demo student is the signed-in account.
+  const active = db.executeSync('SELECT user_id FROM active_session LIMIT 1').rows?.[0]?.user_id;
+  if (active === DEMO_IDS.STUDENT_ID) seedDemoAdherenceSafely();
+};
+
+const DEMO_REMINDER_PREFIX = 'demo_rem_';
+const DEMO_LOG_PREFIX = 'demo_beh_';
+const DEMO_HISTORY_MAX_AGE_MS = 3 * 24 * 3600 * 1000;
+const DEMO_RISK_TASK_ID = 'demo_task_morning_lab';
+const DEMO_RISK_REMINDER_ID = `${DEMO_REMINDER_PREFIX}upcoming`;
+
+/** Sample data must never stop the app from opening or an account from signing in. */
+export const seedDemoAdherenceSafely = (): void => {
+  try {
+    seedDemoAdherence();
+  } catch (error) {
+    console.warn('[DemoSeed] Sample call history was not seeded:', error);
+  }
+};
+
+/** The only accounts that may ever hold seeded call history. */
+export const isDemoUser = (userId: string): boolean =>
+  userId === DEMO_IDS.MANAGER_ID || userId === DEMO_IDS.ALICE_ID || userId === DEMO_IDS.BOB_ID || userId === DEMO_IDS.STUDENT_ID;
+
+const localIso = (daysFromToday: number, hour: number, base: Date): string => {
+  const date = new Date(base);
+  date.setDate(date.getDate() + daysFromToday);
+  date.setHours(hour, 0, 0, 0);
+  return date.toISOString();
+};
+
+/**
+ * Seeds labelled sample call history for the demo student, so the call log, the recap and the
+ * risk banner can be shown without a long pilot. In this history 8 AM calls are usually missed
+ * and later ones are usually answered. Every title starts with "Demo:", and the screens say so too.
+ */
+export const seedDemoAdherence = (nowMs: number = Date.now()): void => {
+  const userId = DEMO_IDS.STUDENT_ID;
+  const newest = db.executeSync(
+    'SELECT MAX(created_at) AS at FROM user_behavior_logs WHERE user_id=? AND id LIKE ?',
+    [userId, `${DEMO_LOG_PREFIX}%`],
+  ).rows?.[0]?.at;
+  if (typeof newest === 'string' && nowMs - Date.parse(newest) < DEMO_HISTORY_MAX_AGE_MS) return;
+
+  const base = new Date(nowMs);
+  const nowIso = base.toISOString();
+  db.transactionSync(tx => {
+    tx.executeSync('DELETE FROM user_behavior_logs WHERE user_id=? AND id LIKE ?', [userId, `${DEMO_LOG_PREFIX}%`]);
+    tx.executeSync('DELETE FROM reminders WHERE user_id=? AND id LIKE ?', [userId, `${DEMO_REMINDER_PREFIX}%`]);
+    tx.executeSync('DELETE FROM tasks WHERE user_id=? AND id=?', [userId, DEMO_RISK_TASK_ID]);
+
+    const hours = [8, 13, 17, 20];
+    for (let index = 0; index < 44; index += 1) {
+      const hour = hours[index % hours.length];
+      const daysAgo = 1 + Math.floor(index / hours.length);
+      const usuallyMissed = hour === 8;
+      const offPattern = usuallyMissed ? index % 20 === 0 : index % 9 === 0;
+      const missed = usuallyMissed !== offPattern;
+      const snoozed = !missed && index % 7 === 0;
+      const scheduledAt = localIso(-daysAgo, hour, base);
+      const id = `${DEMO_REMINDER_PREFIX}${index}`;
+      const status = missed ? 'missed' : 'acknowledged';
+      tx.executeSync(
+        `INSERT INTO reminders(id,user_id,task,description,scheduled_at,trigger_at,status,snooze_count,created_at,updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?)`,
+        [id, userId, `Demo: sample reminder ${index + 1}`, 'Sample data for the demo account', scheduledAt, scheduledAt, status, snoozed ? 1 : 0, scheduledAt, scheduledAt],
+      );
+      tx.executeSync(
+        `INSERT INTO user_behavior_logs(id,user_id,event_type,event_key,event_value,created_at,updated_at)
+         VALUES(?,?,'call_outcome',?,?,?,?)`,
+        [`${DEMO_LOG_PREFIX}${index}`, userId, id, status, scheduledAt, scheduledAt],
+      );
+      if (snoozed) {
+        const snoozedAt = new Date(Date.parse(scheduledAt) - 5 * 60_000).toISOString();
+        tx.executeSync(
+          `INSERT INTO user_behavior_logs(id,user_id,event_type,event_key,event_value,created_at,updated_at)
+           VALUES(?,?,'call_outcome',?,'snoozed',?,?)`,
+          [`${DEMO_LOG_PREFIX}snooze_${index}`, userId, id, snoozedAt, snoozedAt],
+        );
+      }
+      if (!missed) {
+        tx.executeSync(
+          `INSERT INTO user_behavior_logs(id,user_id,event_type,event_key,event_value,created_at,updated_at)
+           VALUES(?,?,'call_response',?,?,?,?)`,
+          [`${DEMO_LOG_PREFIX}reply_${index}`, userId, id, 'Acknowledge (demo reply)', scheduledAt, scheduledAt],
+        );
+      }
+    }
+
+    const dueAt = localIso(1, 8, base);
+    const triggerAt = new Date(Date.parse(dueAt) - 15 * 60_000).toISOString();
+    const dueDate = new Date(dueAt);
+    const pad = (value: number) => String(value).padStart(2, '0');
+    tx.executeSync(
+      `INSERT INTO tasks(id,user_id,title,due_date,due_time,is_completed,priority,category,created_at,updated_at)
+       VALUES(?,?,?,?,?,0,'Medium','Work',?,?)`,
+      [DEMO_RISK_TASK_ID, userId, 'Demo: 8 AM lab report', `${dueDate.getFullYear()}-${pad(dueDate.getMonth() + 1)}-${pad(dueDate.getDate())}`, '08:00', nowIso, nowIso],
+    );
+    tx.executeSync(
+      `INSERT INTO reminders(id,user_id,task,description,scheduled_at,trigger_at,status,snooze_count,created_at,updated_at)
+       VALUES(?,?,?,?,?,?,'pending',0,?,?)`,
+      [DEMO_RISK_REMINDER_ID, userId, 'Demo: 8 AM lab report', 'Sample data for the demo account', dueAt, triggerAt, nowIso, nowIso],
+    );
+    deliveryStore.linkSource(DEMO_RISK_REMINDER_ID, 'task', DEMO_RISK_TASK_ID, tx);
+  });
 };

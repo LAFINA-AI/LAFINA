@@ -6,6 +6,7 @@ const VALID_INTENTS: readonly NluIntent[] = [
   'cancel',
   'out_of_scope',
   'acknowledge',
+  'find_time',
 ];
 
 const VALID_STATUSES: readonly NluStatus[] = ['success', 'rejected', 'pending'];

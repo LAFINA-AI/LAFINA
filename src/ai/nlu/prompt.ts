@@ -21,7 +21,7 @@ const GENERAL_INQUIRY_RULES = [
 ];
 
 const OUTPUT_SCHEMA = `{
-  "intent": "schedule | snooze | cancel | out_of_scope | acknowledge",
+  "intent": "schedule | snooze | cancel | out_of_scope | acknowledge | find_time",
   "task": "string or null",
   "date": "ISO 8601 date string or null",
   "time": "HH:MM 24-hour format or null",
@@ -52,6 +52,8 @@ export const buildNluPrompt = (
     'Do not include markdown, explanations, or extra keys.',
     `Today is ${today}. Resolve relative dates using this date.`,
     'Use intent "schedule" when creating a task or time block.',
+    'Use intent "find_time" when the user asks you to find free time. Put what it is for in task and the length in duration_minutes, leave date and time null, and use status "pending".',
+    'Example: "find me 2 hours to study for Calculus this week" gives {"intent":"find_time","task":"Study for Calculus","date":null,"time":null,"duration_minutes":120,"status":"pending","reply":"Let me look for free time."}',
     'Use duration_minutes only when the user requested a time block, class, study session, meeting, or other blocked calendar span.',
     'Normalize compact clock text: 415pm means 16:15 and 300pm means 15:00.',
     'Resolve an explicit month and day, such as July 15, to an ISO local calendar date.',

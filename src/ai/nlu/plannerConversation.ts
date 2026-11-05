@@ -14,8 +14,12 @@ export const COMMAND_GUIDE:readonly CommandGuideExample[]=[
   {command:'Add task Read chapter 5',explanation:'Review an undated task without inventing a reminder.',readOnly:false},
   {command:'Add event Study group tomorrow at 3pm for 60 minutes',explanation:'Review an event and its reminder.',readOnly:false},
   {command:'Note: Questions for my adviser',explanation:'Review a literal note before saving.',readOnly:false},
+  {command:'Find me 2 hours to study for Calculus this week',explanation:'Choose one of three free times, then review it before saving.',readOnly:false},
 ];
-const action=/^(?:schedule|set|remind|add|create|block|move|reschedule|complete|delete|remove|snooze|acknowledge|show|list)\b/i;
+const STARTER_COMMAND_TEXT=new Set(['What are my tasks today?','Show agenda tomorrow','Schedule study tomorrow at 7pm','Add task Read chapter 5']);
+/** Tested guide commands offered as tappable chips in an empty Chat. */
+export const STARTER_COMMANDS:readonly string[]=COMMAND_GUIDE.map(example=>example.command).filter(command=>STARTER_COMMAND_TEXT.has(command));
+const action=/^(?:schedule|set|remind|add|create|block|move|reschedule|complete|delete|remove|snooze|acknowledge|show|list|find)\b/i;
 
 /** Normalizes request framing only; quoted titles and literal note bodies stay intact. */
 export const normalizePlannerRequest=(input:string):string=>{

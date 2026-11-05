@@ -4,7 +4,7 @@ import {Alert} from 'react-native';
 import {pick} from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 import Share from 'react-native-share';
-import {db,initDatabase,tasksStore,timeBlocksStore} from '../../src/storage';
+import {db,initDatabase,tasksStore,timeBlocksStore,userStore} from '../../src/storage';
 import {importedBatchesStore} from '../../src/storage/importedBatchesStore';
 import {useCalendarData} from '../../src/ui/screens/calendar/hooks/useCalendarData';
 
@@ -44,6 +44,22 @@ describe('calendar window reads and retained import/export controls',()=>{
     act(()=>calendar.handleGoToToday());expect(calendar.selectedDate.getDate()).toBe(3);
     await act(async()=>calendar.handleToggleVisibility('main',false));expect(calendar.tasks).toEqual([]);
     await act(async()=>calendar.handleToggleVisibility('main',true));expect(calendar.tasks.length).toBeGreaterThan(0);
+  });
+  it('loads data for every day the week strip shows, under either week start',async()=>{
+    const add=(id:string,dueDate:string)=>tasksStore.insertTask({id,userId:'window-user',title:id,dueDate,dueTime:'09:00',isCompleted:false,priority:'Medium',category:'Work'});
+    add('sunday-first','2026-11-01');add('saturday-last','2026-11-07');add('sunday-after','2026-11-08');
+    userStore.setWeekStartsMonday('window-user',false);
+    await render();
+    expect(calendar.weekDays).toHaveLength(7);
+    expect(calendar.weekDays[0].getDate()).toBe(1);expect(calendar.weekDays[6].getDate()).toBe(7);
+    expect(calendar.allTasks.map(task=>task.id)).toEqual(expect.arrayContaining(['sunday-first','saturday-last']));
+    expect(calendar.allTasks.map(task=>task.id)).not.toContain('sunday-after');
+    await act(async()=>tree.unmount());
+    userStore.setWeekStartsMonday('window-user',true);
+    await render();
+    expect(calendar.weekDays[0].getDate()).toBe(2);expect(calendar.weekDays[6].getDate()).toBe(8);
+    expect(calendar.allTasks.map(task=>task.id)).toEqual(expect.arrayContaining(['saturday-last','sunday-after']));
+    userStore.setWeekStartsMonday('window-user',false);
   });
   it('expands overnight recurrence in its saved timezone and retains the prior-day tail',async()=>{
     tasksStore.insertEvent({id:'overnight-series',userId:'window-user',title:'Night series',date:'2026-10-26',startTime:'23:00',endTime:'01:00',endDate:'2026-10-27',timeZone:'Asia/Manila',recurrenceRule:'FREQ=WEEKLY'});

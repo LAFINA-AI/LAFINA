@@ -1,3 +1,4 @@
+export { OverdueActionsSheet } from './OverdueActionsSheet';
 export { WeekView } from './WeekView';
 export { MonthView } from './MonthView';
 export { DayView } from './DayView';

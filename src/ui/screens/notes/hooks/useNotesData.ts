@@ -9,14 +9,16 @@ import { FilterType } from '../types';
 import {
   applyNoteFormat,
   continueListOnNewline,
+  deriveNoteTitle,
   extractChecklistItems,
   generateId,
   isBodyEmpty,
   isHtmlBody,
   noteBodyToMarkdown,
   toggleChecklistItem,
+  extractDeadlines,
 } from '../../../../utils';
-import type { NoteFormat } from '../../../../utils';
+import type { DeadlineCandidate, NoteFormat } from '../../../../utils';
 import { registerCustomCategoryColor } from '../../../theme/categoryColors';
 
 // Enable LayoutAnimation on Android
@@ -262,7 +264,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
 
   const handleDragEnd = useCallback(() => {
     if(activeDragIdRef.current&&canReorder&&isCurrent()){
-      try{notesQueryStore.reorder(userId,notesRef.current);}catch{Alert.alert('Notes changed','Refresh the complete collection before reordering.');}
+      try{notesQueryStore.reorder(userId,notesRef.current);}catch{Alert.alert('Notes changed','Pull down to refresh the complete collection before reordering.');}
       loadNotes();
     }
 
@@ -376,10 +378,13 @@ export const useNotesData = (options: UseNotesDataOptions) => {
       notesEditStore.save(snapshot,{body});
       loadNotes();
       onRefresh();
-      }catch{Alert.alert('Note changed','Refresh Notes before changing this checklist.');}
+      }catch{Alert.alert('Note changed','Pull down to refresh Notes before changing this checklist.');}
     },
     [loadNotes, onRefresh,isCurrent,userId]
   );
+
+  const [deadlineCandidates, setDeadlineCandidates] = useState<DeadlineCandidate[]>([]);
+  const clearDeadlineCandidates = useCallback(() => setDeadlineCandidates([]), []);
 
   const saveNote = useCallback(() => {
     if(!isCurrent(editorGeneration))return;
@@ -387,7 +392,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
       setEditorVisible(false);
       return;
     }
-    const titleStr = noteTitle.trim() || 'Untitled Note';
+    const titleStr = noteTitle.trim() || deriveNoteTitle(noteBody);
 
     try{if (editingNote) {
       // Unchanged text keeps the desktop's HTML, and with it the formatting
@@ -414,7 +419,9 @@ export const useNotesData = (options: UseNotesDataOptions) => {
         isVoiceTranscribed: isVoice,
         imageUri: imageUri,
       });
-    }}catch{Alert.alert('Note not saved','The saved note may have changed, or storage is unavailable. Your draft is still here. Reopen the saved note before retrying.');return;}
+    }
+    if (isVoice) setDeadlineCandidates(extractDeadlines(noteBody));
+    }catch{Alert.alert('Note not saved','The saved note may have changed, or storage is unavailable. Your draft is still here. Reopen the saved note before retrying.');return;}
 
     setEditorVisible(false);
     lifecycle.current.editor++;deleteDecision.current=null;
@@ -425,14 +432,14 @@ export const useNotesData = (options: UseNotesDataOptions) => {
   const deleteNote = useCallback((id: string) => {
     if(!isCurrent())return;
     let snapshot:NoteEditSnapshot|null;
-    try{snapshot=editingNote?.id===id?editingNote:notesEditStore.getSnapshot(userId,id);if(!snapshot)throw new Error('Unavailable');}catch{Alert.alert('Note unavailable','Refresh Notes before deleting this item.');return;}
+    try{snapshot=editingNote?.id===id?editingNote:notesEditStore.getSnapshot(userId,id);if(!snapshot)throw new Error('Unavailable');}catch{Alert.alert('Note unavailable','Pull down to refresh Notes before deleting this item.');return;}
     const decision=Symbol('note-delete');deleteDecision.current=decision;
     Alert.alert('Delete Note', 'Are you sure you want to delete this note?', [
       { text: 'Cancel', style: 'cancel',onPress:()=>{if(deleteDecision.current===decision)deleteDecision.current=null;} },
       { text: 'Delete', style: 'destructive', onPress: () => {
         if(!isCurrent(editorGeneration)||deleteDecision.current!==decision)return;
         deleteDecision.current=null;
-        try{notesEditStore.remove(snapshot!);}catch{Alert.alert('Note not deleted','The note changed or could not be deleted. Your draft is still here. Refresh before retrying.');return;}
+        try{notesEditStore.remove(snapshot!);}catch{Alert.alert('Note not deleted','The note changed or could not be deleted. Your draft is still here. Pull down on Notes to refresh before retrying.');return;}
         lifecycle.current.editor++;
         setEditorVisible(false);
         loadNotes();
@@ -513,7 +520,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
           tasksStore.insertTask({
             id: generateId('task'),
             userId,
-            title: noteTitle || 'Untitled Note',
+            title: noteTitle.trim() || deriveNoteTitle(noteBody),
             dueDate: today,
             dueTime: '09:00',
             isCompleted: false,
@@ -569,7 +576,7 @@ export const useNotesData = (options: UseNotesDataOptions) => {
     loadNotes, onCardLayout, handleDragStart, handleDragMove, handleDragRelease,
     openNewNote, openEditNote, closeEditor,
     applyFormatting, changeBody, toggleEditorChecklist, toggleNoteChecklist,
-    saveNote, deleteNote,
+    saveNote, deleteNote, deadlineCandidates, clearDeadlineCandidates,
     triggerAiAction, addCategory, deleteCategory, updateCategory,
   };
 };

@@ -1,5 +1,5 @@
 import { DeviceEventEmitter } from 'react-native';
-import { remindersStore } from '../storage';
+import { callLogStore, remindersStore } from '../storage';
 import { stopSpeechPlayback, synthesizeSpeech } from '../ai/tts/ttsService';
 import {
   cancelOfflineSpeechCapture,
@@ -80,9 +80,12 @@ interface ActiveCallCapture {
 }
 
 export interface CallCommand {
-  intent: 'acknowledge' | 'snooze';
+  intent: 'acknowledge' | 'snooze' | 'call_back';
   minutes: number | null;
 }
+
+/** How long "call me back" waits when no time is spoken. It shares the snooze limit. */
+export const CALL_BACK_MINUTES = 15;
 
 let activeSession: CallDispatcherSession | null = null;
 let activeCallCapture: ActiveCallCapture | null = null;
@@ -101,7 +104,7 @@ const getSnoozeConfirmation = (minutes: number): string =>
   `Snoozed for ${minutes} minutes.`;
 
 const buildAnnouncement = (task: string): string =>
-  `Hey! This is LAFINA. Your scheduled reminder is "${task}". Choose one of the two responses shown on screen at any time.`;
+  `Hey! This is LAFINA. Your scheduled reminder is "${task}". Choose one of the responses shown on screen at any time.`;
 
 const warmCallResponseAudio = async (
   defaultSnoozeMinutes: number,
@@ -301,7 +304,7 @@ const isNearKeyword = (
   );
 
 /**
- * Detects the two supported reminder-call keywords from offline Whisper text.
+ * Detects the supported reminder-call keywords from offline Whisper text.
  * Exact words are preferred; conservative edit-distance matching repairs short
  * mobile-microphone output without accepting unrelated synonyms.
  */
@@ -315,6 +318,15 @@ export const detectCallKeyword = (transcript: string): CallCommand | null => {
     );
   const snoozeExact = /\bsnooz(?:e|ed)\b/.test(normalized);
   if (acknowledgeExact && snoozeExact) return null;
+  const callBackMatch = normalized.match(
+    /\bcall(?:\s+me)?\s+back\b(?:\s+(?:in\s+|after\s+)?(\d{1,3})(?:\s*(?:minutes?|mins?))?)?/,
+  );
+  if (callBackMatch) {
+    if (acknowledgeExact || snoozeExact || /\b(?:don['’]?\s?t|do\s+not|never)\b/.test(normalized)) return null;
+    if (!callBackMatch[1]) return { intent: 'call_back', minutes: null };
+    const minutes = Number.parseInt(callBackMatch[1], 10);
+    return minutes < 1 || minutes > 120 ? null : { intent: 'call_back', minutes };
+  }
   if (acknowledgeExact) {
     return { intent: 'acknowledge', minutes: null };
   }
@@ -420,6 +432,12 @@ const processCallTranscript = async (
     await handleFailedAttempt(session);
     return;
   }
+  try {
+    callLogStore.recordResponse(session.reminderId, session.userId, transcript);
+  } catch (error) {
+    // The call log must never get in the way of answering the call.
+    console.warn('[CallDispatcher] Call reply was not logged:', error);
+  }
 
   publishCallState('processing', 'Processing on this device...');
   const command = detectCallKeyword(transcript);
@@ -448,10 +466,13 @@ const processCallTranscript = async (
       return;
     }
 
-    const minutes = command.minutes ?? preferences.snoozeDurationMinutes;
-    const action = session.deliveryKey
-      ? await snoozeReminderAction(session.reminderId,session.userId,minutes,session.deliveryKey)
-      : await snoozeReminderAction(session.reminderId,session.userId,minutes);
+    const callBack = command.intent === 'call_back';
+    const minutes = command.minutes ?? (callBack ? CALL_BACK_MINUTES : preferences.snoozeDurationMinutes);
+    const action = callBack
+      ? await snoozeReminderAction(session.reminderId,session.userId,minutes,session.deliveryKey,{callBack:true})
+      : session.deliveryKey
+        ? await snoozeReminderAction(session.reminderId,session.userId,minutes,session.deliveryKey)
+        : await snoozeReminderAction(session.reminderId,session.userId,minutes);
     if (!isCurrentSession(session)) return;
     await speakText(action.message);
     if (action.ok) {
@@ -811,6 +832,34 @@ export const manualSnoozeCall = async (
   }
   await stopActiveAudioAndCapture(session);
   const action = await snoozeReminderAction(reminderId, userId, minutes,session.deliveryKey);
+  if (!isCurrentSession(session)) return;
+  await speakText(action.message);
+  if (action.ok) {
+    disconnectCall(resolutionFromAction(action));
+  } else if (isCurrentSession(session)) {
+    session.isResolving = false;
+  }
+};
+
+/**
+ * Applies the "Call back" button. It is a snooze that the call log records as a request.
+ */
+export const manualCallBackCall = async (
+  reminderId: string,
+  userId: string,
+  minutes: number = CALL_BACK_MINUTES,
+): Promise<void> => {
+  const session = activeSession;
+  if (
+    !session ||
+    session.reminderId !== reminderId ||
+    session.userId !== userId ||
+    !claimCallResolution(session)
+  ) {
+    return;
+  }
+  await stopActiveAudioAndCapture(session);
+  const action = await snoozeReminderAction(reminderId, userId, minutes, session.deliveryKey, {callBack: true});
   if (!isCurrentSession(session)) return;
   await speakText(action.message);
   if (action.ok) {

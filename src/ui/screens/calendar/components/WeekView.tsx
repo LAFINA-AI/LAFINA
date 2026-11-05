@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import { Colors } from '../../../theme';
 import type { TimeBlock, Task, Event } from '../../../../storage';
 import { useCalendarData } from '../hooks/useCalendarData';
 import { DayView } from './DayView';
+import { OverdueActionsSheet } from './OverdueActionsSheet';
+import { ACADEMIC_CALENDAR_ID } from '../../../../utils';
 import { HOLIDAY_CALENDAR_ID } from '../utils/philippineHolidays';
 
 interface WeekViewProps {
@@ -23,7 +25,12 @@ interface WeekViewProps {
   onEditEvent: (event: Event, type: 'event') => void;
   onEditBlock: (block: TimeBlock) => void;
   onToggleTask: (task: Task) => void;
+  /** Mark done from the overdue actions, which can be undone. */
+  onMarkOverdueDone: (task: Task) => void;
   onAddBlock: () => void;
+  onRescheduleTask: (task: Task, date: string, time: string | null) => void;
+  onEditTaskSeries: (task: Task) => void;
+  onCallAboutTask: (task: Task) => void;
   getCategoryColor: (category: string) => string;
 }
 
@@ -42,17 +49,22 @@ export const WeekView: React.FC<WeekViewProps> = ({
   onEditEvent,
   onEditBlock,
   onToggleTask,
+  onMarkOverdueDone,
   onAddBlock,
+  onRescheduleTask,
+  onEditTaskSeries,
+  onCallAboutTask,
   getCategoryColor,
 }) => {
   const { colors, isDarkMode } = useTheme();
   const overdueList = calendar.getOverdueTasks();
+  const [overdueTask, setOverdueTask] = useState<Task | null>(null);
 
   return (
     <View style={[styles.container, { backgroundColor: 'transparent' }]}>
       {/* Date Pill Scroller */}
       <View style={styles.scrollerContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weekScroller}>
+        <View style={styles.weekRow} testID="week-strip">
           {weekDays.map((day, i) => {
             const isSelected = day.toDateString() === selectedDate.toDateString();
             const isToday = day.toDateString() === new Date().toDateString();
@@ -74,6 +86,9 @@ export const WeekView: React.FC<WeekViewProps> = ({
                   ]}
                   onPress={() => setSelectedDate(day)}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                  accessibilityLabel={day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                 >
                   <Text style={[
                     styles.pillDayName,
@@ -97,7 +112,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
               </View>
             );
           })}
-        </ScrollView>
+        </View>
       </View>
 
       {/* Overdue Section */}
@@ -111,9 +126,11 @@ export const WeekView: React.FC<WeekViewProps> = ({
               <TouchableOpacity
                 key={ot.id}
                 style={[styles.overdueChip, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.7)' }]}
-                onPress={() => onEditTask(ot, 'task')}
+                onPress={() => setOverdueTask(ot)}
+                accessibilityRole="button"
+                accessibilityLabel={`Overdue task: ${ot.title}. Show actions.`}
               >
-                <Text style={[{ color: colors.textPrimary }, styles.overdueChipText]} numberOfLines={1}>
+                <Text style={[{ color: colors.textPrimary }, styles.overdueChipText]} numberOfLines={2}>
                   {ot.title}
                 </Text>
               </TouchableOpacity>
@@ -121,6 +138,15 @@ export const WeekView: React.FC<WeekViewProps> = ({
           </ScrollView>
         </View>
       )}
+
+      <OverdueActionsSheet
+        task={overdueTask}
+        onClose={() => setOverdueTask(null)}
+        onReschedule={onRescheduleTask}
+        onEditSeries={onEditTaskSeries}
+        onMarkDone={onMarkOverdueDone}
+        onCall={onCallAboutTask}
+      />
 
       {/* The selected day, to scale */}
       <DayView
@@ -136,6 +162,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
         onAddBlock={onAddBlock}
         getCategoryColor={getCategoryColor}
         showHolidays={calendar.visibilityMap[HOLIDAY_CALENDAR_ID] !== false}
+        showAcademic={calendar.visibilityMap[ACADEMIC_CALENDAR_ID] !== false}
       />
     </View>
   );
@@ -144,8 +171,8 @@ export const WeekView: React.FC<WeekViewProps> = ({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollerContainer: { marginBottom: 12 },
-  weekScroller: { paddingVertical: 4 },
-  datePill: { width: 56, height: 74, borderRadius: 16, marginRight: 8 },
+  weekRow: { flexDirection: 'row', gap: 4, paddingVertical: 4 },
+  datePill: { flex: 1, height: 64, borderRadius: 14 },
   pillTouchTarget: {
     width: '100%',
     height: '100%',
@@ -162,7 +189,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   pillDayName: { fontSize: 12, fontFamily: 'sans-serif', fontWeight: 'normal' },
-  pillDayNum: { fontSize: 28, fontFamily: 'sans-serif', fontWeight: 'bold', marginTop: 2 },
+  pillDayNum: { fontSize: 20, fontFamily: 'sans-serif', fontWeight: 'bold', marginTop: 2 },
   selectedPillUnderline: {
     position: 'absolute',
     top: 0,
@@ -178,6 +205,6 @@ const styles = StyleSheet.create({
   overdueBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, marginRight: 8 },
   overdueBadgeText: { fontSize: 10, fontWeight: 'bold' },
   overdueScroll: { flex: 1 },
-  overdueChip: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginRight: 6, maxWidth: 120 },
-  overdueChipText: { fontSize: 11 },
+  overdueChip: { justifyContent: 'center', minHeight: 44, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, marginRight: 6, maxWidth: 200 },
+  overdueChipText: { fontSize: 12, lineHeight: 16 },
 });

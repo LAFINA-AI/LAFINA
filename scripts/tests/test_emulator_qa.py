@@ -347,6 +347,28 @@ class EmulatorQaSafetyTest(unittest.TestCase):
         self.assertFalse(runner.cleanup())
         self.assertEqual(adb.calls, [])
 
+    def test_saved_result_waits_for_the_reply_and_taps_nothing(self) -> None:
+        """A saved change shows its reply in Chat with Undo, so no alert is tapped."""
+        adb = FakeAdb()
+        runner = QA.UiRunner(adb, "run01")
+        runner.last_command = QA.fixture_command("create", "run01", "main")
+        waited = []
+        taps = []
+
+        def wait_for(predicate):
+            waited.append(predicate)
+            if len(waited) == 1:
+                reply = snapshot(["Saved the task without a reminder."])
+                self.assertTrue(predicate(reply))
+                self.assertFalse(predicate(snapshot(["Undo"])))
+                return reply
+            return snapshot([], "")
+
+        runner.wait_for = wait_for
+        runner.tap = lambda label: taps.append(label)
+        runner.acknowledge_result("create", "main")
+        self.assertEqual(taps, [])
+
     def test_only_exact_owned_result_dialog_is_acknowledged(self) -> None:
         """No-match replies are native alerts, and arbitrary OK dialogs stay untouched."""
         adb = FakeAdb()

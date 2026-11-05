@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
 const posix = path.posix;
-const offline = file => /^src\/(ai|storage|scheduler)\//.test(file);
+const offline = file => /^src\/(ai|ml|storage|scheduler)\//.test(file);
 const cloud = file => /^src\/(cloud|sync)\//.test(file);
 const externalNetwork = /^(?:node:)?(?:https?|net|tls)$|^(?:axios|undici|node-fetch|@deepseek\/)/;
 

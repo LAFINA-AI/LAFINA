@@ -48,9 +48,14 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
             LAFINA does not share, sell, or transmit your personal data to third parties.
           </Text>
 
+          <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>Reminder Call History</Text>
+          <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
+            LAFINA keeps a call log on this device: how each reminder call ended, when, and the text of what you said in reply. Your voice recording is not kept. Risk estimates and your weekly recap are worked out on this device from this history. None of it is uploaded or synced. If you create an account from a guest session, it moves to that account on this device.
+          </Text>
+
           <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>5. Data Deletion</Text>
           <Text style={[styles.privacyBodyText, themed.privacyBodyText]}>
-            You can delete all personal data at any time using the "Clear All Data" option in Profile Settings.
+            You can delete all personal data at any time using the "Clear All Data" option in Profile Settings. This includes your call log, spoken replies and the predictions made from them.
           </Text>
 
           <Text style={[styles.privacySectionTitle, themed.privacySectionTitle]}>6. Contact</Text>

@@ -40,7 +40,7 @@ describe('Voice Pipeline Integration', () => {
 
     expect(prompt).toContain('Today is 2026-07-06');
     expect(prompt).toContain(
-      '"intent": "schedule | snooze | cancel | out_of_scope | acknowledge"',
+      '"intent": "schedule | snooze | cancel | out_of_scope | acknowledge | find_time"',
     );
     expect(prompt).toContain('Transcript: "Add task submit report by 5pm"');
   });

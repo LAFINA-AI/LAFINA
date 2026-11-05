@@ -85,6 +85,8 @@ export interface TimeBlockModalState {
   showStartPicker: boolean;
   showEndPicker: boolean;
   openNewBlock: () => void;
+  /** Opens a new block preset as a weekly class on the selected day. */
+  openNewClass: () => void;
   openEditBlock: (block: TimeBlock) => void;
   close: () => void;
   updateField: <K extends keyof TimeBlockForm>(key: K, value: TimeBlockForm[K]) => void;

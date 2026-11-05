@@ -132,6 +132,7 @@ const createTimeBlockModal = (): TimeBlockModalState => ({
   showStartPicker: false,
   showEndPicker: false,
   openNewBlock: jest.fn(),
+  openNewClass: jest.fn(),
   openEditBlock: jest.fn(),
   close: jest.fn(),
   updateField: jest.fn(),

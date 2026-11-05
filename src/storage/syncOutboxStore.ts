@@ -177,6 +177,17 @@ export const syncOutboxStore = {
     };
   },
 
+  /** Counts this account's changes that have not reached the server. */
+  countUnsynced: (localUserId: string, executor?: DatabaseTransaction): number => {
+    if (db.isFallback()) return 0;
+    const row = executorFor(executor).executeSync(
+      `SELECT COUNT(*) AS total FROM sync_outbox
+       WHERE user_id = ? AND status IN ('pending', 'in_progress', 'failed')`,
+      [localUserId],
+    ).rows?.[0];
+    return Number(row?.total ?? 0);
+  },
+
   /** Marks selected pending mutations in progress and records the network attempt. */
   markMutationsInProgress: (
     localUserId: string,

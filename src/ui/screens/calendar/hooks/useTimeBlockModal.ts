@@ -2,9 +2,16 @@ import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { Colors } from '../../../theme';
 import type { TimeBlock } from '../../../../storage';
-import { timeBlocksStore } from '../../../../storage';
+import { applySemesterEnd, semesterStore, timeBlocksStore } from '../../../../storage';
+import { parseRrule } from '../../../../storage/rruleHelper';
 import { TimeBlockForm, TimeBlockModalState } from '../types';
-import { generateId } from '../../../../utils';
+import { describeConflicts, generateId } from '../../../../utils';
+import { checkScheduleConflicts, refreshOccurrenceReminders } from '../../../../scheduler';
+import { CLASS_BLOCK_CATEGORY } from '../../../../constants';
+import { baseOccurrenceId } from '../utils/calendarHelpers';
+import { formatLocalDate } from '../utils/timeGridLayout';
+
+const WEEKDAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
 
 interface UseTimeBlockModalOptions {
   userId: string;
@@ -55,6 +62,19 @@ export const useTimeBlockModal = (options: UseTimeBlockModalOptions): TimeBlockM
     setVisible(true);
   }, []);
 
+  const openNewClass = useCallback(() => {
+    setEditingBlock(null);
+    const weekly = `FREQ=WEEKLY;BYDAY=${WEEKDAY_CODES[selectedDate.getDay()]}`;
+    const semesterEnd = semesterStore.getEnd(userId, formatLocalDate(selectedDate));
+    setForm({
+      ...defaultForm(),
+      category: CLASS_BLOCK_CATEGORY,
+      color: Colors.red,
+      recurrenceRule: semesterEnd ? applySemesterEnd(weekly, semesterEnd) : weekly,
+    });
+    setVisible(true);
+  }, [selectedDate, userId]);
+
   const openEditBlock = useCallback((block: TimeBlock) => {
     setEditingBlock(block);
     setForm({
@@ -81,14 +101,18 @@ export const useTimeBlockModal = (options: UseTimeBlockModalOptions): TimeBlockM
       return;
     }
 
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    // A local date: toISOString() names yesterday for the first hours of a Manila morning.
+    const dateStr = formatLocalDate(selectedDate);
     const rule = recurrenceRule !== undefined ? recurrenceRule : (form.recurrenceRule || null);
 
+    const persist = (): void => {
     if (editingBlock) {
+      // Editing a repeating block must not move where the series starts.
+      const keepsSeriesStart = !!editingBlock.recurrenceRule && !!rule;
       timeBlocksStore.update({
-        id: editingBlock.id,
+        id: baseOccurrenceId(editingBlock.id),
         title: form.title,
-        date: dateStr,
+        ...(keepsSeriesStart ? {} : { date: dateStr }),
         startTime: form.startTime,
         endTime: form.endTime,
         color: form.color,
@@ -111,26 +135,60 @@ export const useTimeBlockModal = (options: UseTimeBlockModalOptions): TimeBlockM
       });
     }
 
+    if (form.category === CLASS_BLOCK_CATEGORY) {
+      // One semester end for every class in this term, and each class gets its calls from here.
+      const until = parseRrule(rule)?.until;
+      if (until) semesterStore.setEnd(userId, until, editingBlock?.date ?? dateStr);
+      refreshOccurrenceReminders(userId);
+    }
+
     setVisible(false);
     onSaved();
     onRefresh();
+    };
+
+    // A new time, or a new item, is worth a warning. Renaming an item that already overlaps is not.
+    const timeChanged = !editingBlock
+      || editingBlock.startTime !== form.startTime
+      || editingBlock.endTime !== form.endTime
+      || (!editingBlock.recurrenceRule && editingBlock.date !== dateStr);
+    const warning = timeChanged
+      ? describeConflicts(checkScheduleConflicts(
+          userId,
+          new Date(`${dateStr}T${form.startTime}:00`).getTime(),
+          new Date(`${dateStr}T${form.endTime}:00`).getTime(),
+          editingBlock ? { id: baseOccurrenceId(editingBlock.id) } : undefined,
+        ))
+      : null;
+    if (warning) {
+      Alert.alert('Time overlap', warning, [
+        { text: 'Go back', style: 'cancel' },
+        { text: 'Save anyway', onPress: persist },
+      ]);
+      return;
+    }
+    persist();
   }, [form, editingBlock, selectedDate, userId, onSaved, onRefresh]);
 
   const handleDelete = useCallback((id: string) => {
-    Alert.alert('Delete Block', 'Are you sure you want to delete this time block?', [
+    const blockId = baseOccurrenceId(id);
+    const message = editingBlock?.recurrenceRule
+      ? 'This deletes every occurrence of this repeating block.'
+      : 'Are you sure you want to delete this time block?';
+    Alert.alert('Delete Block', message, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
-          timeBlocksStore.delete(id);
+          timeBlocksStore.delete(blockId);
           setVisible(false);
           onSaved();
           onRefresh();
         },
       },
     ]);
-  }, [onSaved, onRefresh]);
+  }, [editingBlock, onSaved, onRefresh]);
 
   return {
     visible,
@@ -139,6 +197,7 @@ export const useTimeBlockModal = (options: UseTimeBlockModalOptions): TimeBlockM
     showStartPicker,
     showEndPicker,
     openNewBlock,
+    openNewClass,
     openEditBlock,
     close,
     updateField,

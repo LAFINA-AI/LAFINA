@@ -14,6 +14,7 @@ import { timeStringToDate, dateToTimeString, formatTimeForDisplay } from '../uti
 import { TimeBlockModalState } from '../types';
 import { Shadows } from '../../../theme';
 import { parseRrule } from '../../../../storage/rruleHelper';
+import { CLASS_BLOCK_CATEGORY } from '../../../../constants';
 
 interface AddBlockModalProps {
   state: TimeBlockModalState;
@@ -35,8 +36,10 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ state, timeFormat2
   // Sync form recurrenceRule to local state when modal becomes visible
   useEffect(() => {
     if (state.visible) {
-      if (state.editingBlock && state.editingBlock.recurrenceRule) {
-        const rule = parseRrule(state.editingBlock.recurrenceRule);
+      // A new class arrives with its weekly rule already on the form.
+      const existingRule = state.editingBlock?.recurrenceRule ?? state.form.recurrenceRule;
+      if (existingRule) {
+        const rule = parseRrule(existingRule);
         if (rule) {
           setRepeatFreq(rule.freq);
           setRepeatInterval(String(rule.interval || 1));
@@ -61,7 +64,14 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ state, timeFormat2
       setRepeatUntil('');
       setRepeatCount('10');
     }
+    // Only on opening: the form's rule is a starting point, and the local fields own it from here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.visible, state.editingBlock]);
+
+  const isClass = state.form.category === CLASS_BLOCK_CATEGORY;
+  const heading = isClass
+    ? (state.editingBlock ? 'Edit Class' : 'Add Class')
+    : (state.editingBlock ? 'Edit Time Block' : 'Create Time Block');
 
   const handleSaveLocal = () => {
     let ruleStr: string | null = null;
@@ -93,12 +103,12 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ state, timeFormat2
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContent, { backgroundColor: colors.cardBg }]}>
           <Text style={[styles.modalHeaderTitle, { color: colors.textPrimary }]}>
-            {state.editingBlock ? 'Edit Time Block' : 'Create Time Block'}
+            {heading}
           </Text>
 
           <TextInput
             style={[styles.modalInput, { borderColor: colors.border, color: colors.textPrimary, backgroundColor: colors.inputBg }]}
-            placeholder="Deep Work, Study, Lunch..."
+            placeholder={isClass ? 'Calculus, Physics Lab...' : 'Deep Work, Study, Lunch...'}
             placeholderTextColor={colors.placeholder}
             value={state.form.title}
             onChangeText={(v) => state.updateField('title', v)}
@@ -156,7 +166,7 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ state, timeFormat2
           </View>
 
           <View style={styles.categoryRow}>
-            {['Work', 'Personal', 'Health', 'Learning'].map((cat) => (
+            {['Work', 'Personal', 'Health', 'Learning', CLASS_BLOCK_CATEGORY].map((cat) => (
               <TouchableOpacity
                 key={cat}
                 style={[
@@ -297,6 +307,12 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ state, timeFormat2
                   </View>
                 </View>
 
+                {isClass && (
+                  <Text style={[styles.classHint, { color: colors.textSecondary }]}>
+                    LAFINA calls you before each class. Set an Until date to your semester's last day: calls stop after it, and it applies to all your classes.
+                  </Text>
+                )}
+
                 {/* End Details */}
                 {repeatEndType === 'UNTIL' && (
                   <View style={styles.detailRow}>
@@ -380,6 +396,11 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ state, timeFormat2
 };
 
 const styles = StyleSheet.create({
+  classHint: {
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 12,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

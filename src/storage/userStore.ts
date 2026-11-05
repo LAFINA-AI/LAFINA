@@ -1,3 +1,4 @@
+import { DEMO_IDS, seedDemoAdherenceSafely } from './demoSeed';
 import { generateId } from '../utils';
 import { db, DatabaseTransaction } from './database';
 import { hashPassword, normalizeEmail, validatePassword, verifyPassword } from './authUtils';
@@ -286,6 +287,7 @@ export const userStore = {
       console.error('Error setting current user session:', error);
       throw error;
     }
+    if (userId === DEMO_IDS.STUDENT_ID) seedDemoAdherenceSafely();
   },
 
   /**
